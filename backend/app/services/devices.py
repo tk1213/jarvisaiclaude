@@ -22,6 +22,20 @@ def _status_dict(status: list[dict]) -> dict:
     return {s["code"]: s["value"] for s in status}
 
 
+def _fresh_status(tuya, device_id: str, listed: list[dict]) -> dict:
+    """Status from the device list, falling back to shadow properties when the list has none.
+
+    Some devices (IR hubs with a thermometer) report nothing in the device list; their
+    readings only arrive via Pulsar or the shadow endpoint.
+    """
+    if listed:
+        return _status_dict(listed)
+    try:
+        return _status_dict(tuya.get_shadow_properties(device_id))
+    except TuyaError:
+        return {}
+
+
 def sync_devices(db: Session, tuya) -> list[Device]:
     """Pull the device list (and room assignment) from Tuya into the database."""
     room_of: dict[str, str] = {}
@@ -41,7 +55,8 @@ def sync_devices(db: Session, tuya) -> list[Device]:
         device.category = raw.get("category", "")
         device.product_name = raw.get("product_name", "")
         device.online = bool(raw.get("online", False))
-        device.status = _status_dict(raw.get("status", []))
+        # Merge so values only reported via Pulsar aren't wiped by an empty listing.
+        device.status = {**(device.status or {}), **_fresh_status(tuya, raw["id"], raw.get("status", []))}
         if raw["id"] in room_of and not device.room_overridden:
             device.room = room_of[raw["id"]]
         db.add(device)
@@ -65,7 +80,7 @@ def refresh_all_status(db: Session, tuya) -> None:
     for device in db.scalars(select(Device)):
         raw = fresh.get(device.tuya_device_id)
         if raw is not None:
-            device.status = _status_dict(raw.get("status", []))
+            device.status = {**(device.status or {}), **_fresh_status(tuya, device.tuya_device_id, raw.get("status", []))}
             device.online = bool(raw.get("online", False))
     db.commit()
 
@@ -88,7 +103,8 @@ def find_devices(db: Session, name: str | None = None, room: str | None = None) 
 
 
 def refresh_status(db: Session, tuya, device: Device) -> Device:
-    device.status = _status_dict(tuya.get_device_status(device.tuya_device_id))
+    fresh = _fresh_status(tuya, device.tuya_device_id, tuya.get_device_status(device.tuya_device_id))
+    device.status = {**(device.status or {}), **fresh}
     db.commit()
     return device
 

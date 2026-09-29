@@ -133,3 +133,21 @@ def test_permission_denied_is_flagged_then_cleared(client, owner_headers):
     tuya.send_commands = real_send  # permission fixed in the Tuya console
     r = client.post(f"/devices/{plug['id']}/power", json={"on": True}, headers=owner_headers)
     assert r.status_code == 200 and r.json()["control_denied"] is False
+
+
+def test_sensor_readings_survive_sync_when_listing_is_empty(client, owner_headers):
+    """IR hubs list no status; readings come from Pulsar or the shadow endpoint and must not be wiped."""
+    from app.integrations.tuya import get_tuya_client
+
+    tuya = get_tuya_client()
+    ac = _sync(client, owner_headers)["แอร์ห้องนอน"]
+    real_list = tuya.list_devices
+
+    def listing_without_status():
+        return [{**d, "status": []} for d in real_list()]
+
+    tuya.list_devices = listing_without_status
+    tuya.get_shadow_properties = lambda device_id: [{"code": "temp_current", "value": 287}]
+    after = _sync(client, owner_headers)["แอร์ห้องนอน"]
+    assert after["status"]["temp_current"] == 287  # from shadow properties
+    assert after["status"]["temp_set"] == ac["status"]["temp_set"]  # earlier value kept

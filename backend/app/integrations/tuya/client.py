@@ -196,6 +196,14 @@ class TuyaClient:
     def get_device_status(self, device_id: str) -> list[dict]:
         return self.request("GET", f"/v1.0/devices/{device_id}/status") or []
 
+    def get_device_info(self, device_id: str) -> dict:
+        return self.request("GET", f"/v1.0/devices/{device_id}") or {}
+
+    def get_shadow_properties(self, device_id: str) -> list[dict]:
+        """Latest reported values, including devices whose /status is empty (e.g. IR hubs' sensors)."""
+        result = self.request("GET", f"/v2.0/cloud/thing/{device_id}/shadow/properties") or {}
+        return [{"code": p["code"], "value": p.get("value")} for p in result.get("properties", []) if "code" in p]
+
     def send_commands(self, device_id: str, commands: list[dict]) -> bool:
         return bool(self.request("POST", f"/v1.0/devices/{device_id}/commands", payload={"commands": commands}))
 

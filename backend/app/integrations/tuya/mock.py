@@ -64,6 +64,9 @@ class MockTuyaClient:
     def get_device_status(self, device_id: str) -> list[dict]:
         return copy.deepcopy(self._device(device_id)["status"])
 
+    def get_shadow_properties(self, device_id: str) -> list[dict]:
+        return self.get_device_status(device_id)
+
     def send_commands(self, device_id: str, commands: list[dict]) -> bool:
         with self._lock:
             device = self._device(device_id)

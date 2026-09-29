@@ -6,6 +6,7 @@
     python -m app.scripts.tuya_check off <device_id>    # turn a device off
     python -m app.scripts.tuya_check cmd <device_id> <code> <json-value>
     python -m app.scripts.tuya_check ir <ir_hub_device_id>   # remotes + keys of an IR hub
+    python -m app.scripts.tuya_check info <device_id>        # full device details
 """
 
 import json
@@ -27,7 +28,15 @@ def main(argv: list[str]) -> int:
         for d in tuya.list_devices():
             state = "online" if d.get("online") else "offline"
             print(f"- {d['id']}  {d.get('name')}  [{d.get('category')}, {state}]")
-            for s in d.get("status", []):
+            status = d.get("status") or []
+            if not status:
+                try:
+                    status = tuya.get_shadow_properties(d["id"])
+                    if status:
+                        print("    (from shadow properties)")
+                except Exception as e:
+                    print(f"    shadow properties: n/a {e}")
+            for s in status:
                 print(f"    {s['code']} = {s['value']}")
     elif action == "scenes":
         for s in tuya.list_scenes():
@@ -43,6 +52,8 @@ def main(argv: list[str]) -> int:
     elif action == "cmd" and len(argv) == 4:
         tuya.send_commands(argv[1], [{"code": argv[2], "value": json.loads(argv[3])}])
         print(json.dumps(tuya.get_device_status(argv[1]), ensure_ascii=False))
+    elif action == "info" and len(argv) == 2:
+        print(json.dumps(tuya.get_device_info(argv[1]), ensure_ascii=False, indent=2))
     elif action == "ir" and len(argv) == 2:
         remotes = tuya.ir_list_remotes(argv[1])
         if not remotes:
