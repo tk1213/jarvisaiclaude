@@ -14,7 +14,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.integrations.tuya import TuyaError
+from app.integrations.tuya import TuyaError, pulsar
 from app.models import Device, User
 from app.ratelimit import limiter
 from app.services import devices as svc
@@ -59,7 +59,9 @@ def _require_control(ctx: ToolContext) -> None:
 
 
 def get_devices(ctx: ToolContext, room: str | None = None) -> Any:
-    svc.refresh_all_status(ctx.db, ctx.tuya)
+    # While the Pulsar stream is up the table is already current; refreshing costs a Tuya call per device.
+    if not pulsar.is_connected():
+        svc.refresh_all_status(ctx.db, ctx.tuya)
     found = svc.find_devices(ctx.db, room=room or None)
     return [_device_summary(d) for d in found]
 

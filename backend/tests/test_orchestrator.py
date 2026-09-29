@@ -223,3 +223,24 @@ def test_get_devices_reports_live_state(home):
     assert not is_error
     plug = next(d for d in json.loads(content) if d["name"] == "ปลั๊กกาต้มน้ำ")
     assert plug["status"]["switch_1"] is True
+
+
+def test_get_devices_trusts_table_while_pulsar_is_live(home, monkeypatch):
+    from app.core.tools import ToolContext, run_tool
+    from app.integrations.tuya import pulsar
+
+    db, tuya, user, devices = home
+    monkeypatch.setattr(pulsar, "_connected", True)
+    calls = []
+    monkeypatch.setattr(tuya, "list_devices", lambda: calls.append(1) or [])
+    content, is_error = run_tool(ToolContext(db, tuya, user), "get_devices", {"room": None})
+    assert not is_error and calls == [] and len(json.loads(content)) == len(devices)
+
+
+def test_user_turn_carries_device_list(home):
+    db, tuya, user, devices = home
+    fake = FakeClaude([message([text("ok")], "end_turn")])
+    ask(make(fake), db, tuya, user, "เปิดไฟ")
+    turn = fake.requests[0]["messages"][-1]["content"][0]["text"]
+    plug = devices["ปลั๊กกาต้มน้ำ"]
+    assert f"device_id={plug.id} ปลั๊กกาต้มน้ำ" in turn and turn.endswith("เปิดไฟ")

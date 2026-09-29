@@ -35,7 +35,7 @@ export function ChatPanel() {
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, busy])
+  }, [messages, busy, wake.speakingToJarvis])
 
   useEffect(() => stopSpeaking, [])
 
@@ -200,6 +200,14 @@ export function ChatPanel() {
             </div>
           </div>
         ))}
+
+        {wake.enabled && wake.speakingToJarvis && !busy && (
+          <div className="flex justify-end">
+            <div className="max-w-[85%] rounded-2xl border border-dashed border-sky-400 px-3.5 py-2 text-sky-800 dark:border-sky-600 dark:text-sky-200">
+              {wake.speakingToJarvis}…
+            </div>
+          </div>
+        )}
 
         {busy && (
           <div className="flex justify-start">

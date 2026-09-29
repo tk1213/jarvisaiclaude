@@ -10,7 +10,9 @@ prefix, so editing or trimming earlier turns would invalidate them.
 
 from __future__ import annotations
 
+import json
 import logging
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -24,7 +26,7 @@ from app.config import get_settings
 from app.core.messages import Channel, InboundMessage
 from app.core.prompts import SYSTEM_PROMPT, VOICE_HINT
 from app.core.tools import TOOLS, ToolContext, run_tool
-from app.models import ChatMessage, User
+from app.models import ChatMessage, Device, User
 
 log = logging.getLogger(__name__)
 
@@ -65,6 +67,18 @@ def _reply_text(content) -> str:
     return "\n".join(b.text for b in content if b.type == "text").strip()
 
 
+def device_snapshot(db: Session) -> str:
+    """One line per device, from the table Pulsar keeps current."""
+    lines = []
+    for d in db.scalars(select(Device).order_by(Device.id)):
+        status = {k: v for k, v in (d.status or {}).items() if v not in ("", None)}
+        lines.append(
+            f"- device_id={d.id} {d.name} | ห้อง: {d.room or '-'} | {d.category} | "
+            f"{'ออนไลน์' if d.online else 'ออฟไลน์'} | {json.dumps(status, ensure_ascii=False)}"
+        )
+    return "\n".join(lines)
+
+
 class Orchestrator:
     def __init__(self, client, *, model: str, effort: str, max_tool_rounds: int, timezone: str):
         self.client = client
@@ -81,10 +95,12 @@ class Orchestrator:
         )
         return [{"role": r.role, "content": r.content["blocks"]} for r in rows]
 
-    def _user_turn(self, text: str, channel: Channel) -> dict:
+    def _user_turn(self, text: str, channel: Channel, devices: str = "") -> dict:
         # The current time (and channel hints) live in the user turn, not the system prompt, so the prefix stays stable.
         now = datetime.now(self.tz).strftime("%Y-%m-%d %H:%M (%A)")
         header = f"[เวลาปัจจุบัน: {now}]"
+        if devices:
+            header += f"\n[อุปกรณ์ในบ้านตอนนี้]\n{devices}"
         if channel == Channel.voice:
             header += f"\n{VOICE_HINT}"
         return {"role": "user", "content": [{"type": "text", "text": f"{header}\n{text}"}]}
@@ -105,12 +121,15 @@ class Orchestrator:
     def handle(self, db: Session, tuya, user: User, msg: InboundMessage) -> CoreReply:
         session_id = msg.session_id or uuid.uuid4().hex
         history = self._history(db, user, session_id)
-        new_messages = [self._user_turn(msg.text, msg.channel)]
+        # Attaching the device list saves Claude a get_devices round trip on most commands.
+        new_messages = [self._user_turn(msg.text, msg.channel, device_snapshot(db))]
         ctx = ToolContext(db=db, tuya=tuya, user=user)
         calls: list[ToolCallRecord] = []
 
-        for _ in range(self.max_tool_rounds):
+        for round_no in range(1, self.max_tool_rounds + 1):
+            started = time.perf_counter()
             response = self._call(history + new_messages)
+            log.info("Claude round %d: %.1fs (%s)", round_no, time.perf_counter() - started, response.stop_reason)
 
             if response.stop_reason == "refusal":
                 # Nothing is persisted for a declined turn, keeping the history clean.
@@ -123,7 +142,9 @@ class Orchestrator:
 
             results = []
             for tu in tool_uses:
+                started = time.perf_counter()
                 content, is_error = run_tool(ctx, tu.name, dict(tu.input))
+                log.info("tool %s: %.1fs%s", tu.name, time.perf_counter() - started, " (error)" if is_error else "")
                 calls.append(ToolCallRecord(tu.name, dict(tu.input), not is_error))
                 results.append(
                     {"type": "tool_result", "tool_use_id": tu.id, "content": content, "is_error": is_error}

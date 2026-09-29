@@ -65,6 +65,14 @@ def decode_message(message: str, access_secret: str) -> tuple[str, dict]:
     return frame["messageId"], event
 
 
+_connected = False
+
+
+def is_connected() -> bool:
+    """True while the live event stream is up, i.e. the devices table is being kept current."""
+    return _connected
+
+
 class PulsarConsumer:
     def __init__(
         self,
@@ -101,17 +109,21 @@ class PulsarConsumer:
                     await ws.send(json.dumps({"messageId": message_id}))
 
     async def run(self) -> None:
+        global _connected
         headers = {"username": self.access_id, "password": pulsar_password(self.access_id, self.access_secret)}
         backoff = 1.0
         while True:
             try:
                 async with connect(self.url, additional_headers=headers, ping_interval=30) as ws:
                     log.info("connected to Tuya Pulsar")
+                    _connected = True
                     backoff = 1.0
                     await self._consume(ws)
             except asyncio.CancelledError:
+                _connected = False
                 raise
             except Exception as e:
+                _connected = False
                 log.warning("Tuya Pulsar connection lost (%s); retrying in %.0fs", e, backoff)
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, self.max_backoff)

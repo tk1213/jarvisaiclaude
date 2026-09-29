@@ -11,6 +11,8 @@ const NAME_ONLY = new RegExp(`^\\s*${NAME}\\s*[.!?]?\\s*$`, 'i')
 const STOP_WORDS = /(?:หยุดการทำงาน|หยุดทำงาน|หยุดฟัง|ปิดโหมดปลุก|\bstop\b|สต็อป|สต๊อป|สตอป)/i
 // How long to wait for the command after the wake word (or after JARVIS answers).
 export const COMMAND_WINDOW_MS = 8000
+// Chrome's continuous mode is slow to mark speech final; once the words stop changing for this long, act on them.
+const SETTLE_MS = 700
 const FATAL_ERRORS = new Set(['not-allowed', 'service-not-allowed', 'audio-capture'])
 
 export type WakeMode = 'waiting' | 'command'
@@ -43,8 +45,9 @@ class WakeListener {
   private rec: Recognition | null = null
   private mode: WakeMode = 'waiting'
   private timer: number | undefined
+  private settle: number | undefined
   private running = false
-  private restartDelay = 300
+  private restartDelay = 100
   private cb: Callbacks
   private onCommand: (text: string) => void = () => {}
 
@@ -63,6 +66,7 @@ class WakeListener {
   }
 
   pause() {
+    window.clearTimeout(this.settle)
     this.running = false
     this.rec?.abort()
     this.rec = null
@@ -89,6 +93,7 @@ class WakeListener {
     r.continuous = true
     r.interimResults = true
     r.onresult = (e) => {
+      window.clearTimeout(this.settle)
       let interim = ''
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const res = e.results[i]
@@ -96,6 +101,9 @@ class WakeListener {
         else interim += res[0].transcript
       }
       this.cb.onHeard(interim)
+      if (interim && this.isForUs(interim)) {
+        this.settle = window.setTimeout(() => this.settleEarly(r, interim), SETTLE_MS)
+      }
     }
     r.onerror = (e) => {
       if (FATAL_ERRORS.has(e.error)) {
@@ -119,8 +127,22 @@ class WakeListener {
     }
   }
 
+  /** Speech worth acting on before Chrome finalizes it: a command, the wake word, or a stop phrase. */
+  private isForUs(text: string) {
+    return this.mode === 'command' || findWakeWord(text) !== null || isStopCommand(text, false)
+  }
+
+  /** Act on the interim words now and drop this session so the late final result isn't handled twice. */
+  private settleEarly(r: Recognition, text: string) {
+    if (this.rec !== r) return
+    this.rec = null
+    r.abort() // onend restarts listening while running
+    this.cb.onHeard('')
+    this.handle(text)
+  }
+
   private handle(transcript: string) {
-    this.restartDelay = 300
+    this.restartDelay = 100
     const text = transcript.trim()
     if (!text) return
     if (isStopCommand(text, this.mode === 'command')) {
@@ -233,8 +255,12 @@ export function useWakeWord(onCommand: (text: string) => void, paused: boolean) 
     setEnabledState(on)
   }
 
+  // What's being said to JARVIS right now (not background talk), for a live bubble in the chat.
+  const speakingToJarvis = heard && (mode === 'command' || findWakeWord(heard) !== null) ? heard : ''
+
   return {
     enabled,
+    speakingToJarvis,
     setEnabled,
     mode,
     heard,
