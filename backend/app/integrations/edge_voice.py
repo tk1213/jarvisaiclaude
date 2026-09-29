@@ -39,15 +39,32 @@ def normalize_pitch(pitch: str) -> str:
     return f"{m[1] or '+'}{m[2]}Hz"
 
 
-async def synthesize(text: str, *, voice: str, rate: str, pitch: str) -> bytes:
-    rate, pitch = clamp_rate(rate), normalize_pitch(pitch)
+async def _stream(text: str, voice: str, rate: str, pitch: str) -> bytes:
     audio = bytearray()
-    try:
-        async for chunk in edge_tts.Communicate(text[:MAX_CHARS], voice, rate=rate, pitch=pitch).stream():
-            if chunk["type"] == "audio":
-                audio += chunk["data"]
-    except Exception as e:  # edge-tts raises aiohttp and its own errors
-        raise TtsError(f"Edge voice failed: {e.__class__.__name__}: {e}") from None
+    async for chunk in edge_tts.Communicate(text, voice, rate=rate, pitch=pitch).stream():
+        if chunk["type"] == "audio":
+            audio += chunk["data"]
     if not audio:
-        raise TtsError("Edge voice returned no audio")
+        raise edge_tts.exceptions.NoAudioReceived("no audio")
     return bytes(audio)
+
+
+async def synthesize(text: str, *, voice: str, rate: str, pitch: str) -> bytes:
+    """Speak with the configured rate/pitch; if the service returns nothing, retry once as configured
+    (it fails transiently) and then with its default rate/pitch, so the reply keeps the same voice."""
+    rate, pitch = clamp_rate(rate), normalize_pitch(pitch)
+    attempts = [(rate, pitch), (rate, pitch)]
+    if (rate, pitch) != ("+0%", "+0Hz"):
+        attempts.append(("+0%", "+0Hz"))
+    error: Exception | None = None
+    for i, (r, p) in enumerate(attempts):
+        try:
+            audio = await _stream(text[:MAX_CHARS], voice, r, p)
+        except Exception as e:  # edge-tts raises aiohttp and its own errors
+            error = e
+            log.warning("Edge voice attempt %d (rate=%s pitch=%s) failed: %s: %s", i + 1, r, p, e.__class__.__name__, e)
+            continue
+        if i == len(attempts) - 1 and len(attempts) == 3:
+            log.warning("spoke with the default rate/pitch because rate=%s pitch=%s produced no audio", rate, pitch)
+        return audio
+    raise TtsError(f"Edge voice failed: {error.__class__.__name__}: {error}")

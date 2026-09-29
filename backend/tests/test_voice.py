@@ -52,6 +52,23 @@ def test_dashboard_html_is_revalidated(client):
     assert r.status_code == 200 and r.headers["cache-control"] == "no-cache"
 
 
+def test_falls_back_to_default_prosody(client, owner_headers, monkeypatch):
+    class PickyService(FakeCommunicate):
+        async def stream(self):
+            if self.prosody != ("+0%", "+0Hz"):
+                return  # the service accepted the request but sent no audio
+            yield {"type": "audio", "data": b"ok"}
+
+        def __init__(self, text, voice, rate, pitch):
+            self.prosody = (rate, pitch)
+            super().__init__(text, voice, rate, pitch)
+
+    monkeypatch.setattr(edge_voice.edge_tts, "Communicate", PickyService)
+    monkeypatch.setattr(get_settings(), "tts_pitch", "-5Hz")
+    r = client.post("/voice/tts", json={"text": "x"}, headers=owner_headers)
+    assert r.status_code == 200 and r.content == b"ok"
+
+
 def test_rate_and_pitch_are_normalized(client, owner_headers, monkeypatch):
     monkeypatch.setattr(edge_voice.edge_tts, "Communicate", FakeCommunicate)
     monkeypatch.setattr(get_settings(), "tts_rate", "-55%")
