@@ -86,6 +86,7 @@ class PulsarConsumer:
             message_id = None
             try:
                 message_id, event = decode_message(message, self.access_secret)
+                log.info("Tuya event received: %s", event)
                 await asyncio.to_thread(self.on_event, event)
             except Exception:
                 log.exception("failed to handle Tuya Pulsar message")
