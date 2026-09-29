@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     # Spoken replies use Microsoft Edge's online neural voices (free, no key); "browser" = the browser's own voices.
     tts_engine: Literal["edge", "browser"] = "edge"
     tts_voice: str = "th-TH-PremwadeeNeural"  # female; th-TH-NiwatNeural is male
-    tts_rate: str = "+8%"  # speed, e.g. "+0%" normal
+    tts_rate: str = "-8%"  # speed, e.g. "+0%" normal
     tts_pitch: str = "+15Hz"  # higher = brighter
 
     # Rate limits (spec §6), per user for device control, per username+IP for login.

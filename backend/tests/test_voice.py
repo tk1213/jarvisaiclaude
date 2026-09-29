@@ -19,7 +19,7 @@ def test_server_voice(client, owner_headers, monkeypatch):
     assert client.get("/voice/config", headers=owner_headers).json() == {"engine": "server", "voice": "th-TH-PremwadeeNeural"}
     r = client.post("/voice/tts", json={"text": "สวัสดีค่ะ"}, headers=owner_headers)
     assert r.status_code == 200 and r.content == b"mp3" and r.headers["content-type"] == "audio/mpeg"
-    assert FakeCommunicate.calls[-1] == ("สวัสดีค่ะ", "th-TH-PremwadeeNeural", "+8%", "+15Hz")
+    assert FakeCommunicate.calls[-1] == ("สวัสดีค่ะ", "th-TH-PremwadeeNeural", "-8%", "+15Hz")
 
 
 def test_voice_failure_is_reported(client, owner_headers, monkeypatch):
