@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react'
 import { ERRORS, LANG, recognitionCtor, speak, type Recognition } from './voice'
 
-// "Hey Jarvis" as the Thai recognizer tends to write it: จาร์วิส, จาวิส, จาร์วิด, Jarvis…
-const WAKE_WORD = /(?:(?:hey|เฮ้|เฮ|เฮย)\s*)?(?:jarvis|จา(?:ร์|ร)?วิ(?:ส|ซ|ด|ท|ต))/i
+// "Jarvis" as the Thai recognizer tends to write it: จาร์วิส, จาวิส, จาร์วิด, Jarvis…
+const NAME = '(?:jarvis|จา(?:ร์|ร)?วิ(?:ส|ซ|ด|ท|ต))'
+// Only "Hey Jarvis" / "เฮ้ จาร์วิส" wakes it, so just mentioning the name in conversation doesn't.
+const WAKE_WORD = new RegExp(`(?:hey|เฮ้|เฮ|เฮย์|เฮย)\\s*${NAME}`, 'i')
+const MENTIONS_NAME = new RegExp(NAME, 'i')
+const NAME_ONLY = new RegExp(`^\\s*${NAME}\\s*[.!?]?\\s*$`, 'i')
 // "Jarvis หยุดการทำงาน", "stop Jarvis": turns hands-free mode off.
 const STOP_WORDS = /(?:หยุดการทำงาน|หยุดทำงาน|หยุดฟัง|ปิดโหมดปลุก|\bstop\b|สต็อป|สต๊อป|สตอป)/i
 // How long to wait for the command after the wake word (or after JARVIS answers).
@@ -11,7 +15,7 @@ const FATAL_ERRORS = new Set(['not-allowed', 'service-not-allowed', 'audio-captu
 
 export type WakeMode = 'waiting' | 'command'
 
-/** The command in a sentence that contains the wake word ("จาร์วิส เปิดไฟ" → "เปิดไฟ"), or null without it. */
+/** The command in a sentence that contains the wake word ("เฮ้ จาร์วิส เปิดไฟ" → "เปิดไฟ"), or null without it. */
 export function findWakeWord(text: string): { command: string } | null {
   const m = WAKE_WORD.exec(text)
   if (!m) return null
@@ -20,7 +24,7 @@ export function findWakeWord(text: string): { command: string } | null {
 
 /** True for a stop phrase addressed to JARVIS (or said while it's already listening for a command). */
 export function isStopCommand(text: string, awake: boolean): boolean {
-  return STOP_WORDS.test(text) && (awake || findWakeWord(text) !== null)
+  return STOP_WORDS.test(text) && (awake || MENTIONS_NAME.test(text))
 }
 
 interface Callbacks {
@@ -128,7 +132,7 @@ class WakeListener {
     }
     if (this.mode === 'command') {
       const again = findWakeWord(text)
-      if (again && again.command.length < 2) {
+      if ((again && again.command.length < 2) || NAME_ONLY.test(text)) {
         // Just the wake word again: keep listening for the command.
         this.cb.onWake()
         this.setMode('command')

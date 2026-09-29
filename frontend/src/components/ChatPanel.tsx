@@ -103,7 +103,7 @@ export function ChatPanel() {
       ? 'JARVIS กำลังคิด…'
       : wake.mode === 'command'
         ? 'ฟังคำสั่งอยู่… พูดได้เลย'
-        : 'รอคำว่า "จาร์วิส" หรือ "Hey Jarvis"'
+        : 'รอคำว่า "เฮ้ จาร์วิส" หรือ "Hey Jarvis"'
 
   function quiet() {
     stopSpeaking()
@@ -131,7 +131,7 @@ export function ChatPanel() {
               role="switch"
               aria-checked={wake.enabled}
               onClick={toggleWake}
-              title="ฟังตลอดเวลา แล้วเริ่มรับคำสั่งเมื่อได้ยินคำว่า จาร์วิส"
+              title="ฟังตลอดเวลา แล้วเริ่มรับคำสั่งเมื่อได้ยินคำว่า เฮ้ จาร์วิส"
               className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
             >
               <span className={`relative h-4 w-7 rounded-full transition-colors ${wake.enabled ? 'bg-sky-600' : 'bg-slate-300 dark:bg-slate-700'}`}>
