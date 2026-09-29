@@ -1,10 +1,14 @@
 """Device operations shared by the REST API and (from phase 1) the LLM tools."""
 
+import logging
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.integrations.tuya import TuyaError
 from app.models import Device
+
+log = logging.getLogger(__name__)
 
 # Data-point codes that turn a device on/off, in order of preference.
 POWER_CODES = ("switch_led", "switch", "switch_1")
@@ -78,17 +82,30 @@ def control_device(db: Session, tuya, device: Device, commands: list[dict]) -> D
     return refresh_status(db, tuya, device)
 
 
+_ONLINE_CODES = {"online": True, "deviceOnline": True, "offline": False, "deviceOffline": False}
+
+
 def apply_device_event(db: Session, event: dict) -> Device | None:
-    """Apply a Tuya Pulsar event (status report or online/offline) to the stored device."""
-    device_id = event.get("devId")
+    """Apply a Tuya Pulsar event (status report or online/offline) to the stored device.
+
+    Handles both the legacy shape ({"devId", "status": [...]}) and the Message
+    Queue shape ({"bizCode", "bizData": {"devId", "properties": [...]}}).
+    """
+    biz_data = event.get("bizData") or {}
+    device_id = event.get("devId") or biz_data.get("devId")
     device = db.scalar(select(Device).where(Device.tuya_device_id == device_id)) if device_id else None
     if device is None:
+        log.info("ignoring Tuya event for unknown device: %s", event)
         return None
-    if event.get("status"):
+    status = event.get("status") or biz_data.get("properties") or biz_data.get("status")
+    if status:
         # Reassign rather than mutate: the JSON column only notices a new object.
-        device.status = {**device.status, **_status_dict(event["status"])}
-    if event.get("bizCode") in ("online", "offline"):
-        device.online = event["bizCode"] == "online"
+        device.status = {**device.status, **_status_dict(status)}
+    biz_code = event.get("bizCode")
+    if biz_code in _ONLINE_CODES:
+        device.online = _ONLINE_CODES[biz_code]
+    elif not status:
+        log.info("unhandled Tuya event: %s", event)
     db.commit()
     return device
 

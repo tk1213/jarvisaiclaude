@@ -70,6 +70,19 @@ def test_apply_events_updates_device():
         assert device.online is False
         assert apply_device_event(db, {"devId": "unknown", "status": []}) is None
 
+        # Message Queue format
+        apply_device_event(
+            db,
+            {
+                "bizCode": "devicePropertyMessage",
+                "bizData": {"devId": "mock-light-living", "properties": [{"code": "bright_value_v2", "value": 10, "time": 1}]},
+            },
+        )
+        assert device.status["bright_value_v2"] == 10
+        apply_device_event(db, {"bizCode": "deviceOnline", "bizData": {"devId": "mock-light-living"}})
+        assert device.online is True
+        apply_device_event(db, {"bizCode": "deviceOffline", "bizData": {"devId": "mock-light-living"}})
+
     with SessionLocal() as db:  # persisted, not just in the session
         from app.models import Device
 
