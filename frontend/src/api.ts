@@ -110,7 +110,7 @@ async function requestBlob(path: string, body: unknown): Promise<Blob> {
 }
 
 export interface VoiceConfig {
-  engine: 'google' | 'browser'
+  engine: 'server' | 'browser'
   voice: string | null
 }
 

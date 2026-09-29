@@ -42,11 +42,11 @@ class Settings(BaseSettings):
     claude_max_tool_rounds: int = 8
     timezone: str = "Asia/Bangkok"
 
-    # Voice replies via Google Cloud Text-to-Speech; empty key = the browser's own voices.
-    google_tts_api_key: str = ""
-    google_tts_voice: str = "th-TH-Neural2-C"  # female; th-TH-Standard-A is another
-    google_tts_pitch: float = 2.0  # semitones, -20..20
-    google_tts_rate: float = 1.05  # 0.25..4
+    # Spoken replies use Microsoft Edge's online neural voices (free, no key); "browser" = the browser's own voices.
+    tts_engine: Literal["edge", "browser"] = "edge"
+    tts_voice: str = "th-TH-PremwadeeNeural"  # female; th-TH-NiwatNeural is male
+    tts_rate: str = "+8%"  # speed, e.g. "+0%" normal
+    tts_pitch: str = "+15Hz"  # higher = brighter
 
     # Rate limits (spec §6), per user for device control, per username+IP for login.
     rate_limit_control_per_minute: int = 30

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { api, type ToolCall } from '../api'
-import { setVoiceEngine, speak, stopSpeaking, sttSupported, useMissingThaiVoice, usesGoogleVoice, useSpeechRecognition } from '../voice'
+import { setVoiceEngine, speak, stopSpeaking, sttSupported, useMissingThaiVoice, usesServerVoice, useSpeechRecognition } from '../voice'
 
 interface Message {
   role: 'user' | 'jarvis' | 'error'
@@ -162,9 +162,9 @@ export function ChatPanel() {
         <div ref={bottom} />
       </div>
 
-      {(mic.error || (speaking && missingThaiVoice && !usesGoogleVoice())) && (
+      {(mic.error || (speaking && missingThaiVoice && !usesServerVoice())) && (
         <p role="alert" className="border-t border-slate-200 px-4 py-2 text-xs text-amber-800 dark:border-slate-800 dark:text-amber-300">
-          {mic.error ?? 'เครื่องนี้ไม่มีเสียงอ่านภาษาไทย ใส่ GOOGLE_TTS_API_KEY ใน .env เพื่อใช้เสียง Google หรือเปิดด้วย Microsoft Edge'}
+          {mic.error ?? 'เครื่องนี้ไม่มีเสียงอ่านภาษาไทย ตั้ง TTS_ENGINE=edge ใน .env หรือเปิดด้วย Microsoft Edge'}
         </p>
       )}
 

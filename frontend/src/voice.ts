@@ -149,25 +149,25 @@ function chunks(text: string): string[] {
 // (otherwise the first reply falls back to the system's default, often male, voice).
 if (ttsSupported) speechSynthesis.getVoices()
 
-let engine: 'google' | 'browser' = 'browser'
+let engine: 'server' | 'browser' = 'browser'
 let audio: HTMLAudioElement | null = null
-// Bumped on every speak/stop so a slow Google response can't start talking after it was cancelled.
+// Bumped on every speak/stop so a slow server response can't start talking after it was cancelled.
 let generation = 0
 
-/** "google" when the server has a Google Text-to-Speech key (set from /voice/config). */
-export function setVoiceEngine(value: 'google' | 'browser') {
+/** "server" when the backend synthesizes speech (Edge neural voice), from /voice/config. */
+export function setVoiceEngine(value: 'server' | 'browser') {
   engine = value
 }
 
-export function usesGoogleVoice() {
-  return engine === 'google'
+export function usesServerVoice() {
+  return engine === 'server'
 }
 
 /** Read text aloud in Thai; onEnd fires when finished or cancelled. */
 export function speak(text: string, onEnd?: () => void) {
   stopSpeaking()
   const id = generation
-  if (engine === 'google') {
+  if (engine === 'server') {
     const clean = chunks(text).join(' ')
     if (!clean) return onEnd?.()
     api
@@ -192,7 +192,7 @@ export function speak(text: string, onEnd?: () => void) {
         return player.play()
       })
       .catch(() => {
-        // Google unreachable or key rejected: still answer, with the browser's voice.
+        // Voice service unreachable: still answer, with the browser's voice.
         if (id === generation) speakWithBrowser(text, onEnd)
         else onEnd?.()
       })

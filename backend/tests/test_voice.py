@@ -1,39 +1,42 @@
-import base64
-
-import httpx
-
 from app.config import get_settings
-from app.integrations import google_tts
+from app.integrations import edge_voice
 
 
-def test_browser_engine_without_key(client, owner_headers):
-    assert client.get("/voice/config", headers=owner_headers).json() == {"engine": "browser", "voice": None}
-    assert client.post("/voice/tts", json={"text": "สวัสดีค่ะ"}, headers=owner_headers).status_code == 503
+class FakeCommunicate:
+    calls: list = []
+
+    def __init__(self, text, voice, rate, pitch):
+        FakeCommunicate.calls.append((text, voice, rate, pitch))
+
+    async def stream(self):
+        yield {"type": "WordBoundary"}
+        yield {"type": "audio", "data": b"mp"}
+        yield {"type": "audio", "data": b"3"}
 
 
-def test_google_tts(client, owner_headers, monkeypatch):
-    monkeypatch.setattr(get_settings(), "google_tts_api_key", "k")
-    sent = {}
-
-    def fake_post(url, params, json, timeout):
-        sent.update(json)
-        return httpx.Response(200, json={"audioContent": base64.b64encode(b"mp3").decode()})
-
-    monkeypatch.setattr(google_tts.httpx, "post", fake_post)
-    assert client.get("/voice/config", headers=owner_headers).json()["engine"] == "google"
+def test_server_voice(client, owner_headers, monkeypatch):
+    monkeypatch.setattr(edge_voice.edge_tts, "Communicate", FakeCommunicate)
+    assert client.get("/voice/config", headers=owner_headers).json() == {"engine": "server", "voice": "th-TH-PremwadeeNeural"}
     r = client.post("/voice/tts", json={"text": "สวัสดีค่ะ"}, headers=owner_headers)
     assert r.status_code == 200 and r.content == b"mp3" and r.headers["content-type"] == "audio/mpeg"
-    assert sent["voice"] == {"languageCode": "th-TH", "name": "th-TH-Neural2-C"}
-    assert sent["audioConfig"]["pitch"] == 2.0
+    assert FakeCommunicate.calls[-1] == ("สวัสดีค่ะ", "th-TH-PremwadeeNeural", "+8%", "+15Hz")
 
 
-def test_google_error_is_reported(client, owner_headers, monkeypatch):
-    monkeypatch.setattr(get_settings(), "google_tts_api_key", "bad")
-    monkeypatch.setattr(
-        google_tts.httpx, "post", lambda *a, **k: httpx.Response(403, json={"error": {"message": "API key not valid"}})
-    )
+def test_voice_failure_is_reported(client, owner_headers, monkeypatch):
+    class Broken(FakeCommunicate):
+        async def stream(self):
+            raise ConnectionError("offline")
+            yield
+
+    monkeypatch.setattr(edge_voice.edge_tts, "Communicate", Broken)
     r = client.post("/voice/tts", json={"text": "x"}, headers=owner_headers)
-    assert r.status_code == 502 and "API key not valid" in r.json()["detail"]
+    assert r.status_code == 502 and "offline" in r.json()["detail"]
+
+
+def test_browser_engine(client, owner_headers, monkeypatch):
+    monkeypatch.setattr(get_settings(), "tts_engine", "browser")
+    assert client.get("/voice/config", headers=owner_headers).json() == {"engine": "browser", "voice": None}
+    assert client.post("/voice/tts", json={"text": "x"}, headers=owner_headers).status_code == 503
 
 
 def test_tts_requires_login(client):
