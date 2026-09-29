@@ -94,10 +94,20 @@ export function useSpeechRecognition(onFinal: (text: string) => void) {
   return { listening, interim, error, start, stop }
 }
 
+// Thai female voices, best first: Edge's natural Premwadee, other Microsoft voices, then Google's.
+const PREFERRED_VOICES = [/premwadee/i, /achara/i, /pattara/i, /google/i]
+const MALE_VOICES = /niwat/i
+// A slightly higher, quicker delivery for a bright, youthful sound.
+const PITCH = 1.15
+const RATE = 1.05
+
 function thaiVoice(): SpeechSynthesisVoice | null {
   const voices = speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith('th'))
-  // Edge's online "Natural" voices (Premwadee, Niwat) sound far better than the offline ones.
-  return voices.find((v) => /natural|online/i.test(v.name)) ?? voices.find((v) => /google/i.test(v.name)) ?? voices[0] ?? null
+  for (const name of PREFERRED_VOICES) {
+    const match = voices.find((v) => name.test(v.name))
+    if (match) return match
+  }
+  return voices.find((v) => !MALE_VOICES.test(v.name)) ?? voices[0] ?? null
 }
 
 /** True once voices are loaded and none speaks Thai (the browser then reads with a foreign accent or not at all). */
@@ -144,6 +154,8 @@ export function speak(text: string, onEnd?: () => void) {
   parts.forEach((part, i) => {
     const u = new SpeechSynthesisUtterance(part)
     u.lang = LANG
+    u.pitch = PITCH
+    u.rate = RATE
     if (voice) u.voice = voice
     if (i === parts.length - 1) {
       u.onend = () => onEnd?.()

@@ -31,7 +31,7 @@ def main(argv: list[str]) -> int:
         if user is None:
             print(f"No user named {argv[0]!r}")
             return 1
-        print("JARVIS พร้อมแล้วครับ (Enter ว่างเพื่อออก)")
+        print("JARVIS พร้อมแล้วค่ะ (Enter ว่างเพื่อออก)")
         while True:
             try:
                 text = input("คุณ: ").strip()

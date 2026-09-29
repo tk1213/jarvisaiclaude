@@ -114,7 +114,7 @@ class Orchestrator:
 
             if response.stop_reason == "refusal":
                 # Nothing is persisted for a declined turn, keeping the history clean.
-                return CoreReply(session_id, "ขออภัยครับ เรื่องนี้ผมช่วยไม่ได้", calls)
+                return CoreReply(session_id, "ขออภัยค่ะ เรื่องนี้ JARVIS ช่วยไม่ได้", calls)
 
             new_messages.append({"role": "assistant", "content": [_block_dict(b) for b in response.content]})
             tool_uses = [b for b in response.content if b.type == "tool_use"]
@@ -132,10 +132,10 @@ class Orchestrator:
             new_messages.append({"role": "user", "content": results})
         else:
             log.warning("tool loop hit max rounds (%d) for session %s", self.max_tool_rounds, session_id)
-            return CoreReply(session_id, "ขออภัยครับ งานนี้ซับซ้อนเกินไป ลองแบ่งเป็นคำสั่งสั้นๆ อีกครั้งนะครับ", calls)
+            return CoreReply(session_id, "ขออภัยค่ะ งานนี้ซับซ้อนเกินไป ลองแบ่งเป็นคำสั่งสั้นๆ อีกครั้งนะคะ", calls)
 
         self._persist(db, user, msg, session_id, new_messages)
-        text = _reply_text(response.content) or "เรียบร้อยครับ"
+        text = _reply_text(response.content) or "เรียบร้อยค่ะ"
         if response.stop_reason == "max_tokens":
             text += " …"
         return CoreReply(session_id, text, calls)
