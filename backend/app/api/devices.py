@@ -33,10 +33,21 @@ def get_device(device_id: int, refresh: bool = False, db: Session = Depends(get_
 
 
 @router.patch("/devices/{device_id}", response_model=DeviceOut)
-def update_device(device_id: int, body: DeviceUpdate, db: Session = Depends(get_db)):
+def update_device(
+    device_id: int, body: DeviceUpdate, db: Session = Depends(get_db), _=Depends(require_device_control)
+):
+    """Rename a device or set its room; the values survive later syncs from Tuya."""
     device = _get(db, device_id)
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(device, field, value)
+    changes = body.model_dump(exclude_unset=True)
+    if changes.get("name") is not None:
+        name = changes["name"].strip()
+        if not name:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Name cannot be blank")
+        device.name = name
+        device.name_overridden = True
+    if "room" in changes:
+        device.room = (changes["room"] or "").strip() or None
+        device.room_overridden = True
     db.commit()
     return device
 

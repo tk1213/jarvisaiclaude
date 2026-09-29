@@ -38,6 +38,11 @@ class Device(Base):
     product_name: Mapped[str] = mapped_column(String(128), default="")
     online: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Set when the user renames / re-rooms the device, so a Tuya sync doesn't overwrite it.
+    name_overridden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    room_overridden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Tuya rejected the last command for lack of permission (cloud project set to "Read").
+    control_denied: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 

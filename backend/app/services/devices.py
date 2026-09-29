@@ -36,12 +36,13 @@ def sync_devices(db: Session, tuya) -> list[Device]:
     synced = []
     for raw in tuya.list_devices():
         device = existing.get(raw["id"]) or Device(tuya_device_id=raw["id"])
-        device.name = raw.get("name", device.name or raw["id"])
+        if not device.name_overridden:
+            device.name = raw.get("name", device.name or raw["id"])
         device.category = raw.get("category", "")
         device.product_name = raw.get("product_name", "")
         device.online = bool(raw.get("online", False))
         device.status = _status_dict(raw.get("status", []))
-        if raw["id"] in room_of:
+        if raw["id"] in room_of and not device.room_overridden:
             device.room = room_of[raw["id"]]
         db.add(device)
         synced.append(device)
@@ -92,8 +93,19 @@ def refresh_status(db: Session, tuya, device: Device) -> Device:
     return device
 
 
+def is_permission_error(e: TuyaError) -> bool:
+    return str(e.code) == "1106" or "permission" in str(e.msg).lower()
+
+
 def control_device(db: Session, tuya, device: Device, commands: list[dict]) -> Device:
-    tuya.send_commands(device.tuya_device_id, commands)
+    try:
+        tuya.send_commands(device.tuya_device_id, commands)
+    except TuyaError as e:
+        if is_permission_error(e) and not device.control_denied:
+            device.control_denied = True
+            db.commit()
+        raise
+    device.control_denied = False
     # Tuya accepted the commands, but the device may not have reported its new
     # state to the cloud yet, so overlay what we sent on top of the fetched
     # status. Pulsar corrects it if the device ends up in a different state.

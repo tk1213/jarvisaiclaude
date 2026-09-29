@@ -9,6 +9,7 @@ export interface Device {
   product_name: string
   online: boolean
   status: DeviceStatus
+  control_denied: boolean
   updated_at: string
 }
 
@@ -93,7 +94,10 @@ export const api = {
     request<{ access_token: string }>('POST', '/auth/login', { username, password }),
   me: () => request<User>('GET', '/auth/me'),
   devices: () => request<Device[]>('GET', '/devices'),
+  device: (id: number) => request<Device>('GET', `/devices/${id}`),
   sync: () => request<Device[]>('POST', '/devices/sync'),
+  updateDevice: (id: number, changes: { name?: string; room?: string }) =>
+    request<Device>('PATCH', `/devices/${id}`, changes),
   power: (id: number, on: boolean) => request<Device>('POST', `/devices/${id}/power`, { on }),
   scenes: () => request<Scene[]>('GET', '/scenes'),
   triggerScene: (sceneId: string) => request<void>('POST', `/scenes/${encodeURIComponent(sceneId)}/trigger`),

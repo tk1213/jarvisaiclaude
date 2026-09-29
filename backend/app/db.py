@@ -1,9 +1,12 @@
+import logging
 from collections.abc import Iterator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import get_settings
+
+log = logging.getLogger(__name__)
 
 
 class Base(DeclarativeBase):
@@ -25,6 +28,28 @@ def init_db() -> None:
     from app import models  # noqa: F401  (register tables)
 
     Base.metadata.create_all(engine)
+    _add_missing_columns()
+
+
+def _add_missing_columns() -> None:
+    """Tiny forward-only migration: add columns that newer code defines to existing tables.
+
+    create_all() only creates missing tables, so databases made by an older version
+    would otherwise lack new columns. Only columns with a server_default are added.
+    """
+    inspector = inspect(engine)
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            if not inspector.has_table(table.name):
+                continue
+            existing = {c["name"] for c in inspector.get_columns(table.name)}
+            for col in table.columns:
+                if col.name in existing or col.server_default is None:
+                    continue
+                col_type = col.type.compile(dialect=engine.dialect)
+                default = col.server_default.arg
+                conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN {col.name} {col_type} DEFAULT {default} NOT NULL'))
+                log.info("added column %s.%s", table.name, col.name)
 
 
 def get_db() -> Iterator[Session]:

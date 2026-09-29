@@ -92,3 +92,44 @@ def test_control_reports_commanded_state_before_device_catches_up(client, owner_
 
     r = client.post(f"/devices/{plug['id']}/power", json={"on": True}, headers=owner_headers)
     assert r.json()["status"]["switch_1"] is True
+
+
+def test_rename_and_room_survive_sync(client, owner_headers):
+    light = _sync(client, owner_headers)["ไฟห้องนั่งเล่น"]
+    r = client.patch(f"/devices/{light['id']}", json={"name": "โคมไฟโซฟา", "room": "  ห้องรับแขก "}, headers=owner_headers)
+    assert r.status_code == 200
+    assert (r.json()["name"], r.json()["room"]) == ("โคมไฟโซฟา", "ห้องรับแขก")
+
+    after = _sync(client, owner_headers)
+    assert "โคมไฟโซฟา" in after and "ไฟห้องนั่งเล่น" not in after
+    assert after["โคมไฟโซฟา"]["room"] == "ห้องรับแขก"
+
+    # Clearing the room also sticks.
+    client.patch(f"/devices/{light['id']}", json={"room": ""}, headers=owner_headers)
+    assert _sync(client, owner_headers)["โคมไฟโซฟา"]["room"] is None
+
+
+def test_blank_name_rejected(client, owner_headers):
+    light = _sync(client, owner_headers)["ไฟห้องนั่งเล่น"]
+    assert client.patch(f"/devices/{light['id']}", json={"name": "   "}, headers=owner_headers).status_code == 422
+    assert client.patch(f"/devices/{light['id']}", json={"name": ""}, headers=owner_headers).status_code == 422
+
+
+def test_permission_denied_is_flagged_then_cleared(client, owner_headers):
+    from app.integrations.tuya import TuyaError, get_tuya_client
+
+    plug = _sync(client, owner_headers)["ปลั๊กกาต้มน้ำ"]
+    tuya = get_tuya_client()
+    real_send = tuya.send_commands
+
+    def denied(device_id, commands):
+        raise TuyaError(1106, "permission deny")
+
+    tuya.send_commands = denied
+    r = client.post(f"/devices/{plug['id']}/power", json={"on": True}, headers=owner_headers)
+    assert r.status_code == 502
+    assert client.get(f"/devices/{plug['id']}", headers=owner_headers).json()["control_denied"] is True
+
+    tuya.send_commands = real_send  # permission fixed in the Tuya console
+    r = client.post(f"/devices/{plug['id']}/power", json={"on": True}, headers=owner_headers)
+    assert r.status_code == 200 and r.json()["control_denied"] is False

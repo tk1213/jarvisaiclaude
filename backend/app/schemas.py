@@ -45,12 +45,14 @@ class DeviceOut(BaseModel):
     product_name: str
     online: bool
     status: dict[str, Any]
+    control_denied: bool = False
     updated_at: datetime
 
 
 class DeviceUpdate(BaseModel):
-    name: str | None = None
-    room: str | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    # An empty string clears the room.
+    room: str | None = Field(default=None, max_length=64)
 
 
 class Command(BaseModel):
