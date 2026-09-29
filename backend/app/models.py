@@ -43,6 +43,8 @@ class Device(Base):
     room_overridden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Tuya rejected the last command for lack of permission (cloud project set to "Read").
     control_denied: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # For IR remotes (e.g. category infrared_ac): the Tuya id of the IR hub that sends the signal.
+    ir_hub_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 

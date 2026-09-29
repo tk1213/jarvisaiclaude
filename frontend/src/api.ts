@@ -10,7 +10,17 @@ export interface Device {
   online: boolean
   status: DeviceStatus
   control_denied: boolean
+  ir_hub_id: string | null
   updated_at: string
+}
+
+export type AcMode = 'cool' | 'heat' | 'auto' | 'fan' | 'dry'
+export type AcFan = 'auto' | 'low' | 'mid' | 'high'
+export interface AcChange {
+  power?: boolean
+  mode?: AcMode
+  temp?: number
+  fan?: AcFan
 }
 
 export interface Scene {
@@ -99,6 +109,7 @@ export const api = {
   updateDevice: (id: number, changes: { name?: string; room?: string }) =>
     request<Device>('PATCH', `/devices/${id}`, changes),
   power: (id: number, on: boolean) => request<Device>('POST', `/devices/${id}/power`, { on }),
+  setAc: (id: number, changes: AcChange) => request<Device>('POST', `/devices/${id}/ac`, changes),
   scenes: () => request<Scene[]>('GET', '/scenes'),
   triggerScene: (sceneId: string) => request<void>('POST', `/scenes/${encodeURIComponent(sceneId)}/trigger`),
   chat: (text: string, sessionId: string | null) =>

@@ -13,7 +13,7 @@ def test_sync_assigns_rooms(client, owner_headers):
 def test_sync_is_idempotent(client, owner_headers):
     _sync(client, owner_headers)
     _sync(client, owner_headers)
-    assert len(client.get("/devices", headers=owner_headers).json()) == 3
+    assert len(client.get("/devices", headers=owner_headers).json()) == 5
 
 
 def test_sync_removes_devices_gone_from_tuya(client, owner_headers):
@@ -25,7 +25,7 @@ def test_sync_removes_devices_gone_from_tuya(client, owner_headers):
         db.commit()
     names = set(_sync(client, owner_headers))
     assert "old device" not in names
-    assert len(client.get("/devices", headers=owner_headers).json()) == 3
+    assert len(client.get("/devices", headers=owner_headers).json()) == 5
 
 
 def test_filter_by_room(client, owner_headers):

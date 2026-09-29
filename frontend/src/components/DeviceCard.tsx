@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { api, type Device } from '../api'
 import { powerCode, readings } from '../readings'
+import { AcControls } from './AcControls'
 
 interface Props {
   device: Device
@@ -107,6 +108,10 @@ export function DeviceCard({ device, canControl, rooms, onUpdate }: Props) {
         </dl>
       )}
 
+      {device.category === 'infrared_ac' && (
+        <AcControls device={device} disabled={!device.online || !canControl || !isOn} onUpdate={onUpdate} />
+      )}
+
       <div className="mt-auto flex items-center justify-between gap-2">
         {code ? (
           <button
@@ -122,7 +127,7 @@ export function DeviceCard({ device, canControl, rooms, onUpdate }: Props) {
             <span className={`absolute top-0.5 left-0.5 size-6 rounded-full bg-white shadow transition-transform ${isOn ? 'translate-x-5' : ''}`} />
           </button>
         ) : (
-          <span className="text-xs text-slate-500">สั่งงานผ่าน JARVIS</span>
+          <span className="text-xs text-slate-500">{device.category === 'wnykq' ? 'ตัวส่งสัญญาณ IR' : 'สั่งงานผ่าน JARVIS'}</span>
         )}
         <button onClick={() => setShowRaw((v) => !v)} className="text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200">
           {showRaw ? 'ซ่อนรายละเอียด' : 'รายละเอียด'}

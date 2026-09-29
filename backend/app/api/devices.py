@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import get_current_user, get_tuya, require_device_control
-from app.schemas import CommandRequest, DeviceOut, DeviceUpdate, PowerRequest, SceneOut
+from app.schemas import AcRequest, CommandRequest, DeviceOut, DeviceUpdate, PowerRequest, SceneOut
 from app.services import devices as svc
 
 router = APIRouter(tags=["home_control"], dependencies=[Depends(get_current_user)])
@@ -75,6 +75,22 @@ def set_power(
     device = _get(db, device_id)
     try:
         return svc.set_power(db, tuya, device, body.on)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from None
+
+
+@router.post("/devices/{device_id}/ac", response_model=DeviceOut)
+def set_ac(
+    device_id: int,
+    body: AcRequest,
+    db: Session = Depends(get_db),
+    tuya=Depends(get_tuya),
+    _=Depends(require_device_control),
+):
+    """Control an IR air conditioner (category infrared_ac) through its IR hub."""
+    device = _get(db, device_id)
+    try:
+        return svc.set_ac(db, tuya, device, **body.model_dump(exclude_none=True))
     except ValueError as e:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from None
 

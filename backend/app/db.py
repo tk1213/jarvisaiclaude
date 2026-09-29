@@ -35,7 +35,7 @@ def _add_missing_columns() -> None:
     """Tiny forward-only migration: add columns that newer code defines to existing tables.
 
     create_all() only creates missing tables, so databases made by an older version
-    would otherwise lack new columns. Only columns with a server_default are added.
+    would otherwise lack new columns. Adds nullable columns and ones with a server_default.
     """
     inspector = inspect(engine)
     with engine.begin() as conn:
@@ -44,11 +44,16 @@ def _add_missing_columns() -> None:
                 continue
             existing = {c["name"] for c in inspector.get_columns(table.name)}
             for col in table.columns:
-                if col.name in existing or col.server_default is None:
+                if col.name in existing:
                     continue
                 col_type = col.type.compile(dialect=engine.dialect)
-                default = col.server_default.arg
-                conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN {col.name} {col_type} DEFAULT {default} NOT NULL'))
+                if col.server_default is not None:
+                    extra = f"DEFAULT {col.server_default.arg} NOT NULL"
+                elif col.nullable:
+                    extra = ""
+                else:
+                    continue  # can't add a required column without a default
+                conn.execute(text(f"ALTER TABLE {table.name} ADD COLUMN {col.name} {col_type} {extra}".rstrip()))
                 log.info("added column %s.%s", table.name, col.name)
 
 

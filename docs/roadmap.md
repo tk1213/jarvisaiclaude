@@ -22,6 +22,7 @@
 - [x] ทดสอบคุยกับอุปกรณ์จริง (เปิด/ปิดปลั๊ก, ถามกำลังไฟ, สั่งหลายตัวพร้อมกัน)
 - [x] Dashboard (React + Tailwind) เวอร์ชันแรก + WebSocket (หน้าประวัติเอกสารรอเฟส 2 FlowAccount)
   - แก้ชื่อ/ห้องบนการ์ด, ปุ่มอัปเดตอุปกรณ์พร้อมสรุป, ป้ายเตือนสิทธิ์ Read
+  - คุมแอร์ผ่านรีโมท IR (Dashboard + tool `control_air_conditioner`), อ่านอุณหภูมิ/ความชื้นจากตัวรีโมท IR
 - [ ] LINE OA (Messaging API webhook + Flex Message)
 - [ ] Voice โหมดพื้นฐาน (STT → Core → TTS)
 

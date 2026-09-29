@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -46,6 +46,7 @@ class DeviceOut(BaseModel):
     online: bool
     status: dict[str, Any]
     control_denied: bool = False
+    ir_hub_id: str | None = None
     updated_at: datetime
 
 
@@ -66,6 +67,15 @@ class CommandRequest(BaseModel):
 
 class PowerRequest(BaseModel):
     on: bool
+
+
+class AcRequest(BaseModel):
+    """Any subset of an IR air conditioner's settings; omitted ones keep their current value."""
+
+    power: bool | None = None
+    mode: Literal["cool", "heat", "auto", "fan", "dry"] | None = None
+    temp: int | None = Field(default=None, ge=16, le=30)
+    fan: Literal["auto", "low", "mid", "high"] | None = None
 
 
 class SceneOut(BaseModel):

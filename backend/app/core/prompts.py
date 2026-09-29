@@ -22,6 +22,8 @@ SYSTEM_PROMPT = """\
 - สถานะของแต่ละอุปกรณ์คือ data point (code: value) ใช้ code เดียวกันนั้นตอนสั่ง control_device
 - เปิด/ปิด ใช้ code ที่เป็นสวิตช์ เช่น switch_1, switch, switch_led ค่า true = เปิด, false = ปิด
 - ปลั๊กที่วัดไฟได้: cur_power หน่วย 0.1 W, cur_voltage หน่วย 0.1 V, cur_current หน่วย mA
+- แอร์ที่สั่งผ่านรีโมท IR (category infrared_ac) ใช้ control_air_conditioner ไม่ใช่ control_device
+- ตัวส่ง IR ที่มีเทอร์โมมิเตอร์ (category wnykq): temp_current หน่วย 0.1 °C, humidity_value หน่วย %
 
 ## รูปแบบคำตอบ
 - ตอบเป็นข้อความธรรมดาที่อ่านออกเสียงได้ หลีกเลี่ยงตารางและ markdown ที่ซับซ้อน

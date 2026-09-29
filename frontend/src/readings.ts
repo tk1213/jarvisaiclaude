@@ -1,7 +1,7 @@
 import type { DeviceStatus } from './api'
 
 /** Data-point codes that switch a device on/off, in the order the backend prefers them. */
-const POWER_CODES = ['switch_led', 'switch', 'switch_1']
+const POWER_CODES = ['switch_led', 'switch', 'switch_1', 'switch_power']
 
 export function powerCode(status: DeviceStatus): string | null {
   return POWER_CODES.find((c) => typeof status[c] === 'boolean') ?? null
