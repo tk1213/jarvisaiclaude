@@ -41,6 +41,11 @@ def sync_devices(db: Session, tuya) -> list[Device]:
             device.room = room_of[raw["id"]]
         db.add(device)
         synced.append(device)
+    # Drop devices that are no longer in the Tuya account.
+    seen = {d.tuya_device_id for d in synced}
+    for tuya_id, device in existing.items():
+        if tuya_id not in seen:
+            db.delete(device)
     db.commit()
     return synced
 

@@ -16,6 +16,18 @@ def test_sync_is_idempotent(client, owner_headers):
     assert len(client.get("/devices", headers=owner_headers).json()) == 3
 
 
+def test_sync_removes_devices_gone_from_tuya(client, owner_headers):
+    from app.db import SessionLocal
+    from app.models import Device
+
+    with SessionLocal() as db:
+        db.add(Device(tuya_device_id="stale", name="old device"))
+        db.commit()
+    names = set(_sync(client, owner_headers))
+    assert "old device" not in names
+    assert len(client.get("/devices", headers=owner_headers).json()) == 3
+
+
 def test_filter_by_room(client, owner_headers):
     _sync(client, owner_headers)
     found = client.get("/devices", params={"room": "ห้องนอน"}, headers=owner_headers).json()
