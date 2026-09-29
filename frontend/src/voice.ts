@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { api } from './api'
 
 // Browser speech APIs: recognition (STT) is prefixed in Chrome/Edge and missing from lib.dom.
 interface RecognitionResult {
@@ -144,10 +145,64 @@ function chunks(text: string): string[] {
   return parts
 }
 
+// Browsers load voices lazily; asking early means they're ready by the first reply
+// (otherwise the first reply falls back to the system's default, often male, voice).
+if (ttsSupported) speechSynthesis.getVoices()
+
+let engine: 'google' | 'browser' = 'browser'
+let audio: HTMLAudioElement | null = null
+// Bumped on every speak/stop so a slow Google response can't start talking after it was cancelled.
+let generation = 0
+
+/** "google" when the server has a Google Text-to-Speech key (set from /voice/config). */
+export function setVoiceEngine(value: 'google' | 'browser') {
+  engine = value
+}
+
+export function usesGoogleVoice() {
+  return engine === 'google'
+}
+
 /** Read text aloud in Thai; onEnd fires when finished or cancelled. */
 export function speak(text: string, onEnd?: () => void) {
+  stopSpeaking()
+  const id = generation
+  if (engine === 'google') {
+    const clean = chunks(text).join(' ')
+    if (!clean) return onEnd?.()
+    api
+      .tts(clean)
+      .then((blob) => {
+        if (id !== generation) return onEnd?.()
+        const url = URL.createObjectURL(blob)
+        const player = new Audio(url)
+        audio = player
+        let finished = false
+        // 'pause' also fires when playback ends, so guard against running twice.
+        const done = () => {
+          if (finished) return
+          finished = true
+          URL.revokeObjectURL(url)
+          if (audio === player) audio = null
+          onEnd?.()
+        }
+        player.onended = done
+        player.onerror = done
+        player.onpause = done
+        return player.play()
+      })
+      .catch(() => {
+        // Google unreachable or key rejected: still answer, with the browser's voice.
+        if (id === generation) speakWithBrowser(text, onEnd)
+        else onEnd?.()
+      })
+    return
+  }
+  speakWithBrowser(text, onEnd)
+}
+
+function speakWithBrowser(text: string, onEnd?: () => void) {
   if (!ttsSupported) return onEnd?.()
-  speechSynthesis.cancel()
   const parts = chunks(text)
   if (parts.length === 0) return onEnd?.()
   const voice = thaiVoice()
@@ -166,5 +221,8 @@ export function speak(text: string, onEnd?: () => void) {
 }
 
 export function stopSpeaking() {
+  generation++
+  audio?.pause()
+  audio = null
   if (ttsSupported) speechSynthesis.cancel()
 }

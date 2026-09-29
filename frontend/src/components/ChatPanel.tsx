@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { api, type ToolCall } from '../api'
-import { speak, stopSpeaking, sttSupported, useMissingThaiVoice, useSpeechRecognition } from '../voice'
+import { setVoiceEngine, speak, stopSpeaking, sttSupported, useMissingThaiVoice, usesGoogleVoice, useSpeechRecognition } from '../voice'
 
 interface Message {
   role: 'user' | 'jarvis' | 'error'
@@ -34,6 +34,13 @@ export function ChatPanel() {
   }, [messages, busy])
 
   useEffect(() => stopSpeaking, [])
+
+  useEffect(() => {
+    api
+      .voiceConfig()
+      .then((c) => setVoiceEngine(c.engine))
+      .catch(() => setVoiceEngine('browser'))
+  }, [])
 
   async function send(message: string, channel: 'dashboard' | 'voice' = 'dashboard') {
     const trimmed = message.trim()
@@ -155,9 +162,9 @@ export function ChatPanel() {
         <div ref={bottom} />
       </div>
 
-      {(mic.error || (speaking && missingThaiVoice)) && (
+      {(mic.error || (speaking && missingThaiVoice && !usesGoogleVoice())) && (
         <p role="alert" className="border-t border-slate-200 px-4 py-2 text-xs text-amber-800 dark:border-slate-800 dark:text-amber-300">
-          {mic.error ?? 'เครื่องนี้ไม่มีเสียงอ่านภาษาไทย แนะนำเปิดด้วย Microsoft Edge หรือเพิ่มภาษาไทยใน Windows Settings > Time & language > Speech'}
+          {mic.error ?? 'เครื่องนี้ไม่มีเสียงอ่านภาษาไทย ใส่ GOOGLE_TTS_API_KEY ใน .env เพื่อใช้เสียง Google หรือเปิดด้วย Microsoft Edge'}
         </p>
       )}
 

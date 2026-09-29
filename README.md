@@ -129,6 +129,16 @@ Tuya ไม่ส่ง event เมื่อสั่งแอร์ IR จา�
 - ใช้ได้ที่ `http://localhost` เท่านั้น ถ้าจะเปิดจากเครื่องอื่นต้องเป็น `https`
 - กดไมค์ระหว่าง JARVIS พูดเพื่อพูดแทรก หรือกด "หยุดพูด" ที่หัวกล่องแชท
 
+#### เสียงผู้หญิงของ Google (แนะนำ)
+
+เบราว์เซอร์บนคอมไม่มีเสียงไทยของ Google ติดมา ถ้าใส่ key ของ Google Cloud Text-to-Speech ระบบจะใช้เสียง Google แทน
+
+1. https://console.cloud.google.com สร้างโปรเจกต์ (ต้องผูกบัตรเพื่อเปิด billing แต่ใช้ฟรีเดือนละ 1 ล้านตัวอักษรสำหรับเสียง Neural2)
+2. APIs & Services > Library ค้นหา **Cloud Text-to-Speech API** กด Enable
+3. APIs & Services > Credentials > Create credentials > API key แล้วกด Restrict key ให้ใช้ได้แค่ Cloud Text-to-Speech API
+4. ใส่ `GOOGLE_TTS_API_KEY=` ใน `.env` แล้วเปิด server ใหม่ ปรับเสียงได้ที่ `GOOGLE_TTS_VOICE`, `GOOGLE_TTS_PITCH`, `GOOGLE_TTS_RATE`
+- ถ้าเรียก Google ไม่สำเร็จ ระบบจะกลับไปใช้เสียงของเบราว์เซอร์ให้เอง
+
 ระหว่างแก้หน้าเว็บ ใช้ `npm run dev` (http://localhost:5173) ซึ่งจะส่ง API ต่อไปที่ backend :8000 ให้เอง
 
 ## คุยกับ JARVIS (เฟส 1)

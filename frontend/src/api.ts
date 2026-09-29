@@ -99,6 +99,21 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return res.status === 204 ? (undefined as T) : res.json()
 }
 
+/** POST that returns raw bytes (e.g. audio) instead of JSON. */
+async function requestBlob(path: string, body: unknown): Promise<Blob> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const token = getToken()
+  if (token) headers.Authorization = `Bearer ${token}`
+  const res = await fetch(path, { method: 'POST', headers, body: JSON.stringify(body) })
+  if (!res.ok) throw new ApiError(res.status, res.statusText)
+  return res.blob()
+}
+
+export interface VoiceConfig {
+  engine: 'google' | 'browser'
+  voice: string | null
+}
+
 export const api = {
   login: (username: string, password: string) =>
     request<{ access_token: string }>('POST', '/auth/login', { username, password }),
@@ -112,6 +127,8 @@ export const api = {
   setAc: (id: number, changes: AcChange) => request<Device>('POST', `/devices/${id}/ac`, changes),
   scenes: () => request<Scene[]>('GET', '/scenes'),
   triggerScene: (sceneId: string) => request<void>('POST', `/scenes/${encodeURIComponent(sceneId)}/trigger`),
+  voiceConfig: () => request<VoiceConfig>('GET', '/voice/config'),
+  tts: (text: string) => requestBlob('/voice/tts', { text }),
   chat: (text: string, sessionId: string | null, channel: 'dashboard' | 'voice' = 'dashboard') =>
     request<ChatResponse>('POST', '/core/chat', { text, session_id: sessionId, channel }),
 }
