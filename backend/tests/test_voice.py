@@ -50,3 +50,15 @@ def test_dashboard_html_is_revalidated(client):
         return
     r = client.get("/")
     assert r.status_code == 200 and r.headers["cache-control"] == "no-cache"
+
+
+def test_rate_and_pitch_are_normalized(client, owner_headers, monkeypatch):
+    monkeypatch.setattr(edge_voice.edge_tts, "Communicate", FakeCommunicate)
+    monkeypatch.setattr(get_settings(), "tts_rate", "-55%")
+    monkeypatch.setattr(get_settings(), "tts_pitch", "10hz")
+    assert client.post("/voice/tts", json={"text": "x"}, headers=owner_headers).status_code == 200
+    assert FakeCommunicate.calls[-1][2:] == ("-50%", "+10Hz")
+
+    monkeypatch.setattr(get_settings(), "tts_rate", "slow")
+    r = client.post("/voice/tts", json={"text": "x"}, headers=owner_headers)
+    assert r.status_code == 502 and "TTS_RATE" in r.json()["detail"]
