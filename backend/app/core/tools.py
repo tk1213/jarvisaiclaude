@@ -59,6 +59,7 @@ def _require_control(ctx: ToolContext) -> None:
 
 
 def get_devices(ctx: ToolContext, room: str | None = None) -> Any:
+    svc.refresh_all_status(ctx.db, ctx.tuya)
     found = svc.find_devices(ctx.db, room=room or None)
     return [_device_summary(d) for d in found]
 

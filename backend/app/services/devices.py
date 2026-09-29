@@ -54,6 +54,21 @@ def sync_devices(db: Session, tuya) -> list[Device]:
     return synced
 
 
+def refresh_all_status(db: Session, tuya) -> None:
+    """Update status/online of every known device with one Tuya call.
+
+    Pulsar keeps the table current while the server runs; this covers the
+    times it isn't (CLI use, a dropped connection) before answering questions.
+    """
+    fresh = {raw["id"]: raw for raw in tuya.list_devices()}
+    for device in db.scalars(select(Device)):
+        raw = fresh.get(device.tuya_device_id)
+        if raw is not None:
+            device.status = _status_dict(raw.get("status", []))
+            device.online = bool(raw.get("online", False))
+    db.commit()
+
+
 def get_device(db: Session, device_id: int) -> Device:
     device = db.get(Device, device_id)
     if device is None:

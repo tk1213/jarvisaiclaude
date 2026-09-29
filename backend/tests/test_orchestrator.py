@@ -1,4 +1,5 @@
 import copy
+import json
 
 import pytest
 from anthropic.types.beta import BetaMessage
@@ -197,3 +198,15 @@ def test_chat_endpoint_without_key(client, owner_headers, monkeypatch):
     monkeypatch.setattr(orch_module, "_orchestrator", None)
     r = client.post("/core/chat", json={"text": "สวัสดี"}, headers=owner_headers)
     assert r.status_code == 503
+
+
+def test_get_devices_reports_live_state(home):
+    """The table can be stale (no Pulsar running); get_devices must not trust it."""
+    from app.core.tools import ToolContext, run_tool
+
+    db, tuya, user, devices = home
+    tuya.send_commands("mock-plug-kitchen", [{"code": "switch_1", "value": True}])  # changed outside JARVIS
+    content, is_error = run_tool(ToolContext(db, tuya, user), "get_devices", {"room": None})
+    assert not is_error
+    plug = next(d for d in json.loads(content) if d["name"] == "ปลั๊กกาต้มน้ำ")
+    assert plug["status"]["switch_1"] is True
