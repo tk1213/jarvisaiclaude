@@ -36,7 +36,11 @@ def normalize_pitch(pitch: str) -> str:
     m = re.fullmatch(r"\s*([+-]?)(\d+)\s*[Hh][Zz]\s*", pitch)
     if not m:
         raise TtsError(f"TTS_PITCH must look like +15Hz or -10Hz, got {pitch!r}")
-    return f"{m[1] or '+'}{m[2]}Hz"
+    if m[1] == "-" and int(m[2]) > 0:
+        # The Thai voices return no audio for a lowered pitch, so the voice's natural pitch is the floor.
+        log.warning("TTS_PITCH %s: lowering the pitch isn't supported by this voice; using +0Hz", pitch)
+        return "+0Hz"
+    return f"+{m[2]}Hz"
 
 
 async def _stream(text: str, voice: str, rate: str, pitch: str) -> bytes:

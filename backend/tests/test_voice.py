@@ -64,7 +64,7 @@ def test_falls_back_to_default_prosody(client, owner_headers, monkeypatch):
             super().__init__(text, voice, rate, pitch)
 
     monkeypatch.setattr(edge_voice.edge_tts, "Communicate", PickyService)
-    monkeypatch.setattr(get_settings(), "tts_pitch", "-5Hz")
+    monkeypatch.setattr(get_settings(), "tts_pitch", "+5Hz")
     r = client.post("/voice/tts", json={"text": "x"}, headers=owner_headers)
     assert r.status_code == 200 and r.content == b"ok"
 
@@ -75,6 +75,10 @@ def test_rate_and_pitch_are_normalized(client, owner_headers, monkeypatch):
     monkeypatch.setattr(get_settings(), "tts_pitch", "10hz")
     assert client.post("/voice/tts", json={"text": "x"}, headers=owner_headers).status_code == 200
     assert FakeCommunicate.calls[-1][2:] == ("-50%", "+10Hz")
+
+    monkeypatch.setattr(get_settings(), "tts_pitch", "-5Hz")  # the service gives no audio for this
+    client.post("/voice/tts", json={"text": "x"}, headers=owner_headers)
+    assert FakeCommunicate.calls[-1][3] == "+0Hz"
 
     monkeypatch.setattr(get_settings(), "tts_rate", "slow")
     r = client.post("/voice/tts", json={"text": "x"}, headers=owner_headers)
