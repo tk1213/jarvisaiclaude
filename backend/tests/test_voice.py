@@ -41,3 +41,12 @@ def test_browser_engine(client, owner_headers, monkeypatch):
 
 def test_tts_requires_login(client):
     assert client.post("/voice/tts", json={"text": "x"}).status_code == 401
+
+
+def test_dashboard_html_is_revalidated(client):
+    from pathlib import Path
+
+    if not (Path(__file__).resolve().parents[2] / "frontend" / "dist").is_dir():
+        return
+    r = client.get("/")
+    assert r.status_code == 200 and r.headers["cache-control"] == "no-cache"

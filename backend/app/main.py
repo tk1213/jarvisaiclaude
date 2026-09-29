@@ -78,5 +78,21 @@ def health():
 # The built dashboard (frontend/dist) is served at / when present. Mounted last so
 # API routes and /docs take precedence.
 _DASHBOARD = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+
+
+class DashboardFiles(StaticFiles):
+    """Static files where the HTML is always revalidated, so a rebuilt dashboard shows up on a normal reload.
+
+    Assets under /assets have hashed names and can be cached; without this header
+    browsers may keep serving an old index.html that points at the old assets.
+    """
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        if response.media_type == "text/html":
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 if _DASHBOARD.is_dir():
-    app.mount("/", StaticFiles(directory=_DASHBOARD, html=True), name="dashboard")
+    app.mount("/", DashboardFiles(directory=_DASHBOARD, html=True), name="dashboard")

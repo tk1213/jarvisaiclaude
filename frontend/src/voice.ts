@@ -149,7 +149,8 @@ function chunks(text: string): string[] {
 // (otherwise the first reply falls back to the system's default, often male, voice).
 if (ttsSupported) speechSynthesis.getVoices()
 
-let engine: 'server' | 'browser' = 'browser'
+// Server first: if its voice isn't available the reply falls back to the browser's voice.
+let engine: 'server' | 'browser' = 'server'
 let audio: HTMLAudioElement | null = null
 // Bumped on every speak/stop so a slow server response can't start talking after it was cancelled.
 let generation = 0
@@ -163,8 +164,11 @@ export function usesServerVoice() {
   return engine === 'server'
 }
 
-/** Read text aloud in Thai; onEnd fires when finished or cancelled. */
-export function speak(text: string, onEnd?: () => void) {
+/**
+ * Read text aloud in Thai; onEnd fires when finished or cancelled. onFallback is told why
+ * the server voice wasn't used when the browser's own voice had to stand in.
+ */
+export function speak(text: string, onEnd?: () => void, onFallback?: (reason: string) => void) {
   stopSpeaking()
   const id = generation
   if (engine === 'server') {
@@ -191,10 +195,11 @@ export function speak(text: string, onEnd?: () => void) {
         player.onpause = done
         return player.play()
       })
-      .catch(() => {
-        // Voice service unreachable: still answer, with the browser's voice.
-        if (id === generation) speakWithBrowser(text, onEnd)
-        else onEnd?.()
+      .catch((e: Error) => {
+        if (id !== generation) return onEnd?.()
+        // Voice service unavailable: still answer, with the browser's voice.
+        onFallback?.(e.message || 'unknown error')
+        speakWithBrowser(text, onEnd)
       })
     return
   }

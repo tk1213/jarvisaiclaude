@@ -105,7 +105,16 @@ async function requestBlob(path: string, body: unknown): Promise<Blob> {
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
   const res = await fetch(path, { method: 'POST', headers, body: JSON.stringify(body) })
-  if (!res.ok) throw new ApiError(res.status, res.statusText)
+  if (!res.ok) {
+    let detail = `${res.status} ${res.statusText}`
+    try {
+      const data = await res.json()
+      if (typeof data.detail === 'string') detail = `${res.status} ${data.detail}`
+    } catch {
+      // non-JSON error body
+    }
+    throw new ApiError(res.status, detail)
+  }
   return res.blob()
 }
 

@@ -25,6 +25,7 @@ export function ChatPanel() {
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [speaking, setSpeaking] = useState(false)
+  const [voiceNotice, setVoiceNotice] = useState<string | null>(null)
   const bottom = useRef<HTMLDivElement>(null)
   const mic = useSpeechRecognition((heard) => void send(heard, 'voice'))
   const missingThaiVoice = useMissingThaiVoice()
@@ -39,7 +40,9 @@ export function ChatPanel() {
     api
       .voiceConfig()
       .then((c) => setVoiceEngine(c.engine))
-      .catch(() => setVoiceEngine('browser'))
+      .catch(() => {
+        // Old server without /voice: speak() still tries it and falls back on its own.
+      })
   }, [])
 
   async function send(message: string, channel: 'dashboard' | 'voice' = 'dashboard') {
@@ -55,7 +58,11 @@ export function ChatPanel() {
       // A spoken question gets a spoken answer.
       if (channel === 'voice') {
         setSpeaking(true)
-        speak(res.reply, () => setSpeaking(false))
+        speak(
+          res.reply,
+          () => setSpeaking(false),
+          (reason) => setVoiceNotice(reason),
+        )
       }
     } catch (e) {
       setMessages((m) => [...m, { role: 'error', text: (e as Error).message }])
@@ -161,6 +168,17 @@ export function ChatPanel() {
         )}
         <div ref={bottom} />
       </div>
+
+      {voiceNotice && (
+        <div role="status" className="flex items-start gap-2 border-t border-slate-200 px-4 py-2 text-xs text-amber-800 dark:border-slate-800 dark:text-amber-300">
+          <p className="flex-1">
+            ใช้เสียงสำรองของเบราว์เซอร์อยู่ เพราะเสียงผู้หญิงจาก server ใช้ไม่ได้ ({voiceNotice}) ลองปิดแล้วเปิด start.bat ใหม่
+          </p>
+          <button onClick={() => setVoiceNotice(null)} aria-label="ปิดข้อความ" className="shrink-0 hover:text-amber-950 dark:hover:text-amber-100">
+            ✕
+          </button>
+        </div>
+      )}
 
       {(mic.error || (speaking && missingThaiVoice && !usesServerVoice())) && (
         <p role="alert" className="border-t border-slate-200 px-4 py-2 text-xs text-amber-800 dark:border-slate-800 dark:text-amber-300">
