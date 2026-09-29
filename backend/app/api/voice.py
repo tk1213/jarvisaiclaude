@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
 
@@ -6,6 +8,7 @@ from app.deps import get_current_user
 from app.integrations import edge_voice
 from app.models import User
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/voice", tags=["voice"])
 
 
@@ -33,6 +36,7 @@ async def tts(body: TtsRequest, _: User = Depends(get_current_user)):
     s = get_settings()
     if s.tts_engine != "edge":
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "server voice is off (TTS_ENGINE=browser)")
+    log.info("speaking with %s rate=%s pitch=%s", s.tts_voice, s.tts_rate, s.tts_pitch)
     try:
         audio = await edge_voice.synthesize(body.text, voice=s.tts_voice, rate=s.tts_rate, pitch=s.tts_pitch)
     except edge_voice.TtsError as e:
