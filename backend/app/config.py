@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     tts_voice: str = "th-TH-PremwadeeNeural"  # female; th-TH-NiwatNeural is male
     tts_rate: str = "-8%"  # speed, e.g. "+0%" normal
     tts_pitch: str = "+15Hz"  # higher = brighter
+    tts_number_rate: str = "-30%"  # numbers are read at this (slower) speed so they're easy to catch
 
     # Rate limits (spec §6), per user for device control, per username+IP for login.
     rate_limit_control_per_minute: int = 30

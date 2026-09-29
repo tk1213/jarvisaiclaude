@@ -4,7 +4,8 @@ import { chime, useWakeWord } from '../wake'
 import { setVoiceEngine, speak, stopSpeaking, sttSupported, useMissingThaiVoice, usesServerVoice, useSpeechRecognition } from '../voice'
 
 interface Message {
-  role: 'user' | 'jarvis' | 'error'
+  // 'note': a local status line (JARVIS woke up / went to sleep), never sent anywhere.
+  role: 'user' | 'jarvis' | 'error' | 'note'
   text: string
   toolCalls?: ToolCall[]
 }
@@ -30,8 +31,19 @@ export function ChatPanel() {
   const bottom = useRef<HTMLDivElement>(null)
   const mic = useSpeechRecognition((heard) => void send(heard, 'voice'))
   const missingThaiVoice = useMissingThaiVoice()
-  // Hands-free mode: listens for "Hey Jarvis", but not while JARVIS thinks or talks (it would hear itself).
-  const wake = useWakeWord((command) => void send(command, 'voice'), busy || speaking || mic.listening)
+  // Hands-free: listens for "Hey Jarvis", but not while JARVIS thinks or talks (it would hear itself).
+  const wake = useWakeWord(
+    (command) => void send(command, 'voice'),
+    busy || speaking || mic.listening,
+    (awake, bySpeech) => {
+      const text = awake
+        ? '🔔 โหมดปลุกเปิดแล้ว พูดคำสั่งต่อเนื่องได้เลย (พูด "Stop Jarvis" เพื่อพัก)'
+        : bySpeech
+          ? '💤 JARVIS พักแล้ว เรียก "Hey Jarvis" เพื่อปลุก'
+          : '💤 ปิดโหมดปลุกแล้ว'
+      setMessages((m) => [...m, { role: 'note', text }])
+    },
+  )
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: 'smooth' })
@@ -63,11 +75,7 @@ export function ChatPanel() {
         setSpeaking(true)
         speak(
           res.reply,
-          () => {
-            // In hands-free mode a follow-up doesn't need the wake word again.
-            if (wake.enabled) wake.expectCommand()
-            setSpeaking(false)
-          },
+          () => setSpeaking(false),
           (reason) => setVoiceNotice(reason),
         )
       }
@@ -83,27 +91,27 @@ export function ChatPanel() {
     // Talking over JARVIS interrupts it.
     stopSpeaking()
     setSpeaking(false)
-    if (wake.enabled) {
-      // The hands-free listener is already running; just skip the wake word.
-      wake.expectCommand()
-      chime()
+    if (wake.micOn) {
+      // The hands-free listener is already running; the button just wakes it up.
+      wake.setAwake(true)
       return
     }
     mic.start()
   }
 
-  function toggleWake() {
-    if (!wake.enabled) chime() // also unlocks audio so later chimes can play
-    wake.setEnabled(!wake.enabled)
+  function toggleStandby() {
+    if (!wake.micOn) chime() // also unlocks audio so later chimes can play
+    wake.setMicOn(!wake.micOn)
   }
 
   const wakeStatus = speaking
     ? 'JARVIS กำลังพูด… กดไมค์เพื่อพูดแทรก'
     : busy
       ? 'JARVIS กำลังคิด…'
-      : wake.mode === 'command'
-        ? 'ฟังคำสั่งอยู่… พูดได้เลย (พูด "Stop Jarvis" เพื่อยกเลิก)'
-        : 'รอคำว่า "เฮ้ จาร์วิส" หรือ "Hey Jarvis"'
+      : wake.awake
+        ? 'โหมดปลุก: ฟังอยู่ พูดคำสั่งได้เลย ("Stop Jarvis" เพื่อพัก)'
+        : 'ไมค์รอคำว่า "Hey Jarvis" / "เฮ้ จาร์วิส"'
+  const listeningLive = wake.awake && !busy && !speaking
 
   function quiet() {
     stopSpeaking()
@@ -123,22 +131,36 @@ export function ChatPanel() {
 
   return (
     <section className="flex h-full min-h-[28rem] flex-col rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-      <header className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
         <h2 className="font-semibold">คุยกับ JARVIS</h2>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 whitespace-nowrap">
           {sttSupported && (
-            <button
-              role="switch"
-              aria-checked={wake.enabled}
-              onClick={toggleWake}
-              title="ฟังตลอดเวลา แล้วเริ่มรับคำสั่งเมื่อได้ยินคำว่า เฮ้ จาร์วิส"
-              className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
-            >
-              <span className={`relative h-4 w-7 rounded-full transition-colors ${wake.enabled ? 'bg-sky-600' : 'bg-slate-300 dark:bg-slate-700'}`}>
-                <span className={`absolute top-0.5 left-0.5 size-3 rounded-full bg-white transition-transform ${wake.enabled ? 'translate-x-3' : ''}`} />
-              </span>
-              โหมดปลุก
-            </button>
+            <>
+              <button
+                aria-pressed={wake.micOn}
+                onClick={toggleStandby}
+                title={wake.micOn ? 'ปิดไมค์ (เลิกรอคำว่า Hey Jarvis)' : 'เปิดไมค์รอคำว่า Hey Jarvis'}
+                className={`rounded-full px-2 py-0.5 text-xs transition-colors ${
+                  wake.micOn
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200'
+                    : 'bg-slate-100 text-slate-500 hover:text-slate-800 dark:bg-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                {wake.micOn ? '🎙 รอ Hey Jarvis' : '🎙 ปิด'}
+              </button>
+              <button
+                role="switch"
+                aria-checked={wake.awake}
+                onClick={() => wake.setAwake(!wake.awake)}
+                title='คุยต่อเนื่องโดยไม่ต้องเรียกชื่อ เปิดด้วยคำว่า "Hey Jarvis" ปิดด้วย "Stop Jarvis"'
+                className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+              >
+                <span className={`relative h-4 w-7 rounded-full transition-colors ${wake.awake ? 'bg-sky-600' : 'bg-slate-300 dark:bg-slate-700'}`}>
+                  <span className={`absolute top-0.5 left-0.5 size-3 rounded-full bg-white transition-transform ${wake.awake ? 'translate-x-3' : ''}`} />
+                </span>
+                โหมดปลุก
+              </button>
+            </>
           )}
           {speaking && (
             <button onClick={quiet} className="text-sm text-sky-700 hover:text-sky-900 dark:text-sky-300 dark:hover:text-sky-100">
@@ -171,37 +193,43 @@ export function ChatPanel() {
           </div>
         )}
 
-        {messages.map((m, i) => (
-          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div
-              className={`max-w-[85%] rounded-2xl px-3.5 py-2 whitespace-pre-wrap ${
-                m.role === 'user'
-                  ? 'bg-sky-600 text-white'
-                  : m.role === 'error'
-                    ? 'bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300'
-                    : 'bg-slate-100 dark:bg-slate-800'
-              }`}
-            >
-              {m.toolCalls && m.toolCalls.length > 0 && (
-                <div className="mb-1.5 flex flex-wrap gap-1">
-                  {m.toolCalls.map((t, j) => (
-                    <span
-                      key={j}
-                      className={`rounded-full px-2 py-0.5 text-xs ${
-                        t.ok ? 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300' : 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300'
-                      }`}
-                    >
-                      {TOOL_LABELS[t.name] ?? t.name}
-                    </span>
-                  ))}
-                </div>
-              )}
+        {messages.map((m, i) =>
+          m.role === 'note' ? (
+            <p key={i} className="text-center text-xs text-slate-500">
               {m.text}
+            </p>
+          ) : (
+            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div
+                className={`max-w-[85%] rounded-2xl px-3.5 py-2 whitespace-pre-wrap ${
+                  m.role === 'user'
+                    ? 'bg-sky-600 text-white'
+                    : m.role === 'error'
+                      ? 'bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300'
+                      : 'bg-slate-100 dark:bg-slate-800'
+                }`}
+              >
+                {m.toolCalls && m.toolCalls.length > 0 && (
+                  <div className="mb-1.5 flex flex-wrap gap-1">
+                    {m.toolCalls.map((t, j) => (
+                      <span
+                        key={j}
+                        className={`rounded-full px-2 py-0.5 text-xs ${
+                          t.ok ? 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300' : 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300'
+                        }`}
+                      >
+                        {TOOL_LABELS[t.name] ?? t.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {m.text}
+              </div>
             </div>
-          </div>
-        ))}
+          ),
+        )}
 
-        {wake.enabled && wake.speakingToJarvis && !busy && (
+        {wake.micOn && wake.speakingToJarvis && !busy && (
           <div className="flex justify-end">
             <div className="max-w-[85%] rounded-2xl border border-dashed border-sky-400 px-3.5 py-2 text-sky-800 dark:border-sky-600 dark:text-sky-200">
               {wake.speakingToJarvis}…
@@ -219,23 +247,17 @@ export function ChatPanel() {
 
       {voiceNotice && (
         <div role="status" className="flex items-start gap-2 border-t border-slate-200 px-4 py-2 text-xs text-amber-800 dark:border-slate-800 dark:text-amber-300">
-          <p className="flex-1">
-            ใช้เสียงสำรองของเบราว์เซอร์อยู่ เพราะเสียงผู้หญิงจาก server ใช้ไม่ได้ ({voiceNotice}) ลองปิดแล้วเปิด start.bat ใหม่
-          </p>
+          <p className="flex-1">ใช้เสียงสำรองของเบราว์เซอร์อยู่ เพราะเสียงผู้หญิงจาก server ใช้ไม่ได้ ({voiceNotice}) ลองปิดแล้วเปิด start.bat ใหม่</p>
           <button onClick={() => setVoiceNotice(null)} aria-label="ปิดข้อความ" className="shrink-0 hover:text-amber-950 dark:hover:text-amber-100">
             ✕
           </button>
         </div>
       )}
 
-      {wake.enabled && (
+      {wake.micOn && (
         <div aria-live="polite" className="flex items-center gap-2 border-t border-slate-200 px-4 py-2 text-xs dark:border-slate-800">
-          <span
-            className={`size-2 shrink-0 rounded-full ${
-              wake.mode === 'command' && !busy && !speaking ? 'animate-pulse bg-red-500' : busy || speaking ? 'bg-slate-400' : 'bg-emerald-500'
-            }`}
-          />
-          <span className={wake.mode === 'command' && !busy && !speaking ? 'font-medium text-red-700 dark:text-red-300' : 'text-slate-500'}>{wakeStatus}</span>
+          <span className={`size-2 shrink-0 rounded-full ${listeningLive ? 'animate-pulse bg-red-500' : busy || speaking ? 'bg-slate-400' : 'bg-emerald-500'}`} />
+          <span className={listeningLive ? 'font-medium text-red-700 dark:text-red-300' : 'text-slate-500'}>{wakeStatus}</span>
           {wake.heard && <span className="min-w-0 truncate text-slate-400">“{wake.heard}”</span>}
         </div>
       )}

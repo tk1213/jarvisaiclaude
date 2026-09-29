@@ -7,15 +7,13 @@ const NAME = '(?:jarvis|จา(?:ร์|ร)?วิ(?:ส|ซ|ด|ท|ต))'
 const WAKE_WORD = new RegExp(`(?:hey|เฮ้|เฮ|เฮย์|เฮย)\\s*${NAME}`, 'i')
 const MENTIONS_NAME = new RegExp(NAME, 'i')
 const NAME_ONLY = new RegExp(`^\\s*${NAME}\\s*[.!?]?\\s*$`, 'i')
-// "Jarvis หยุดการทำงาน", "stop Jarvis": turns hands-free mode off.
+// "Stop Jarvis", "จาร์วิส หยุดการทำงาน": back to sleep.
 const STOP_WORDS = /(?:หยุดการทำงาน|หยุดทำงาน|หยุดฟัง|ปิดโหมดปลุก|\bstop\b|สต็อป|สต๊อป|สตอป)/i
-// How long to wait for the command after the wake word (or after JARVIS answers).
-export const COMMAND_WINDOW_MS = 8000
+// Awake, it goes back to sleep after this long without anything said to it (so a TV isn't taken as commands).
+export const IDLE_SLEEP_MS = 60_000
 // Chrome's continuous mode is slow to mark speech final; once the words stop changing for this long, act on them.
 const SETTLE_MS = 700
 const FATAL_ERRORS = new Set(['not-allowed', 'service-not-allowed', 'audio-capture'])
-
-export type WakeMode = 'waiting' | 'command'
 
 /** The command in a sentence that contains the wake word ("เฮ้ จาร์วิส เปิดไฟ" → "เปิดไฟ"), or null without it. */
 export function findWakeWord(text: string): { command: string } | null {
@@ -24,65 +22,63 @@ export function findWakeWord(text: string): { command: string } | null {
   return { command: text.slice(m.index + m[0].length).replace(/^[\s,.!?]+/, '').trim() }
 }
 
-/** True for a stop phrase addressed to JARVIS (or said while it's already listening for a command). */
+/** True for a stop phrase addressed to JARVIS (or said while it's awake). */
 export function isStopCommand(text: string, awake: boolean): boolean {
   return STOP_WORDS.test(text) && (awake || MENTIONS_NAME.test(text))
 }
 
-interface Callbacks {
-  onStop: () => void
-  onMode: (mode: WakeMode) => void
+interface Handlers {
+  onCommand: (text: string) => void
+  onAwake: (awake: boolean, bySpeech: boolean) => void
   onHeard: (text: string) => void
-  onWake: () => void
   onFatal: (message: string) => void
 }
 
 /**
- * Continuous listening for the wake word. The browser ends recognition sessions on its own
- * (silence, time limits, network), so it restarts until paused.
+ * The mic in standby listens only for "Hey Jarvis". Once woken, every sentence is a command
+ * (a continuous conversation) until "Stop Jarvis", the switch, or a minute of silence.
+ * The browser ends recognition sessions on its own (silence, time limits, network), so it restarts until paused.
  */
 class WakeListener {
   private rec: Recognition | null = null
-  private mode: WakeMode = 'waiting'
-  private timer: number | undefined
+  private awake = false
+  private idle: number | undefined
   private settle: number | undefined
   private running = false
   private restartDelay = 100
-  private cb: Callbacks
-  private onCommand: (text: string) => void = () => {}
-
-  constructor(cb: Callbacks) {
-    this.cb = cb
-  }
+  private on: Handlers = { onCommand: () => {}, onAwake: () => {}, onHeard: () => {}, onFatal: () => {} }
 
   /** Updated by the component on every render so commands go to the current conversation. */
-  setOnCommand(fn: (text: string) => void) {
-    this.onCommand = fn
+  setHandlers(handlers: Handlers) {
+    this.on = handlers
   }
 
   resume() {
     this.running = true
+    if (this.awake) this.touch() // the idle clock counts from when JARVIS finished talking
     this.listen()
   }
 
   pause() {
     window.clearTimeout(this.settle)
+    window.clearTimeout(this.idle)
     this.running = false
     this.rec?.abort()
     this.rec = null
-    this.cb.onHeard('')
+    this.on.onHeard('')
   }
 
-  /** Take the next sentence as a command without the wake word (mic button, or a follow-up after a reply). */
-  expectCommand() {
-    this.setMode('command')
+  setAwake(awake: boolean, bySpeech = false) {
+    window.clearTimeout(this.idle)
+    if (awake) this.touch()
+    if (awake === this.awake) return
+    this.awake = awake
+    this.on.onAwake(awake, bySpeech)
   }
 
-  private setMode(mode: WakeMode) {
-    window.clearTimeout(this.timer)
-    this.mode = mode
-    this.cb.onMode(mode)
-    if (mode === 'command') this.timer = window.setTimeout(() => this.setMode('waiting'), COMMAND_WINDOW_MS)
+  private touch() {
+    window.clearTimeout(this.idle)
+    this.idle = window.setTimeout(() => this.setAwake(false, true), IDLE_SLEEP_MS)
   }
 
   private listen() {
@@ -100,7 +96,7 @@ class WakeListener {
         if (res.isFinal) this.handle(res[0].transcript)
         else interim += res[0].transcript
       }
-      this.cb.onHeard(interim)
+      this.on.onHeard(interim)
       if (interim && this.isForUs(interim)) {
         this.settle = window.setTimeout(() => this.settleEarly(r, interim), SETTLE_MS)
       }
@@ -108,7 +104,7 @@ class WakeListener {
     r.onerror = (e) => {
       if (FATAL_ERRORS.has(e.error)) {
         this.running = false
-        this.cb.onFatal(ERRORS[e.error])
+        this.on.onFatal(ERRORS[e.error])
       } else if (e.error === 'network') {
         this.restartDelay = Math.min(this.restartDelay * 2, 10_000)
       }
@@ -116,7 +112,7 @@ class WakeListener {
     }
     r.onend = () => {
       if (this.rec === r) this.rec = null
-      this.cb.onHeard('')
+      this.on.onHeard('')
       if (this.running) window.setTimeout(() => this.listen(), this.restartDelay)
     }
     this.rec = r
@@ -127,9 +123,9 @@ class WakeListener {
     }
   }
 
-  /** Speech worth acting on before Chrome finalizes it: a command, the wake word, or a stop phrase. */
+  /** Speech worth acting on before Chrome finalizes it: anything while awake, the wake word, or a stop phrase. */
   private isForUs(text: string) {
-    return this.mode === 'command' || findWakeWord(text) !== null || isStopCommand(text, false)
+    return this.awake || findWakeWord(text) !== null || isStopCommand(text, false)
   }
 
   /** Act on the interim words now and drop this session so the late final result isn't handled twice. */
@@ -137,7 +133,7 @@ class WakeListener {
     if (this.rec !== r) return
     this.rec = null
     r.abort() // onend restarts listening while running
-    this.cb.onHeard('')
+    this.on.onHeard('')
     this.handle(text)
   }
 
@@ -145,36 +141,27 @@ class WakeListener {
     this.restartDelay = 100
     const text = transcript.trim()
     if (!text) return
-    if (isStopCommand(text, this.mode === 'command')) {
-      // Cancel whatever it was listening for and go back to waiting for "Hey Jarvis"; the mic stays on.
-      this.setMode('waiting')
-      this.cb.onStop()
-      return
-    }
-    if (this.mode === 'command') {
-      const again = findWakeWord(text)
-      if ((again && again.command.length < 2) || NAME_ONLY.test(text)) {
-        // Just the wake word again: keep listening for the command.
-        this.cb.onWake()
-        this.setMode('command')
-        return
-      }
-      this.setMode('waiting')
-      // Saying the wake word again while it's already listening shouldn't end up in the command.
-      this.onCommand(findWakeWord(text)?.command || text)
+    if (isStopCommand(text, this.awake)) {
+      if (this.awake) this.setAwake(false, true)
       return
     }
     const wake = findWakeWord(text)
-    if (!wake) return
-    this.cb.onWake()
-    if (wake.command.length >= 2) this.onCommand(wake.command)
-    else this.setMode('command')
+    if (!this.awake) {
+      if (!wake) return
+      this.setAwake(true, true)
+      if (wake.command.length >= 2) this.on.onCommand(wake.command)
+      return
+    }
+    this.touch()
+    // "Hey Jarvis" (or just the name) again while awake: nothing to send.
+    if ((wake && wake.command.length < 2) || NAME_ONLY.test(text)) return
+    this.on.onCommand(wake?.command || text)
   }
 }
 
 let audioCtx: AudioContext | null = null
 
-/** A short rising "ding" when JARVIS starts listening for a command; falling when it stops. */
+/** A short rising "ding" when JARVIS wakes up; falling when it goes back to sleep. */
 export function chime(direction: 'up' | 'down' = 'up') {
   try {
     audioCtx ??= new AudioContext()
@@ -192,13 +179,13 @@ export function chime(direction: 'up' | 'down' = 'up') {
     osc.start(t)
     osc.stop(t + 0.3)
   } catch {
-    // no audio output available; the status text still shows it's listening
+    // no audio output available; the status text still shows the state
   }
 }
 
 const STORAGE_KEY = 'jarvis.wake'
 
-function loadEnabled(): boolean {
+function loadMicOn(): boolean {
   try {
     return localStorage.getItem(STORAGE_KEY) === 'on'
   } catch {
@@ -206,7 +193,7 @@ function loadEnabled(): boolean {
   }
 }
 
-function saveEnabled(on: boolean) {
+function saveMicOn(on: boolean) {
   try {
     localStorage.setItem(STORAGE_KEY, on ? 'on' : 'off')
   } catch {
@@ -214,54 +201,60 @@ function saveEnabled(on: boolean) {
   }
 }
 
-/** Always-on "Hey Jarvis" listening, paused while JARVIS is thinking or talking. */
-export function useWakeWord(onCommand: (text: string) => void, paused: boolean) {
-  const [enabled, setEnabledState] = useState(loadEnabled)
-  const [mode, setMode] = useState<WakeMode>('waiting')
+/**
+ * Hands-free voice. micOn: the mic stays on waiting for "Hey Jarvis" (remembered across reloads).
+ * awake: continuous conversation, turned on by "Hey Jarvis" or the switch and off by "Stop Jarvis".
+ * Listening pauses while JARVIS is thinking or talking so it doesn't hear itself.
+ */
+export function useWakeWord(
+  onCommand: (text: string) => void,
+  paused: boolean,
+  onAwakeChange: (awake: boolean, bySpeech: boolean) => void = () => {},
+) {
+  const [micOn, setMicOnState] = useState(loadMicOn)
+  const [awake, setAwakeState] = useState(false)
   const [heard, setHeard] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [listener] = useState(
-    () =>
-      new WakeListener({
-        onMode: setMode,
-        onHeard: setHeard,
-        onWake: () => chime(),
-        onStop: () => chime('down'),
-        onFatal: (message) => {
-          setError(message)
-          setEnabledState(false)
-        },
-      }),
-  )
+  const [listener] = useState(() => new WakeListener())
 
   useEffect(() => {
-    listener.setOnCommand(onCommand)
-  }, [listener, onCommand])
+    listener.setHandlers({
+      onCommand,
+      onAwake: (value, bySpeech) => {
+        chime(value ? 'up' : 'down')
+        setAwakeState(value)
+        onAwakeChange(value, bySpeech)
+      },
+      onHeard: setHeard,
+      onFatal: (message) => {
+        setError(message)
+        setMicOnState(false)
+        saveMicOn(false)
+      },
+    })
+  }, [listener, onCommand, onAwakeChange])
 
   useEffect(() => {
-    if (enabled && !paused) listener.resume()
+    if (micOn && !paused) listener.resume()
     else listener.pause()
-  }, [enabled, paused, listener])
+  }, [micOn, paused, listener])
 
   useEffect(() => () => listener.pause(), [listener])
 
-  function setEnabled(on: boolean) {
-    saveEnabled(on)
+  function setMicOn(on: boolean) {
+    saveMicOn(on)
     setError(null)
-    setEnabledState(on)
+    setMicOnState(on)
+    if (!on) listener.setAwake(false)
+  }
+
+  function setAwake(on: boolean) {
+    if (on && !micOn) setMicOn(true)
+    listener.setAwake(on)
   }
 
   // What's being said to JARVIS right now (not background talk), for a live bubble in the chat.
-  const speakingToJarvis = heard && (mode === 'command' || findWakeWord(heard) !== null) ? heard : ''
+  const speakingToJarvis = heard && (awake || findWakeWord(heard) !== null) ? heard : ''
 
-  return {
-    enabled,
-    speakingToJarvis,
-    setEnabled,
-    mode,
-    heard,
-    error,
-    /** Listen for a command right away (mic button, or a follow-up after JARVIS answers). */
-    expectCommand: () => listener.expectCommand(),
-  }
+  return { micOn, setMicOn, awake, setAwake, heard, speakingToJarvis, error }
 }

@@ -83,3 +83,27 @@ def test_rate_and_pitch_are_normalized(client, owner_headers, monkeypatch):
     monkeypatch.setattr(get_settings(), "tts_rate", "slow")
     r = client.post("/voice/tts", json={"text": "x"}, headers=owner_headers)
     assert r.status_code == 502 and "TTS_RATE" in r.json()["detail"]
+
+
+def test_numbers_are_split_out():
+    assert edge_voice.split_numbers("อุณหภูมิ 28.6 องศา ความชื้น 62 %") == [
+        ("อุณหภูมิ", False),
+        ("28.6", True),
+        ("องศา ความชื้น", False),
+        ("62", True),
+    ]
+    assert edge_voice.split_numbers("เปิดแล้วค่ะ") == [("เปิดแล้วค่ะ", False)]
+
+
+def test_numbers_are_spoken_slower_and_streamed(client, owner_headers, monkeypatch):
+    monkeypatch.setattr(edge_voice.edge_tts, "Communicate", FakeCommunicate)
+    FakeCommunicate.calls.clear()
+    token = owner_headers["Authorization"].split()[1]
+    r = client.get("/voice/tts", params={"text": "กำลังไฟ 1,250 วัตต์", "token": token})
+    assert r.status_code == 200 and r.content == b"mp3" * 3 and r.headers["content-type"] == "audio/mpeg"
+    rates = {text: rate for text, _, rate, _ in FakeCommunicate.calls}
+    assert rates == {"กำลังไฟ": "-8%", "1,250": "-30%", "วัตต์": "-8%"}
+
+
+def test_stream_requires_token(client):
+    assert client.get("/voice/tts", params={"text": "x", "token": "bad"}).status_code == 401

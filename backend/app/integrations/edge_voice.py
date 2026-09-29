@@ -4,14 +4,19 @@ Free and needs no key, but it's an unofficial endpoint: if it fails, the dashboa
 falls back to the browser's own voices.
 """
 
+import asyncio
 import logging
 import re
+from collections.abc import AsyncIterator
 
 import edge_tts
 
 log = logging.getLogger(__name__)
 
 MAX_CHARS = 1500
+# Numbers ("28.6", "1,250", "-3") are spoken separately at a slower rate so they're easy to catch.
+NUMBER = re.compile(r"[-+]?\d[\d,]*(?:\.\d+)?")
+MAX_NUMBER_PARTS = 8
 # The service only speaks between half and double speed; outside that it silently returns no audio.
 RATE_RANGE = (-50, 100)
 
@@ -51,6 +56,38 @@ async def _stream(text: str, voice: str, rate: str, pitch: str) -> bytes:
     if not audio:
         raise edge_tts.exceptions.NoAudioReceived("no audio")
     return bytes(audio)
+
+
+def split_numbers(text: str) -> list[tuple[str, bool]]:
+    """[(segment, is_number), ...] with blank or punctuation-only pieces dropped."""
+    parts: list[tuple[str, bool]] = []
+    pos = 0
+    for m in NUMBER.finditer(text):
+        parts.append((text[pos : m.start()], False))
+        parts.append((m.group(), True))
+        pos = m.end()
+    parts.append((text[pos:], False))
+    return [(p.strip(), is_num) for p, is_num in parts if re.search(r"\w", p)]
+
+
+async def speak_parts(text: str, *, voice: str, rate: str, pitch: str, number_rate: str) -> AsyncIterator[bytes]:
+    """MP3 audio for text, in order, with numbers slowed down. Parts are synthesized concurrently
+    and yielded as soon as each is ready, so playback can start before the whole reply is done.
+    MP3 frames from the same voice concatenate into one playable stream."""
+    text = text[:MAX_CHARS]
+    parts = split_numbers(text)
+    if not any(is_num for _, is_num in parts) or len(parts) > 2 * MAX_NUMBER_PARTS + 1:
+        parts = [(text, False)]
+    tasks = [
+        asyncio.create_task(synthesize(p, voice=voice, rate=number_rate if is_num else rate, pitch=pitch))
+        for p, is_num in parts
+    ]
+    try:
+        for task in tasks:
+            yield await task
+    finally:
+        for task in tasks:
+            task.cancel()
 
 
 async def synthesize(text: str, *, voice: str, rate: str, pitch: str) -> bytes:

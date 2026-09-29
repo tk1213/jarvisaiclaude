@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api } from './api'
+import { api, getToken } from './api'
 
 // Browser speech APIs: recognition (STT) is prefixed in Chrome/Edge and missing from lib.dom.
 interface RecognitionResult {
@@ -151,6 +151,8 @@ if (ttsSupported) speechSynthesis.getVoices()
 
 // Server first: if its voice isn't available the reply falls back to the browser's voice.
 let engine: 'server' | 'browser' = 'server'
+// Spoken replies are short; this also keeps the streaming URL well under server limits.
+const MAX_SPOKEN_CHARS = 600
 let audio: HTMLAudioElement | null = null
 // Bumped on every speak/stop so a slow server response can't start talking after it was cancelled.
 let generation = 0
@@ -171,39 +173,52 @@ export function usesServerVoice() {
 export function speak(text: string, onEnd?: () => void, onFallback?: (reason: string) => void) {
   stopSpeaking()
   const id = generation
-  if (engine === 'server') {
-    const clean = chunks(text).join(' ')
-    if (!clean) return onEnd?.()
+  if (engine !== 'server') return speakWithBrowser(text, onEnd)
+  const clean = chunks(text).join(' ').slice(0, MAX_SPOKEN_CHARS)
+  if (!clean) return onEnd?.()
+
+  const useBrowser = (reason: string) => {
+    if (id !== generation) return onEnd?.()
+    onFallback?.(reason)
+    speakWithBrowser(text, onEnd)
+  }
+  // Streamed: playback starts while the server is still synthesizing the rest of the reply.
+  const url = `/voice/tts?text=${encodeURIComponent(clean)}&token=${encodeURIComponent(getToken() ?? '')}`
+  play(url, id, onEnd, () => {
+    // The stream failed before any sound; ask the plain way to learn why (and play it if that works).
     api
       .tts(clean)
       .then((blob) => {
         if (id !== generation) return onEnd?.()
-        const url = URL.createObjectURL(blob)
-        const player = new Audio(url)
-        audio = player
-        let finished = false
-        // 'pause' also fires when playback ends, so guard against running twice.
-        const done = () => {
-          if (finished) return
-          finished = true
-          URL.revokeObjectURL(url)
-          if (audio === player) audio = null
-          onEnd?.()
-        }
-        player.onended = done
-        player.onerror = done
-        player.onpause = done
-        return player.play()
+        const blobUrl = URL.createObjectURL(blob)
+        play(blobUrl, id, onEnd, () => useBrowser('เล่นไฟล์เสียงไม่ได้'), () => URL.revokeObjectURL(blobUrl))
       })
-      .catch((e: Error) => {
-        if (id !== generation) return onEnd?.()
-        // Voice service unavailable: still answer, with the browser's voice.
-        onFallback?.(e.message || 'unknown error')
-        speakWithBrowser(text, onEnd)
-      })
-    return
+      .catch((e: Error) => useBrowser(e.message || 'unknown error'))
+  })
+}
+
+/** Play src; onFail runs instead of onEnd if it errors before making any sound. */
+function play(src: string, id: number, onEnd: (() => void) | undefined, onFail: () => void, cleanup?: () => void) {
+  const player = new Audio(src)
+  audio = player
+  let started = false
+  let finished = false
+  const finish = (failed: boolean) => {
+    // 'pause' also fires when playback ends, so guard against running twice.
+    if (finished) return
+    finished = true
+    cleanup?.()
+    if (audio === player) audio = null
+    if (failed && !started && id === generation) onFail()
+    else onEnd?.()
   }
-  speakWithBrowser(text, onEnd)
+  player.onplaying = () => {
+    started = true
+  }
+  player.onended = () => finish(false)
+  player.onpause = () => finish(false)
+  player.onerror = () => finish(true)
+  player.play().catch(() => finish(true))
 }
 
 function speakWithBrowser(text: string, onEnd?: () => void) {
