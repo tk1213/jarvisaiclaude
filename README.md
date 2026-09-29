@@ -77,11 +77,12 @@ curl -X POST localhost:8000/devices/1/power -H "Authorization: Bearer $TOKEN" \
 
 ## ต่อ Tuya จริง
 
-1. สมัคร [Tuya IoT Platform](https://iot.tuya.com) แล้วสร้าง **Cloud Project** (Smart Home, เลือก data center ให้ตรงกับบัญชีแอป)
+1. สมัคร [Tuya IoT Platform](https://iot.tuya.com) แล้วสร้าง **Cloud Project** (Smart Home, เลือก data center ให้ตรงกับ Region ของบัญชีแอป)
 2. เปิด API services: IoT Core, Authorization, Smart Home Scene Linkage
-   และเปิด **Message Service** เพื่อรับสถานะอุปกรณ์แบบเรียลไทม์ผ่าน Pulsar
-3. ที่ **Devices > Link Tuya App Account** สแกน QR ด้วยแอป Tuya Smart / Smart Life
+3. ที่ **Devices > Link App Account** สแกน QR ด้วยแอป Tuya Smart / Smart Life
+   แล้วตรวจคอลัมน์ **Device Permission** ของอุปกรณ์ที่จะสั่งงานให้เป็น **Controllable** (ถ้าเป็น Read ให้กด Change)
 4. ใส่ `TUYA_ACCESS_ID`, `TUYA_ACCESS_SECRET`, `TUYA_ENDPOINT`, `TUYA_USER_UID` ใน `.env` แล้วตั้ง `TUYA_MODE=live`
+   (UID อยู่ในแท็บ Link App Account; Singapore ใช้ `TUYA_ENDPOINT=https://openapi-sg.iotbing.com`)
 5. ทดสอบโดยยังไม่ต้องใช้ LLM:
 
 ```bash
@@ -91,8 +92,20 @@ python -m app.scripts.tuya_check on <device_id>
 python -m app.scripts.tuya_check scenes
 ```
 
+### สถานะแบบเรียลไทม์ (Message Service / Pulsar)
+
 เมื่อรัน server ในโหมด `live` ระบบจะต่อ Tuya Pulsar ให้อัตโนมัติ เวลามีคนกดสวิตช์ที่ตัวอุปกรณ์หรือในแอป
-สถานะในตาราง `devices` จะอัปเดตเอง (ดู log `connected to Tuya Pulsar`) ถ้าหลุดจะต่อใหม่เองโดยรอนานขึ้นเรื่อยๆ สูงสุด 60 วินาที
+สถานะในตาราง `devices` จะอัปเดตเอง ต้องตั้งค่าในโปรเจกต์ก่อน 3 อย่าง:
+
+1. แท็บ **Message Service** กดสวิตช์ **Enable** (ถ้ายังปิดอยู่ log จะขึ้น `HTTP 401`)
+2. **Messaging Rules → Production Environment → Create Messaging Rules** เลือก BizCode
+   `deviceOnline`, `deviceOffline`, `devicePropertyMessage` แล้วกด **Release Rule**
+3. **เปิดสวิตช์** หน้า rule ของ Production ให้ขึ้นว่า *rules ... are in effect* (ถ้าปิดอยู่จะไม่มีข้อความส่งมา)
+
+ตรวจผล:
+- log ต้องขึ้น `connected to Tuya Pulsar` และแท็บ Subscription Management (Production) ต้องเห็น Consumers = 1
+- กดอุปกรณ์จากแอปแล้ว log ต้องขึ้น `Tuya event received: {...}`
+- ถ้าหลุด ระบบจะต่อใหม่เองโดยรอนานขึ้นเรื่อยๆ สูงสุด 60 วินาที
 
 ## ความปลอดภัย
 
