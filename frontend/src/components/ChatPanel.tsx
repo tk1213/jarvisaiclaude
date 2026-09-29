@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { api, type ToolCall } from '../api'
+import { chime, useWakeWord } from '../wake'
 import { setVoiceEngine, speak, stopSpeaking, sttSupported, useMissingThaiVoice, usesServerVoice, useSpeechRecognition } from '../voice'
 
 interface Message {
@@ -29,6 +30,8 @@ export function ChatPanel() {
   const bottom = useRef<HTMLDivElement>(null)
   const mic = useSpeechRecognition((heard) => void send(heard, 'voice'))
   const missingThaiVoice = useMissingThaiVoice()
+  // Hands-free mode: listens for "Hey Jarvis", but not while JARVIS thinks or talks (it would hear itself).
+  const wake = useWakeWord((command) => void send(command, 'voice'), busy || speaking || mic.listening)
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: 'smooth' })
@@ -60,7 +63,11 @@ export function ChatPanel() {
         setSpeaking(true)
         speak(
           res.reply,
-          () => setSpeaking(false),
+          () => {
+            // In hands-free mode a follow-up doesn't need the wake word again.
+            if (wake.enabled) wake.expectCommand()
+            setSpeaking(false)
+          },
           (reason) => setVoiceNotice(reason),
         )
       }
@@ -76,8 +83,27 @@ export function ChatPanel() {
     // Talking over JARVIS interrupts it.
     stopSpeaking()
     setSpeaking(false)
+    if (wake.enabled) {
+      // The hands-free listener is already running; just skip the wake word.
+      wake.expectCommand()
+      chime()
+      return
+    }
     mic.start()
   }
+
+  function toggleWake() {
+    if (!wake.enabled) chime() // also unlocks audio so later chimes can play
+    wake.setEnabled(!wake.enabled)
+  }
+
+  const wakeStatus = speaking
+    ? 'JARVIS กำลังพูด… กดไมค์เพื่อพูดแทรก'
+    : busy
+      ? 'JARVIS กำลังคิด…'
+      : wake.mode === 'command'
+        ? 'ฟังคำสั่งอยู่… พูดได้เลย'
+        : 'รอคำว่า "จาร์วิส" หรือ "Hey Jarvis"'
 
   function quiet() {
     stopSpeaking()
@@ -100,6 +126,20 @@ export function ChatPanel() {
       <header className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800">
         <h2 className="font-semibold">คุยกับ JARVIS</h2>
         <div className="flex items-center gap-3">
+          {sttSupported && (
+            <button
+              role="switch"
+              aria-checked={wake.enabled}
+              onClick={toggleWake}
+              title="ฟังตลอดเวลา แล้วเริ่มรับคำสั่งเมื่อได้ยินคำว่า จาร์วิส"
+              className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+            >
+              <span className={`relative h-4 w-7 rounded-full transition-colors ${wake.enabled ? 'bg-sky-600' : 'bg-slate-300 dark:bg-slate-700'}`}>
+                <span className={`absolute top-0.5 left-0.5 size-3 rounded-full bg-white transition-transform ${wake.enabled ? 'translate-x-3' : ''}`} />
+              </span>
+              โหมดปลุก
+            </button>
+          )}
           {speaking && (
             <button onClick={quiet} className="text-sm text-sky-700 hover:text-sky-900 dark:text-sky-300 dark:hover:text-sky-100">
               หยุดพูด
@@ -180,9 +220,21 @@ export function ChatPanel() {
         </div>
       )}
 
-      {(mic.error || (speaking && missingThaiVoice && !usesServerVoice())) && (
+      {wake.enabled && (
+        <div aria-live="polite" className="flex items-center gap-2 border-t border-slate-200 px-4 py-2 text-xs dark:border-slate-800">
+          <span
+            className={`size-2 shrink-0 rounded-full ${
+              wake.mode === 'command' && !busy && !speaking ? 'animate-pulse bg-red-500' : busy || speaking ? 'bg-slate-400' : 'bg-emerald-500'
+            }`}
+          />
+          <span className={wake.mode === 'command' && !busy && !speaking ? 'font-medium text-red-700 dark:text-red-300' : 'text-slate-500'}>{wakeStatus}</span>
+          {wake.heard && <span className="min-w-0 truncate text-slate-400">“{wake.heard}”</span>}
+        </div>
+      )}
+
+      {(mic.error || wake.error || (speaking && missingThaiVoice && !usesServerVoice())) && (
         <p role="alert" className="border-t border-slate-200 px-4 py-2 text-xs text-amber-800 dark:border-slate-800 dark:text-amber-300">
-          {mic.error ?? 'เครื่องนี้ไม่มีเสียงอ่านภาษาไทย ตั้ง TTS_ENGINE=edge ใน .env หรือเปิดด้วย Microsoft Edge'}
+          {mic.error ?? wake.error ?? 'เครื่องนี้ไม่มีเสียงอ่านภาษาไทย ตั้ง TTS_ENGINE=edge ใน .env หรือเปิดด้วย Microsoft Edge'}
         </p>
       )}
 

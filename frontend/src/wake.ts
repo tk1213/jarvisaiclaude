@@ -1,0 +1,241 @@
+import { useEffect, useState } from 'react'
+import { ERRORS, LANG, recognitionCtor, speak, type Recognition } from './voice'
+
+// "Hey Jarvis" as the Thai recognizer tends to write it: จาร์วิส, จาวิส, จาร์วิด, Jarvis…
+const WAKE_WORD = /(?:(?:hey|เฮ้|เฮ|เฮย)\s*)?(?:jarvis|จา(?:ร์|ร)?วิ(?:ส|ซ|ด|ท|ต))/i
+// "Jarvis หยุดการทำงาน", "stop Jarvis": turns hands-free mode off.
+const STOP_WORDS = /(?:หยุดการทำงาน|หยุดทำงาน|หยุดฟัง|ปิดโหมดปลุก|\bstop\b|สต็อป|สต๊อป|สตอป)/i
+// How long to wait for the command after the wake word (or after JARVIS answers).
+export const COMMAND_WINDOW_MS = 8000
+const FATAL_ERRORS = new Set(['not-allowed', 'service-not-allowed', 'audio-capture'])
+
+export type WakeMode = 'waiting' | 'command'
+
+/** The command in a sentence that contains the wake word ("จาร์วิส เปิดไฟ" → "เปิดไฟ"), or null without it. */
+export function findWakeWord(text: string): { command: string } | null {
+  const m = WAKE_WORD.exec(text)
+  if (!m) return null
+  return { command: text.slice(m.index + m[0].length).replace(/^[\s,.!?]+/, '').trim() }
+}
+
+/** True for a stop phrase addressed to JARVIS (or said while it's already listening for a command). */
+export function isStopCommand(text: string, awake: boolean): boolean {
+  return STOP_WORDS.test(text) && (awake || findWakeWord(text) !== null)
+}
+
+interface Callbacks {
+  onStop: () => void
+  onMode: (mode: WakeMode) => void
+  onHeard: (text: string) => void
+  onWake: () => void
+  onFatal: (message: string) => void
+}
+
+/**
+ * Continuous listening for the wake word. The browser ends recognition sessions on its own
+ * (silence, time limits, network), so it restarts until paused.
+ */
+class WakeListener {
+  private rec: Recognition | null = null
+  private mode: WakeMode = 'waiting'
+  private timer: number | undefined
+  private running = false
+  private restartDelay = 300
+  private cb: Callbacks
+  private onCommand: (text: string) => void = () => {}
+
+  constructor(cb: Callbacks) {
+    this.cb = cb
+  }
+
+  /** Updated by the component on every render so commands go to the current conversation. */
+  setOnCommand(fn: (text: string) => void) {
+    this.onCommand = fn
+  }
+
+  resume() {
+    this.running = true
+    this.listen()
+  }
+
+  pause() {
+    this.running = false
+    this.rec?.abort()
+    this.rec = null
+    this.cb.onHeard('')
+  }
+
+  /** Take the next sentence as a command without the wake word (mic button, or a follow-up after a reply). */
+  expectCommand() {
+    this.setMode('command')
+  }
+
+  private setMode(mode: WakeMode) {
+    window.clearTimeout(this.timer)
+    this.mode = mode
+    this.cb.onMode(mode)
+    if (mode === 'command') this.timer = window.setTimeout(() => this.setMode('waiting'), COMMAND_WINDOW_MS)
+  }
+
+  private listen() {
+    const Ctor = recognitionCtor()
+    if (!Ctor || this.rec || !this.running) return
+    const r = new Ctor()
+    r.lang = LANG
+    r.continuous = true
+    r.interimResults = true
+    r.onresult = (e) => {
+      let interim = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const res = e.results[i]
+        if (res.isFinal) this.handle(res[0].transcript)
+        else interim += res[0].transcript
+      }
+      this.cb.onHeard(interim)
+    }
+    r.onerror = (e) => {
+      if (FATAL_ERRORS.has(e.error)) {
+        this.running = false
+        this.cb.onFatal(ERRORS[e.error])
+      } else if (e.error === 'network') {
+        this.restartDelay = Math.min(this.restartDelay * 2, 10_000)
+      }
+      // 'no-speech' and 'aborted' are routine: onend restarts (or not, when paused).
+    }
+    r.onend = () => {
+      if (this.rec === r) this.rec = null
+      this.cb.onHeard('')
+      if (this.running) window.setTimeout(() => this.listen(), this.restartDelay)
+    }
+    this.rec = r
+    try {
+      r.start()
+    } catch {
+      this.rec = null
+    }
+  }
+
+  private handle(transcript: string) {
+    this.restartDelay = 300
+    const text = transcript.trim()
+    if (!text) return
+    if (isStopCommand(text, this.mode === 'command')) {
+      this.setMode('waiting')
+      this.running = false
+      this.rec?.abort()
+      this.cb.onStop()
+      return
+    }
+    if (this.mode === 'command') {
+      const again = findWakeWord(text)
+      if (again && again.command.length < 2) {
+        // Just the wake word again: keep listening for the command.
+        this.cb.onWake()
+        this.setMode('command')
+        return
+      }
+      this.setMode('waiting')
+      // Saying the wake word again while it's already listening shouldn't end up in the command.
+      this.onCommand(findWakeWord(text)?.command || text)
+      return
+    }
+    const wake = findWakeWord(text)
+    if (!wake) return
+    this.cb.onWake()
+    if (wake.command.length >= 2) this.onCommand(wake.command)
+    else this.setMode('command')
+  }
+}
+
+let audioCtx: AudioContext | null = null
+
+/** A short rising "ding" that says JARVIS is listening. */
+export function chime() {
+  try {
+    audioCtx ??= new AudioContext()
+    void audioCtx.resume()
+    const t = audioCtx.currentTime
+    const osc = audioCtx.createOscillator()
+    const gain = audioCtx.createGain()
+    osc.frequency.setValueAtTime(880, t)
+    osc.frequency.setValueAtTime(1320, t + 0.09)
+    gain.gain.setValueAtTime(0.0001, t)
+    gain.gain.exponentialRampToValueAtTime(0.2, t + 0.01)
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.28)
+    osc.connect(gain).connect(audioCtx.destination)
+    osc.start(t)
+    osc.stop(t + 0.3)
+  } catch {
+    // no audio output available; the status text still shows it's listening
+  }
+}
+
+const STORAGE_KEY = 'jarvis.wake'
+
+function loadEnabled(): boolean {
+  try {
+    return localStorage.getItem(STORAGE_KEY) === 'on'
+  } catch {
+    return false
+  }
+}
+
+function saveEnabled(on: boolean) {
+  try {
+    localStorage.setItem(STORAGE_KEY, on ? 'on' : 'off')
+  } catch {
+    // not remembered across reloads; fine
+  }
+}
+
+/** Always-on "Hey Jarvis" listening, paused while JARVIS is thinking or talking. */
+export function useWakeWord(onCommand: (text: string) => void, paused: boolean) {
+  const [enabled, setEnabledState] = useState(loadEnabled)
+  const [mode, setMode] = useState<WakeMode>('waiting')
+  const [heard, setHeard] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [listener] = useState(
+    () =>
+      new WakeListener({
+        onMode: setMode,
+        onHeard: setHeard,
+        onWake: chime,
+        onStop: () => {
+          saveEnabled(false)
+          setEnabledState(false)
+          speak('ปิดโหมดปลุกแล้วค่ะ')
+        },
+        onFatal: (message) => {
+          setError(message)
+          setEnabledState(false)
+        },
+      }),
+  )
+
+  useEffect(() => {
+    listener.setOnCommand(onCommand)
+  }, [listener, onCommand])
+
+  useEffect(() => {
+    if (enabled && !paused) listener.resume()
+    else listener.pause()
+  }, [enabled, paused, listener])
+
+  useEffect(() => () => listener.pause(), [listener])
+
+  function setEnabled(on: boolean) {
+    saveEnabled(on)
+    setError(null)
+    setEnabledState(on)
+  }
+
+  return {
+    enabled,
+    setEnabled,
+    mode,
+    heard,
+    error,
+    /** Listen for a command right away (mic button, or a follow-up after JARVIS answers). */
+    expectCommand: () => listener.expectCommand(),
+  }
+}

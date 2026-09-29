@@ -10,7 +10,7 @@ interface RecognitionEvent {
   resultIndex: number
   results: ArrayLike<RecognitionResult>
 }
-interface Recognition {
+export interface Recognition {
   lang: string
   interimResults: boolean
   continuous: boolean
@@ -21,11 +21,11 @@ interface Recognition {
   stop(): void
   abort(): void
 }
-type RecognitionCtor = new () => Recognition
+export type RecognitionCtor = new () => Recognition
 
-const LANG = 'th-TH'
+export const LANG = 'th-TH'
 
-function recognitionCtor(): RecognitionCtor | null {
+export function recognitionCtor(): RecognitionCtor | null {
   const w = window as unknown as { SpeechRecognition?: RecognitionCtor; webkitSpeechRecognition?: RecognitionCtor }
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null
 }
@@ -33,7 +33,7 @@ function recognitionCtor(): RecognitionCtor | null {
 export const sttSupported = typeof window !== 'undefined' && recognitionCtor() !== null
 export const ttsSupported = typeof window !== 'undefined' && 'speechSynthesis' in window
 
-const ERRORS: Record<string, string> = {
+export const ERRORS: Record<string, string> = {
   'not-allowed': 'เบราว์เซอร์ไม่ได้รับอนุญาตให้ใช้ไมค์ กดไอคอนแม่กุญแจที่แถบที่อยู่แล้วอนุญาตไมโครโฟน',
   'service-not-allowed': 'เบราว์เซอร์ไม่อนุญาตให้ใช้ระบบแปลงเสียง',
   'audio-capture': 'ไม่พบไมโครโฟน ตรวจว่าเสียบไมค์แล้ว',
