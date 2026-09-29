@@ -21,8 +21,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.core.messages import InboundMessage
-from app.core.prompts import SYSTEM_PROMPT
+from app.core.messages import Channel, InboundMessage
+from app.core.prompts import SYSTEM_PROMPT, VOICE_HINT
 from app.core.tools import TOOLS, ToolContext, run_tool
 from app.models import ChatMessage, User
 
@@ -81,10 +81,13 @@ class Orchestrator:
         )
         return [{"role": r.role, "content": r.content["blocks"]} for r in rows]
 
-    def _user_turn(self, text: str) -> dict:
-        # The current time lives in the user turn, not the system prompt, so the prefix stays stable.
+    def _user_turn(self, text: str, channel: Channel) -> dict:
+        # The current time (and channel hints) live in the user turn, not the system prompt, so the prefix stays stable.
         now = datetime.now(self.tz).strftime("%Y-%m-%d %H:%M (%A)")
-        return {"role": "user", "content": [{"type": "text", "text": f"[เวลาปัจจุบัน: {now}]\n{text}"}]}
+        header = f"[เวลาปัจจุบัน: {now}]"
+        if channel == Channel.voice:
+            header += f"\n{VOICE_HINT}"
+        return {"role": "user", "content": [{"type": "text", "text": f"{header}\n{text}"}]}
 
     def _call(self, messages: list[dict]):
         return self.client.beta.messages.create(
@@ -102,7 +105,7 @@ class Orchestrator:
     def handle(self, db: Session, tuya, user: User, msg: InboundMessage) -> CoreReply:
         session_id = msg.session_id or uuid.uuid4().hex
         history = self._history(db, user, session_id)
-        new_messages = [self._user_turn(msg.text)]
+        new_messages = [self._user_turn(msg.text, msg.channel)]
         ctx = ToolContext(db=db, tuya=tuya, user=user)
         calls: list[ToolCallRecord] = []
 

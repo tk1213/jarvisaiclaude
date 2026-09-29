@@ -194,6 +194,19 @@ def test_chat_endpoint(client, owner_headers, monkeypatch):
     assert body["reply"] == "สวัสดีครับ" and body["session_id"] and body["tool_calls"] == []
 
 
+def test_voice_channel_asks_for_a_speakable_reply(client, owner_headers, monkeypatch):
+    from app.core.prompts import VOICE_HINT
+
+    fake = FakeClaude([message([text("a")], "end_turn"), message([text("b")], "end_turn")])
+    monkeypatch.setattr(orch_module, "_orchestrator", make(fake))
+    client.post("/core/chat", json={"text": "เปิดแอร์", "channel": "voice"}, headers=owner_headers)
+    client.post("/core/chat", json={"text": "เปิดแอร์"}, headers=owner_headers)
+    spoken, typed = (r["messages"][-1]["content"][0]["text"] for r in fake.requests)
+    assert VOICE_HINT in spoken and VOICE_HINT not in typed
+    assert fake.requests[0]["system"] == fake.requests[1]["system"]  # prefix stays stable
+    assert client.post("/core/chat", json={"text": "x", "channel": "line"}, headers=owner_headers).status_code == 422
+
+
 def test_chat_endpoint_without_key(client, owner_headers, monkeypatch):
     monkeypatch.setattr(orch_module, "_orchestrator", None)
     r = client.post("/core/chat", json={"text": "สวัสดี"}, headers=owner_headers)

@@ -24,7 +24,8 @@
   - แก้ชื่อ/ห้องบนการ์ด, ปุ่มอัปเดตอุปกรณ์พร้อมสรุป, ป้ายเตือนสิทธิ์ Read
   - คุมแอร์ผ่านรีโมท IR (Dashboard + tool `control_air_conditioner`), อ่านอุณหภูมิ/ความชื้นจากตัวรีโมท IR
 - [ ] LINE OA (Messaging API webhook + Flex Message)
-- [ ] Voice โหมดพื้นฐาน (STT → Core → TTS)
+- [x] Voice โหมดพื้นฐาน (STT → Core → TTS) ปุ่มไมค์ในกล่องแชทบน Dashboard ใช้ Web Speech API ของเบราว์เซอร์
+  - ส่ง `channel: "voice"` ให้ JARVIS ตอบสั้นแบบอ่านออกเสียงได้, พูดแทรกเพื่อหยุดเสียงตอบได้
 
 ## เฟส 2: FlowAccount + Persona เลขา (3-4 สัปดาห์)
 

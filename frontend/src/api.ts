@@ -112,8 +112,8 @@ export const api = {
   setAc: (id: number, changes: AcChange) => request<Device>('POST', `/devices/${id}/ac`, changes),
   scenes: () => request<Scene[]>('GET', '/scenes'),
   triggerScene: (sceneId: string) => request<void>('POST', `/scenes/${encodeURIComponent(sceneId)}/trigger`),
-  chat: (text: string, sessionId: string | null) =>
-    request<ChatResponse>('POST', '/core/chat', { text, session_id: sessionId }),
+  chat: (text: string, sessionId: string | null, channel: 'dashboard' | 'voice' = 'dashboard') =>
+    request<ChatResponse>('POST', '/core/chat', { text, session_id: sessionId, channel }),
 }
 
 export function deviceStreamUrl(token: string): string {
