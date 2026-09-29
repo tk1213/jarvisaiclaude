@@ -46,6 +46,7 @@ STATUS_EVENT = {"devId": "mock-light-living", "status": [{"code": "switch_led", 
 
 def test_endpoints_and_password():
     assert default_ws_endpoint("https://openapi.tuyaus.com") == "wss://mqe.tuyaus.com:8285/"
+    assert default_ws_endpoint("https://openapi-sg.iotbing.com") == "wss://mqe-sg.iotbing.com:8285/"
     url = pulsar_url("wss://mqe.tuyaus.com:8285/", "abc", "event")
     assert url == (
         "wss://mqe.tuyaus.com:8285/ws/v2/consumer/persistent/abc/out/event/abc-sub"

@@ -22,9 +22,15 @@ log = logging.getLogger(__name__)
 
 
 def default_ws_endpoint(openapi_endpoint: str) -> str:
-    """https://openapi.tuyaus.com -> wss://mqe.tuyaus.com:8285/"""
+    """Map the OpenAPI host to its Pulsar host, keeping any region suffix:
+
+    https://openapi.tuyaus.com        -> wss://mqe.tuyaus.com:8285/
+    https://openapi-sg.iotbing.com    -> wss://mqe-sg.iotbing.com:8285/
+    """
     host = urlparse(openapi_endpoint).hostname or ""
-    return f"wss://mqe.{host.removeprefix('openapi.')}:8285/"
+    if host.startswith("openapi"):
+        host = "mqe" + host.removeprefix("openapi")
+    return f"wss://{host}:8285/"
 
 
 def pulsar_url(ws_endpoint: str, access_id: str, env: str) -> str:
