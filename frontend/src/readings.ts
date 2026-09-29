@@ -18,7 +18,9 @@ const READINGS: Record<string, { label: string; format: (v: number) => string }>
   cur_voltage: { label: 'แรงดัน', format: (v) => `${(v / 10).toFixed(1)} V` },
   cur_current: { label: 'กระแส', format: (v) => `${v} mA` },
   va_temperature: { label: 'อุณหภูมิ', format: (v) => `${(v / 10).toFixed(1)} °C` },
-  temp_current: { label: 'อุณหภูมิ', format: (v) => `${v} °C` },
+  // Some devices (e.g. wnykq IR hubs) report temp_current ×10, others in whole °C. No room
+  // is hotter than 60 °C, so a larger number must be the scaled form.
+  temp_current: { label: 'อุณหภูมิ', format: (v) => `${(v > 60 ? v / 10 : v).toFixed(1)} °C` },
   va_humidity: { label: 'ความชื้น', format: (v) => `${v} %` },
   humidity_value: { label: 'ความชื้น', format: (v) => `${v} %` },
   temp_set: { label: 'ตั้งอุณหภูมิ', format: (v) => `${v} °C` },
