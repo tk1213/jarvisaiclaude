@@ -149,7 +149,7 @@ export function ChatPanel() {
                     : 'bg-slate-100 text-slate-500 hover:text-slate-800 dark:bg-slate-800 dark:hover:text-slate-200'
                 }`}
               >
-                {wake.otherTabHasMic ? '🎙 ใช้อยู่แท็บอื่น' : wake.micOn ? '🎙 รอ Hey Jarvis' : '🎙 ปิด'}
+                {wake.otherTabHasMic ? '🎙 ใช้อยู่แท็บอื่น' : wake.micOn ? '🎙 รอ Hey Jarvis' : '🎙 เปิดไมค์รอเรียก'}
               </button>
               <button
                 role="switch"
@@ -182,6 +182,7 @@ export function ChatPanel() {
         {messages.length === 0 && (
           <div className="space-y-3 text-sm text-slate-500">
             <p>{sttSupported ? 'พิมพ์ หรือกดไมค์แล้วพูดสั่งงานบ้านได้เลย เช่น' : 'สั่งงานบ้านได้ด้วยภาษาพูด เช่น'}</p>
+            {sttSupported && !wake.micOn && <p>อยากเรียกด้วยเสียง "Hey Jarvis" กดปุ่ม 🎙 เปิดไมค์รอเรียก ด้านบนก่อน</p>}
             <div className="flex flex-wrap gap-2">
               {SUGGESTIONS.map((s) => (
                 <button
