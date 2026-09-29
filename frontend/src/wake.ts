@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ERRORS, LANG, recognitionCtor, speak, type Recognition } from './voice'
+import { ERRORS, LANG, recognitionCtor, type Recognition } from './voice'
 
 // "Jarvis" as the Thai recognizer tends to write it: จาร์วิส, จาวิส, จาร์วิด, Jarvis…
 const NAME = '(?:jarvis|จา(?:ร์|ร)?วิ(?:ส|ซ|ด|ท|ต))'
@@ -146,9 +146,8 @@ class WakeListener {
     const text = transcript.trim()
     if (!text) return
     if (isStopCommand(text, this.mode === 'command')) {
+      // Cancel whatever it was listening for and go back to waiting for "Hey Jarvis"; the mic stays on.
       this.setMode('waiting')
-      this.running = false
-      this.rec?.abort()
       this.cb.onStop()
       return
     }
@@ -175,16 +174,17 @@ class WakeListener {
 
 let audioCtx: AudioContext | null = null
 
-/** A short rising "ding" that says JARVIS is listening. */
-export function chime() {
+/** A short rising "ding" when JARVIS starts listening for a command; falling when it stops. */
+export function chime(direction: 'up' | 'down' = 'up') {
   try {
     audioCtx ??= new AudioContext()
     void audioCtx.resume()
     const t = audioCtx.currentTime
     const osc = audioCtx.createOscillator()
     const gain = audioCtx.createGain()
-    osc.frequency.setValueAtTime(880, t)
-    osc.frequency.setValueAtTime(1320, t + 0.09)
+    const [first, second] = direction === 'up' ? [880, 1320] : [1320, 660]
+    osc.frequency.setValueAtTime(first, t)
+    osc.frequency.setValueAtTime(second, t + 0.09)
     gain.gain.setValueAtTime(0.0001, t)
     gain.gain.exponentialRampToValueAtTime(0.2, t + 0.01)
     gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.28)
@@ -225,12 +225,8 @@ export function useWakeWord(onCommand: (text: string) => void, paused: boolean) 
       new WakeListener({
         onMode: setMode,
         onHeard: setHeard,
-        onWake: chime,
-        onStop: () => {
-          saveEnabled(false)
-          setEnabledState(false)
-          speak('ปิดโหมดปลุกแล้วค่ะ')
-        },
+        onWake: () => chime(),
+        onStop: () => chime('down'),
         onFatal: (message) => {
           setError(message)
           setEnabledState(false)

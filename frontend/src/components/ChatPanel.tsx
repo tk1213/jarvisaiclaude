@@ -102,7 +102,7 @@ export function ChatPanel() {
     : busy
       ? 'JARVIS กำลังคิด…'
       : wake.mode === 'command'
-        ? 'ฟังคำสั่งอยู่… พูดได้เลย'
+        ? 'ฟังคำสั่งอยู่… พูดได้เลย (พูด "Stop Jarvis" เพื่อยกเลิก)'
         : 'รอคำว่า "เฮ้ จาร์วิส" หรือ "Hey Jarvis"'
 
   function quiet() {
