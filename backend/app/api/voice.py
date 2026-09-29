@@ -1,7 +1,8 @@
+import asyncio
 import logging
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
@@ -35,14 +36,43 @@ def voice_config(_: User = Depends(get_current_user)):
     return VoiceConfig(engine="browser", voice=None)
 
 
-def _parts(text: str):
+_CACHE_SECONDS = 120
+_cache: dict[tuple, tuple[float, bytes]] = {}
+_inflight: dict[tuple, asyncio.Future] = {}
+
+
+async def _audio_for(text: str) -> bytes:
+    """The MP3 for text, synthesized once: browsers may request the same <audio> URL more than once,
+    and every extra synthesis is another call to the voice service (which then tends to fail)."""
     s = get_settings()
     if s.tts_engine != "edge":
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "server voice is off (TTS_ENGINE=browser)")
-    log.info("speaking with %s rate=%s pitch=%s numbers=%s", s.tts_voice, s.tts_rate, s.tts_pitch, s.tts_number_rate)
-    return edge_voice.speak_parts(
-        text, voice=s.tts_voice, rate=s.tts_rate, pitch=s.tts_pitch, number_rate=s.tts_number_rate
-    )
+    key = (text, s.tts_voice, s.tts_rate, s.tts_pitch, s.tts_number_rate)
+    now = time.monotonic()
+    for k in [k for k, (at, _) in _cache.items() if now - at > _CACHE_SECONDS]:
+        del _cache[k]
+    if key in _cache:
+        return _cache[key][1]
+    if key in _inflight:
+        return await asyncio.shield(_inflight[key])
+
+    future = asyncio.get_running_loop().create_future()
+    _inflight[key] = future
+    try:
+        log.info("speaking with %s rate=%s pitch=%s numbers=%s", s.tts_voice, s.tts_rate, s.tts_pitch, s.tts_number_rate)
+        started = time.perf_counter()
+        parts = edge_voice.speak_parts(text, voice=s.tts_voice, rate=s.tts_rate, pitch=s.tts_pitch, number_rate=s.tts_number_rate)
+        audio = b"".join([chunk async for chunk in parts])
+        log.info("voice ready in %.1fs", time.perf_counter() - started)
+    except Exception as e:
+        future.set_exception(e)
+        future.exception()  # mark retrieved when nobody else was waiting
+        raise
+    finally:
+        _inflight.pop(key, None)
+    future.set_result(audio)
+    _cache[key] = (time.monotonic(), audio)
+    return audio
 
 
 def _failed(e: Exception) -> HTTPException:
@@ -59,9 +89,8 @@ def last_error(_: User = Depends(get_current_user)):
 @router.post("/tts", responses={200: {"content": {"audio/mpeg": {}}}})
 async def tts(body: TtsRequest, _: User = Depends(get_current_user)):
     """Speak text with the configured voice (the whole MP3 at once)."""
-    parts = _parts(body.text)
     try:
-        audio = b"".join([chunk async for chunk in parts])
+        audio = await _audio_for(body.text)
     except edge_voice.TtsError as e:
         raise _failed(e) from None
     return Response(content=audio, media_type="audio/mpeg")
@@ -69,7 +98,7 @@ async def tts(body: TtsRequest, _: User = Depends(get_current_user)):
 
 @router.get("/tts", responses={200: {"content": {"audio/mpeg": {}}}})
 async def tts_stream(text: str = Query(min_length=1, max_length=1500), token: str = ""):
-    """Same audio, streamed so an <audio> element starts playing before the reply is fully synthesized.
+    """Same audio for an <audio> element (numbers slowed, parts synthesized in parallel).
 
     <audio src> can't send headers, so the JWT comes as ?token= (like the WebSocket).
     """
@@ -80,20 +109,9 @@ async def tts_stream(text: str = Query(min_length=1, max_length=1500), token: st
     with SessionLocal() as db:
         if db.get(User, user_id) is None:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid token")
-    parts = _parts(text)
     try:
-        first = await anext(parts)  # fail with a status code while we still can
+        audio = await _audio_for(text)
     except edge_voice.TtsError as e:
         raise _failed(e) from None
-    except StopAsyncIteration:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "nothing to say") from None
-
-    async def rest():
-        yield first
-        try:
-            async for chunk in parts:
-                yield chunk
-        except edge_voice.TtsError as e:
-            log.warning("voice stream cut short: %s", e)
-
-    return StreamingResponse(rest(), media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
+    # A complete body with a known length: the <audio> element plays it without re-requesting.
+    return Response(content=audio, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})

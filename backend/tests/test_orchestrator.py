@@ -244,3 +244,22 @@ def test_user_turn_carries_device_list(home):
     turn = fake.requests[0]["messages"][-1]["content"][0]["text"]
     plug = devices["ปลั๊กกาต้มน้ำ"]
     assert f"device_id={plug.id} ปลั๊กกาต้มน้ำ" in turn and turn.endswith("เปิดไฟ")
+
+
+def test_web_search_pause_turn_is_resumed(home):
+    db, tuya, user, _ = home
+    search = {"type": "server_tool_use", "id": "srvtoolu_1", "name": "web_search", "input": {"query": "ราคาทองวันนี้"}}
+    fake = FakeClaude(
+        [
+            message([search], "pause_turn"),
+            message([text("ทองคำแท่งขายออก "), text("41,200 บาท (สมาคมค้าทองคำ) ค่ะ")], "end_turn"),
+        ]
+    )
+    web_search = {"type": "web_search_20260209", "name": "web_search", "max_uses": 3}
+    orch = Orchestrator(fake, model="claude-opus-5-5", effort="low", max_tool_rounds=4, timezone="Asia/Bangkok", web_search=web_search)
+    reply = ask(orch, db, tuya, user, "ราคาทองวันนี้เท่าไหร่")
+    assert reply.text == "ทองคำแท่งขายออก 41,200 บาท (สมาคมค้าทองคำ) ค่ะ"
+    assert fake.requests[0]["tools"][-1] == web_search
+    # The paused turn goes back unchanged, with no extra user message, so the server resumes it.
+    resumed = fake.requests[1]["messages"]
+    assert resumed[-1]["role"] == "assistant" and resumed[-1]["content"][0]["type"] == "server_tool_use"

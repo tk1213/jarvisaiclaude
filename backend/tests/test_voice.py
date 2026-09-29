@@ -1,5 +1,13 @@
+import pytest
+
+from app.api import voice as voice_api
 from app.config import get_settings
 from app.integrations import edge_voice
+
+
+@pytest.fixture(autouse=True)
+def fresh_audio_cache():
+    voice_api._cache.clear()
 
 
 class FakeCommunicate:
@@ -107,3 +115,12 @@ def test_numbers_are_spoken_slower_and_streamed(client, owner_headers, monkeypat
 
 def test_stream_requires_token(client):
     assert client.get("/voice/tts", params={"text": "x", "token": "bad"}).status_code == 401
+
+
+def test_repeated_requests_reuse_one_synthesis(client, owner_headers, monkeypatch):
+    monkeypatch.setattr(edge_voice.edge_tts, "Communicate", FakeCommunicate)
+    FakeCommunicate.calls.clear()
+    token = owner_headers["Authorization"].split()[1]
+    for _ in range(3):
+        assert client.get("/voice/tts", params={"text": "สวัสดีค่ะ", "token": token}).content == b"mp3"
+    assert len(FakeCommunicate.calls) == 1

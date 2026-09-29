@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     claude_effort: Literal["low", "medium", "high", "xhigh", "max"] = "low"
     claude_max_tool_rounds: int = 8
     timezone: str = "Asia/Bangkok"
+    # Anthropic's server-side web search, for outside questions (stocks, gold, weather, films, restaurants).
+    web_search_enabled: bool = True
+    web_search_max_uses: int = 3  # per reply; each search adds a few seconds
+    web_search_country: str = "TH"
 
     # Spoken replies use Microsoft Edge's online neural voices (free, no key); "browser" = the browser's own voices.
     tts_engine: Literal["edge", "browser"] = "edge"

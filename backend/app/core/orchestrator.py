@@ -64,7 +64,8 @@ def _block_dict(block) -> dict:
 
 
 def _reply_text(content) -> str:
-    return "\n".join(b.text for b in content if b.type == "text").strip()
+    # Web search answers arrive as several text blocks (one per cited span) that form one reply.
+    return "".join(b.text for b in content if b.type == "text").strip()
 
 
 def device_snapshot(db: Session) -> str:
@@ -80,8 +81,10 @@ def device_snapshot(db: Session) -> str:
 
 
 class Orchestrator:
-    def __init__(self, client, *, model: str, effort: str, max_tool_rounds: int, timezone: str):
+    def __init__(self, client, *, model: str, effort: str, max_tool_rounds: int, timezone: str, web_search: dict | None = None):
         self.client = client
+        # The tool list stays the same for the whole process so the cached prefix does too.
+        self.tools = TOOLS + ([web_search] if web_search else [])
         self.model = model
         self.effort = effort
         self.max_tool_rounds = max_tool_rounds
@@ -110,7 +113,7 @@ class Orchestrator:
             model=self.model,
             max_tokens=16000,
             system=SYSTEM_PROMPT,
-            tools=TOOLS,
+            tools=self.tools,
             messages=messages,
             thinking=_THINKING,
             output_config={"effort": self.effort},
@@ -136,6 +139,11 @@ class Orchestrator:
                 return CoreReply(session_id, "ขออภัยค่ะ เรื่องนี้ JARVIS ช่วยไม่ได้", calls)
 
             new_messages.append({"role": "assistant", "content": [_block_dict(b) for b in response.content]})
+            # Searches run on Anthropic's side; list them too so the chat shows what JARVIS did.
+            calls += [ToolCallRecord(b.name, dict(b.input), True) for b in response.content if b.type == "server_tool_use"]
+            if response.stop_reason == "pause_turn":
+                # A long server-side web search paused; sending the turn back as-is resumes it.
+                continue
             tool_uses = [b for b in response.content if b.type == "tool_use"]
             if response.stop_reason != "tool_use" or not tool_uses:
                 break
@@ -190,5 +198,15 @@ def get_orchestrator() -> Orchestrator:
             effort=s.claude_effort,
             max_tool_rounds=s.claude_max_tool_rounds,
             timezone=s.timezone,
+            web_search=(
+                {
+                    "type": "web_search_20260209",
+                    "name": "web_search",
+                    "max_uses": s.web_search_max_uses,
+                    "user_location": {"type": "approximate", "country": s.web_search_country, "timezone": s.timezone},
+                }
+                if s.web_search_enabled
+                else None
+            ),
         )
     return _orchestrator

@@ -17,6 +17,7 @@ const TOOL_LABELS: Record<string, string> = {
   control_air_conditioner: 'สั่งแอร์',
   list_scenes: 'ดู scene',
   set_scene: 'สั่ง scene',
+  web_search: 'ค้นเว็บ',
 }
 
 const GREETING = 'ค่ะ มีอะไรให้ช่วยไหมคะ'
