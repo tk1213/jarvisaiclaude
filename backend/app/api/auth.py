@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.db import get_db
 from app.deps import get_current_user, require_admin
 from app.models import User
+from app.ratelimit import limiter
 from app.schemas import LoginRequest, TokenResponse, UserCreate, UserOut
 from app.security import create_access_token, hash_password, verify_password
 
@@ -37,7 +39,9 @@ def bootstrap(body: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/auth/login", response_model=TokenResponse)
-def login(body: LoginRequest, db: Session = Depends(get_db)):
+def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
+    client_ip = request.client.host if request.client else "unknown"
+    limiter.hit(f"login:{client_ip}:{body.username}", get_settings().rate_limit_login_per_minute)
     user = db.scalar(select(User).where(User.username == body.username))
     if user is None or not verify_password(body.password, user.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid username or password")

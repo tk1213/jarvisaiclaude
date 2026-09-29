@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from app.db import Base, engine  # noqa: E402
 from app.integrations.tuya import get_tuya_client  # noqa: E402
 from app.main import app  # noqa: E402
+from app.ratelimit import limiter  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -22,6 +23,7 @@ def fresh_state():
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     get_tuya_client.cache_clear()
+    limiter.reset()
     yield
 
 

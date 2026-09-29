@@ -16,7 +16,8 @@ backend/
     security.py              รหัสผ่าน, JWT, เข้ารหัส token
     api/                     REST endpoints (auth, devices, scenes)
     services/devices.py      logic ควบคุมอุปกรณ์ (ใช้ร่วมกับ LLM tools ในเฟส 1)
-    integrations/tuya/       Tuya OpenAPI client + mock
+    integrations/tuya/       Tuya OpenAPI client, Pulsar (event เรียลไทม์) + mock
+    ratelimit.py             จำกัดจำนวนคำสั่ง/การ login ต่อนาที
     core/messages.py         รูปแบบข้อความกลางของทุกช่องทาง
     scripts/tuya_check.py    ทดสอบคุม Tuya ตรงๆ จาก command line
   tests/
@@ -78,6 +79,7 @@ curl -X POST localhost:8000/devices/1/power -H "Authorization: Bearer $TOKEN" \
 
 1. สมัคร [Tuya IoT Platform](https://iot.tuya.com) แล้วสร้าง **Cloud Project** (Smart Home, เลือก data center ให้ตรงกับบัญชีแอป)
 2. เปิด API services: IoT Core, Authorization, Smart Home Scene Linkage
+   และเปิด **Message Service** เพื่อรับสถานะอุปกรณ์แบบเรียลไทม์ผ่าน Pulsar
 3. ที่ **Devices > Link Tuya App Account** สแกน QR ด้วยแอป Tuya Smart / Smart Life
 4. ใส่ `TUYA_ACCESS_ID`, `TUYA_ACCESS_SECRET`, `TUYA_ENDPOINT`, `TUYA_USER_UID` ใน `.env` แล้วตั้ง `TUYA_MODE=live`
 5. ทดสอบโดยยังไม่ต้องใช้ LLM:
@@ -88,3 +90,12 @@ python -m app.scripts.tuya_check              # รายการอุปก�
 python -m app.scripts.tuya_check on <device_id>
 python -m app.scripts.tuya_check scenes
 ```
+
+เมื่อรัน server ในโหมด `live` ระบบจะต่อ Tuya Pulsar ให้อัตโนมัติ เวลามีคนกดสวิตช์ที่ตัวอุปกรณ์หรือในแอป
+สถานะในตาราง `devices` จะอัปเดตเอง (ดู log `connected to Tuya Pulsar`) ถ้าหลุดจะต่อใหม่เองโดยรอนานขึ้นเรื่อยๆ สูงสุด 60 วินาที
+
+## ความปลอดภัย
+
+- endpoint ที่สั่งอุปกรณ์จำกัด 30 ครั้ง/นาที/ผู้ใช้ และ login จำกัด 5 ครั้ง/นาที ต่อ IP+username (ปรับได้ใน `.env`) เกินแล้วได้ `429`
+- ตัวนับเก็บในหน่วยความจำของ process เดียว ถ้าจะรันหลาย instance ต้องย้ายไป Redis
+- ในโหมด `live` server จะไม่ยอมเริ่มถ้ายังไม่ได้เปลี่ยน `JWT_SECRET`

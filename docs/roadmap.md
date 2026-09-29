@@ -2,7 +2,7 @@
 
 สรุปจากเอกสารสเปคระบบ JARVIS AI (ข้อ 8) พร้อมสถานะปัจจุบัน
 
-## เฟส 0: เตรียมโครงสร้างพื้นฐาน (2-3 สัปดาห์), กำลังทำ
+## เฟส 0: เตรียมโครงสร้างพื้นฐาน (2-3 สัปดาห์), โค้ดครบแล้ว รอทดสอบกับอุปกรณ์จริง
 
 - [x] JARVIS Core backend (FastAPI) + โครง normalize input ของ 3 ช่องทาง (`app/core/messages.py`)
 - [x] Database ตาม Data Model ข้อ 5: `users`, `devices`, `contacts`, `documents_log`, `chat_sessions`, `tokens`
@@ -12,8 +12,8 @@
 - [x] โหมด mock (บ้านจำลอง) สำหรับพัฒนาโดยยังไม่มีอุปกรณ์จริง
 - [ ] สร้าง Cloud Project บน Tuya IoT Platform + link แอป Tuya Smart (ผู้ใช้ทำ)
 - [ ] ทดสอบกับอุปกรณ์จริงด้วย `python -m app.scripts.tuya_check`
-- [ ] Tuya Pulsar รับสถานะอุปกรณ์แบบเรียลไทม์
-- [ ] Rate limit
+- [x] Tuya Pulsar รับสถานะอุปกรณ์แบบเรียลไทม์ (อัปเดต `devices` อัตโนมัติ, reconnect เอง)
+- [x] Rate limit: สั่งอุปกรณ์ต่อผู้ใช้ และ login ต่อ IP+username
 
 ## เฟส 1: 3 ช่องทาง + ควบคุมบ้านด้วย LLM (3-4 สัปดาห์)
 

@@ -73,6 +73,21 @@ def control_device(db: Session, tuya, device: Device, commands: list[dict]) -> D
     return refresh_status(db, tuya, device)
 
 
+def apply_device_event(db: Session, event: dict) -> Device | None:
+    """Apply a Tuya Pulsar event (status report or online/offline) to the stored device."""
+    device_id = event.get("devId")
+    device = db.scalar(select(Device).where(Device.tuya_device_id == device_id)) if device_id else None
+    if device is None:
+        return None
+    if event.get("status"):
+        # Reassign rather than mutate: the JSON column only notices a new object.
+        device.status = {**device.status, **_status_dict(event["status"])}
+    if event.get("bizCode") in ("online", "offline"):
+        device.online = event["bizCode"] == "online"
+    db.commit()
+    return device
+
+
 def power_code(device: Device) -> str:
     for code in POWER_CODES:
         if code in device.status:

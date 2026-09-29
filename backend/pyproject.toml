@@ -12,6 +12,7 @@ dependencies = [
     "pyjwt>=2.8",
     "cryptography>=42",
     "httpx>=0.27",
+    "websockets>=13",
 ]
 
 [project.optional-dependencies]

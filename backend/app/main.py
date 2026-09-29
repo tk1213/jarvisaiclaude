@@ -1,3 +1,6 @@
+import asyncio
+import contextlib
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -6,7 +9,9 @@ from fastapi.responses import JSONResponse
 from app.api import auth, devices
 from app.config import get_settings
 from app.db import init_db
-from app.integrations.tuya import TuyaError
+from app.integrations.tuya import TuyaError, build_pulsar_consumer
+
+logging.basicConfig(level=logging.INFO)
 
 
 @asynccontextmanager
@@ -15,7 +20,14 @@ async def lifespan(_: FastAPI):
     if s.tuya_mode == "live" and s.jwt_secret == "change-me":
         raise RuntimeError("Set JWT_SECRET before running with TUYA_MODE=live")
     init_db()
+
+    consumer = build_pulsar_consumer()
+    task = asyncio.create_task(consumer.run()) if consumer else None
     yield
+    if task:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
 
 
 app = FastAPI(title=get_settings().app_name, lifespan=lifespan)
