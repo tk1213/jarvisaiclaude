@@ -13,6 +13,8 @@ from app.security import decode_access_token
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/voice", tags=["voice"])
+# Why the last reply couldn't be voiced; an <audio> element can't read error bodies, so the page asks here.
+_last_error: str | None = None
 
 
 class VoiceConfig(BaseModel):
@@ -43,6 +45,17 @@ def _parts(text: str):
     )
 
 
+def _failed(e: Exception) -> HTTPException:
+    global _last_error
+    _last_error = str(e)
+    return HTTPException(status.HTTP_502_BAD_GATEWAY, _last_error)
+
+
+@router.get("/last-error")
+def last_error(_: User = Depends(get_current_user)):
+    return {"error": _last_error}
+
+
 @router.post("/tts", responses={200: {"content": {"audio/mpeg": {}}}})
 async def tts(body: TtsRequest, _: User = Depends(get_current_user)):
     """Speak text with the configured voice (the whole MP3 at once)."""
@@ -50,7 +63,7 @@ async def tts(body: TtsRequest, _: User = Depends(get_current_user)):
     try:
         audio = b"".join([chunk async for chunk in parts])
     except edge_voice.TtsError as e:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e)) from None
+        raise _failed(e) from None
     return Response(content=audio, media_type="audio/mpeg")
 
 
@@ -71,7 +84,7 @@ async def tts_stream(text: str = Query(min_length=1, max_length=1500), token: st
     try:
         first = await anext(parts)  # fail with a status code while we still can
     except edge_voice.TtsError as e:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e)) from None
+        raise _failed(e) from None
     except StopAsyncIteration:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, "nothing to say") from None
 

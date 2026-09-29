@@ -95,9 +95,10 @@ export function useSpeechRecognition(onFinal: (text: string) => void) {
   return { listening, interim, error, start, stop }
 }
 
-// Thai female voices, best first: Edge's natural Premwadee, other Microsoft voices, then Google's.
-const PREFERRED_VOICES = [/premwadee/i, /achara/i, /pattara/i, /google/i]
-const MALE_VOICES = /niwat/i
+// Thai female voices, best first: Edge's natural Premwadee, Achara, then Google's.
+const PREFERRED_VOICES = [/premwadee/i, /achara/i, /google/i]
+// Windows' Pattara and Edge's Niwat are male.
+const MALE_VOICES = /niwat|pattara/i
 // A slightly higher, quicker delivery for a bright, youthful sound.
 const PITCH = 1.15
 const RATE = 1.05
@@ -246,15 +247,11 @@ export function speak(text: string, whenDone?: () => void, onFallback?: (reason:
   // Streamed: playback starts while the server is still synthesizing the rest of the reply.
   const url = `/voice/tts?text=${encodeURIComponent(clean)}&token=${encodeURIComponent(getToken() ?? '')}`
   play(url, id, onEnd, () => {
-    // The stream failed before any sound; ask the plain way to learn why (and play it if that works).
+    // The stream failed before any sound; ask why (the server already retried, so don't synthesize again).
     api
-      .tts(clean)
-      .then((blob) => {
-        if (id !== generation) return onEnd?.()
-        const blobUrl = URL.createObjectURL(blob)
-        play(blobUrl, id, onEnd, () => useBrowser('เล่นไฟล์เสียงไม่ได้'), () => URL.revokeObjectURL(blobUrl))
-      })
-      .catch((e: Error) => useBrowser(e.message || 'unknown error'))
+      .voiceLastError()
+      .then((r) => useBrowser(r.error ?? 'เล่นเสียงไม่ได้'))
+      .catch(() => useBrowser('เล่นเสียงไม่ได้'))
   })
 }
 

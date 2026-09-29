@@ -138,6 +138,7 @@ export const api = {
   triggerScene: (sceneId: string) => request<void>('POST', `/scenes/${encodeURIComponent(sceneId)}/trigger`),
   voiceConfig: () => request<VoiceConfig>('GET', '/voice/config'),
   tts: (text: string) => requestBlob('/voice/tts', { text }),
+  voiceLastError: () => request<{ error: string | null }>('GET', '/voice/last-error'),
   chat: (text: string, sessionId: string | null, channel: 'dashboard' | 'voice' = 'dashboard') =>
     request<ChatResponse>('POST', '/core/chat', { text, session_id: sessionId, channel }),
 }

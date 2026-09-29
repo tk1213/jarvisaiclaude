@@ -4,7 +4,8 @@ import { broadcast, ERRORS, isEcho, LANG, recognitionCtor, subscribeVoice, TAB_I
 // "Jarvis" as the Thai recognizer tends to write it: จาร์วิส, จาวิส, จาร์วิด, Jarvis…
 const NAME = '(?:j[ae]r?vis|จ[่้๊๋]?[าะ]?[่้๊๋]?(?:ร์|ร)?วิ[สซดทตชศษ](?:ต์)?)'
 // Only "Hey Jarvis" / "เฮ้ จาร์วิส" wakes it, so just mentioning the name in conversation doesn't.
-const WAKE_WORD = new RegExp(`(?:hey|เฮ้|เฮ|เฮย์|เฮย)\\s*${NAME}`, 'i')
+// Chrome sometimes hears "Hey Jarvis" as "Hey David".
+const WAKE_WORD = new RegExp(`(?:hey|เฮ้|เฮ|เฮย์|เฮย)\\s*(?:${NAME}|d[ae]vid|เดวิด)`, 'i')
 const MENTIONS_NAME = new RegExp(NAME, 'i')
 const NAME_ONLY = new RegExp(`^\\s*${NAME}\\s*[.!?]?\\s*$`, 'i')
 // "Stop Jarvis", "จาร์วิส หยุดการทำงาน": back to sleep.
@@ -29,7 +30,8 @@ export function isStopCommand(text: string, awake: boolean): boolean {
 
 interface Handlers {
   onCommand: (text: string) => void
-  onAwake: (awake: boolean, bySpeech: boolean) => void
+  /** withCommand: the wake phrase already carried a command ("Hey Jarvis เปิดไฟ"), so no greeting is needed. */
+  onAwake: (awake: boolean, bySpeech: boolean, withCommand: boolean) => void
   onHeard: (text: string) => void
   /** Every finished sentence the mic picked up, whether or not it was for JARVIS (shown for troubleshooting). */
   onFinal: (text: string) => void
@@ -72,12 +74,12 @@ class WakeListener {
     this.on.onHeard('')
   }
 
-  setAwake(awake: boolean, bySpeech = false) {
+  setAwake(awake: boolean, bySpeech = false, withCommand = false) {
     window.clearTimeout(this.idle)
     if (awake) this.touch()
     if (awake === this.awake) return
     this.awake = awake
-    this.on.onAwake(awake, bySpeech)
+    this.on.onAwake(awake, bySpeech, withCommand)
   }
 
   private touch() {
@@ -161,8 +163,9 @@ class WakeListener {
     const wake = findWakeWord(text)
     if (!this.awake) {
       if (!wake) return
-      this.setAwake(true, true)
-      if (wake.command.length >= 2) this.on.onCommand(wake.command)
+      const withCommand = wake.command.length >= 2
+      this.setAwake(true, true, withCommand)
+      if (withCommand) this.on.onCommand(wake.command)
       return
     }
     this.touch()
@@ -222,7 +225,7 @@ function saveMicOn(on: boolean) {
 export function useWakeWord(
   onCommand: (text: string) => void,
   paused: boolean,
-  onAwakeChange: (awake: boolean, bySpeech: boolean) => void = () => {},
+  onAwakeChange: (awake: boolean, bySpeech: boolean, withCommand: boolean) => void = () => {},
 ) {
   const [micOn, setMicOnState] = useState(loadMicOn)
   const [awake, setAwakeState] = useState(false)
@@ -260,10 +263,10 @@ export function useWakeWord(
   useEffect(() => {
     listener.setHandlers({
       onCommand,
-      onAwake: (value, bySpeech) => {
+      onAwake: (value, bySpeech, withCommand) => {
         chime(value ? 'up' : 'down')
         setAwakeState(value)
-        onAwakeChange(value, bySpeech)
+        onAwakeChange(value, bySpeech, withCommand)
       },
       onHeard: (text) => {
         setHeard(text)

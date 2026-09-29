@@ -19,6 +19,8 @@ const TOOL_LABELS: Record<string, string> = {
   set_scene: 'สั่ง scene',
 }
 
+const GREETING = 'ค่ะ มีอะไรให้ช่วยไหมคะ'
+
 const SUGGESTIONS = ['มีอุปกรณ์อะไรบ้าง', 'ปลั๊ก 1 ใช้ไฟกี่วัตต์', 'ปิดทุกอย่างให้หน่อย']
 
 export function ChatPanel() {
@@ -35,13 +37,15 @@ export function ChatPanel() {
   const wake = useWakeWord(
     (command) => void send(command, 'voice'),
     busy || speaking || mic.listening,
-    (awake, bySpeech) => {
+    (awake, bySpeech, withCommand) => {
       const text = awake
         ? '🔔 โหมดปลุกเปิดแล้ว พูดคำสั่งต่อเนื่องได้เลย (พูด "Stop Jarvis" เพื่อพัก)'
         : bySpeech
           ? '💤 JARVIS พักแล้ว เรียก "Hey Jarvis" เพื่อปลุก'
           : '💤 ปิดโหมดปลุกแล้ว'
       setMessages((m) => [...m, { role: 'note', text }])
+      // Answer a bare "Hey Jarvis" right away, without a round trip to Claude.
+      if (awake && bySpeech && !withCommand) say(GREETING)
     },
   )
 
@@ -84,6 +88,17 @@ export function ChatPanel() {
     } finally {
       setBusy(false)
     }
+  }
+
+  /** A reply JARVIS gives locally (no Claude call), shown and spoken like any other. */
+  function say(text: string) {
+    setMessages((m) => [...m, { role: 'jarvis', text }])
+    setSpeaking(true)
+    speak(
+      text,
+      () => setSpeaking(false),
+      (reason) => setVoiceNotice(reason),
+    )
   }
 
   function toggleMic() {

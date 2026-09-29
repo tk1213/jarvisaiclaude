@@ -50,7 +50,9 @@ def normalize_pitch(pitch: str) -> str:
 
 async def _stream(text: str, voice: str, rate: str, pitch: str) -> bytes:
     audio = bytearray()
-    async for chunk in edge_tts.Communicate(text, voice, rate=rate, pitch=pitch).stream():
+    # Short timeouts: a reply that can't be voiced quickly is better shown as text than spoken 60 s late.
+    communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch, connect_timeout=5, receive_timeout=10)
+    async for chunk in communicate.stream():
         if chunk["type"] == "audio":
             audio += chunk["data"]
     if not audio:
@@ -91,12 +93,10 @@ async def speak_parts(text: str, *, voice: str, rate: str, pitch: str, number_ra
 
 
 async def synthesize(text: str, *, voice: str, rate: str, pitch: str) -> bytes:
-    """Speak with the configured rate/pitch; if the service returns nothing, retry once as configured
-    (it fails transiently) and then with its default rate/pitch, so the reply keeps the same voice."""
+    """Speak with the configured rate/pitch; if the service returns nothing, try once more with its
+    default rate/pitch (which also covers a transient failure), so the reply keeps the same voice."""
     rate, pitch = clamp_rate(rate), normalize_pitch(pitch)
-    attempts = [(rate, pitch), (rate, pitch)]
-    if (rate, pitch) != ("+0%", "+0Hz"):
-        attempts.append(("+0%", "+0Hz"))
+    attempts = [(rate, pitch), ("+0%", "+0Hz")]
     error: Exception | None = None
     for i, (r, p) in enumerate(attempts):
         try:
@@ -105,7 +105,7 @@ async def synthesize(text: str, *, voice: str, rate: str, pitch: str) -> bytes:
             error = e
             log.warning("Edge voice attempt %d (rate=%s pitch=%s) failed: %s: %s", i + 1, r, p, e.__class__.__name__, e)
             continue
-        if i == len(attempts) - 1 and len(attempts) == 3:
+        if i == 1:
             log.warning("spoke with the default rate/pitch because rate=%s pitch=%s produced no audio", rate, pitch)
         return audio
     raise TtsError(f"Edge voice failed: {error.__class__.__name__}: {error}")

@@ -5,7 +5,7 @@ from app.integrations import edge_voice
 class FakeCommunicate:
     calls: list = []
 
-    def __init__(self, text, voice, rate, pitch):
+    def __init__(self, text, voice, rate, pitch, **_timeouts):
         FakeCommunicate.calls.append((text, voice, rate, pitch))
 
     async def stream(self):
@@ -59,7 +59,7 @@ def test_falls_back_to_default_prosody(client, owner_headers, monkeypatch):
                 return  # the service accepted the request but sent no audio
             yield {"type": "audio", "data": b"ok"}
 
-        def __init__(self, text, voice, rate, pitch):
+        def __init__(self, text, voice, rate, pitch, **_timeouts):
             self.prosody = (rate, pitch)
             super().__init__(text, voice, rate, pitch)
 
