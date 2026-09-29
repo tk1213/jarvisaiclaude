@@ -109,6 +109,17 @@ class Orchestrator:
         return {"role": "user", "content": [{"type": "text", "text": f"{header}\n{text}"}]}
 
     def _call(self, messages: list[dict]):
+        try:
+            return self._create(messages)
+        except anthropic.BadRequestError as e:
+            # A web search setting the API rejects shouldn't stop home control: drop search and carry on.
+            if "web_search" not in str(e) or len(self.tools) == len(TOOLS):
+                raise
+            log.warning("web search disabled for this run, the API rejected it: %s", e)
+            self.tools = TOOLS
+            return self._create(messages)
+
+    def _create(self, messages: list[dict]):
         return self.client.beta.messages.create(
             model=self.model,
             max_tokens=16000,
@@ -203,7 +214,8 @@ def get_orchestrator() -> Orchestrator:
                     "type": "web_search_20260209",
                     "name": "web_search",
                     "max_uses": s.web_search_max_uses,
-                    "user_location": {"type": "approximate", "country": s.web_search_country, "timezone": s.timezone},
+                    "user_location": {"type": "approximate", "timezone": s.timezone}
+                    | ({"country": s.web_search_country} if s.web_search_country else {}),
                 }
                 if s.web_search_enabled
                 else None

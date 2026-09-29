@@ -263,3 +263,27 @@ def test_web_search_pause_turn_is_resumed(home):
     # The paused turn goes back unchanged, with no extra user message, so the server resumes it.
     resumed = fake.requests[1]["messages"]
     assert resumed[-1]["role"] == "assistant" and resumed[-1]["content"][0]["type"] == "server_tool_use"
+
+
+def test_rejected_web_search_falls_back_to_home_tools(home):
+    import anthropic
+    import httpx
+
+    db, tuya, user, _ = home
+
+    class RejectsSearch(FakeClaude):
+        def create(self, **kwargs):
+            if any(t.get("name") == "web_search" for t in kwargs["tools"]):
+                self.requests.append(copy.deepcopy(kwargs))
+                request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+                raise anthropic.BadRequestError(
+                    "tools.6.web_search_20260209: Country code TH is not supported.",
+                    response=httpx.Response(400, request=request),
+                    body=None,
+                )
+            return super().create(**kwargs)
+
+    fake = RejectsSearch([message([text("เปิดให้แล้วค่ะ")], "end_turn")])
+    orch = Orchestrator(fake, model="claude-opus-5-5", effort="low", max_tool_rounds=4, timezone="Asia/Bangkok", web_search={"type": "web_search_20260209", "name": "web_search"})
+    assert ask(orch, db, tuya, user, "เปิดปลั๊ก 1").text == "เปิดให้แล้วค่ะ"
+    assert fake.requests[-1]["tools"] == TOOLS

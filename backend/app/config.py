@@ -44,7 +44,8 @@ class Settings(BaseSettings):
     # Anthropic's server-side web search, for outside questions (stocks, gold, weather, films, restaurants).
     web_search_enabled: bool = True
     web_search_max_uses: int = 3  # per reply; each search adds a few seconds
-    web_search_country: str = "TH"
+    # 2-letter country to localize results; empty = timezone only (the search provider doesn't support "TH").
+    web_search_country: str = ""
 
     # Spoken replies use Microsoft Edge's online neural voices (free, no key); "browser" = the browser's own voices.
     tts_engine: Literal["edge", "browser"] = "edge"
