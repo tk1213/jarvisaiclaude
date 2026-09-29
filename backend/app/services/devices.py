@@ -79,7 +79,13 @@ def refresh_status(db: Session, tuya, device: Device) -> Device:
 
 def control_device(db: Session, tuya, device: Device, commands: list[dict]) -> Device:
     tuya.send_commands(device.tuya_device_id, commands)
-    return refresh_status(db, tuya, device)
+    # Tuya accepted the commands, but the device may not have reported its new
+    # state to the cloud yet, so overlay what we sent on top of the fetched
+    # status. Pulsar corrects it if the device ends up in a different state.
+    fetched = _status_dict(tuya.get_device_status(device.tuya_device_id))
+    device.status = {**fetched, **_status_dict(commands)}
+    db.commit()
+    return device
 
 
 _ONLINE_CODES = {"online": True, "deviceOnline": True, "offline": False, "deviceOffline": False}

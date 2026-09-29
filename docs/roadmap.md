@@ -10,8 +10,8 @@
 - [x] Tuya OpenAPI client (signing HMAC-SHA256, token + refresh, เก็บ token แบบเข้ารหัส)
 - [x] REST API ควบคุมอุปกรณ์: sync, สถานะ, เปิด/ปิด, คำสั่ง raw, scene
 - [x] โหมด mock (บ้านจำลอง) สำหรับพัฒนาโดยยังไม่มีอุปกรณ์จริง
-- [ ] สร้าง Cloud Project บน Tuya IoT Platform + link แอป Tuya Smart (ผู้ใช้ทำ)
-- [ ] ทดสอบกับอุปกรณ์จริงด้วย `python -m app.scripts.tuya_check`
+- [x] สร้าง Cloud Project บน Tuya IoT Platform + link แอป Tuya Smart (Singapore data center)
+- [x] ทดสอบกับอุปกรณ์จริงด้วย `python -m app.scripts.tuya_check` และสั่งปลั๊กผ่าน API
 - [x] Tuya Pulsar รับสถานะอุปกรณ์แบบเรียลไทม์ (อัปเดต `devices` อัตโนมัติ, reconnect เอง)
 - [x] Rate limit: สั่งอุปกรณ์ต่อผู้ใช้ และ login ต่อ IP+username
 

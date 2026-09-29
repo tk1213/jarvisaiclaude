@@ -79,3 +79,16 @@ def test_scenes(client, owner_headers):
     assert client.post(f"/scenes/{scenes['กลับถึงบ้าน']}/trigger", headers=owner_headers).status_code == 204
     r = client.get(f"/devices/{light['id']}", params={"refresh": True}, headers=owner_headers)
     assert r.json()["status"]["switch_led"] is True
+
+
+def test_control_reports_commanded_state_before_device_catches_up(client, owner_headers):
+    """Tuya's status endpoint can lag behind an accepted command."""
+    from app.integrations.tuya import get_tuya_client
+
+    tuya = get_tuya_client()
+    plug = _sync(client, owner_headers)["ปลั๊กกาต้มน้ำ"]
+    stale = tuya.get_device_status("mock-plug-kitchen")
+    tuya.get_device_status = lambda device_id: stale  # cloud hasn't caught up
+
+    r = client.post(f"/devices/{plug['id']}/power", json={"on": True}, headers=owner_headers)
+    assert r.json()["status"]["switch_1"] is True
