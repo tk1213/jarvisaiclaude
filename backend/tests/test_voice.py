@@ -160,3 +160,11 @@ def test_google_failure_falls_back_to_edge(client, owner_headers, monkeypatch):
     monkeypatch.setattr(google_tts.httpx.AsyncClient, "post", denied)
     monkeypatch.setattr(edge_voice.edge_tts, "Communicate", FakeCommunicate)
     assert client.post("/voice/tts", json={"text": "สวัสดีค่ะ"}, headers=owner_headers).content == b"mp3"
+
+
+def test_jarvis_is_pronounced_as_a_name(client, owner_headers, monkeypatch):
+    monkeypatch.setattr(edge_voice.edge_tts, "Communicate", FakeCommunicate)
+    FakeCommunicate.calls.clear()
+    client.post("/voice/tts", json={"text": "JARVIS อยู่ตรงนี้ค่ะ"}, headers=owner_headers)
+    assert FakeCommunicate.calls[-1][0] == "จาร์วิส อยู่ตรงนี้ค่ะ"
+    assert voice_api.for_speech("ค่ะ JARVISค่ะ jarvis2") == "ค่ะ จาร์วิสค่ะ จาร์วิส2"

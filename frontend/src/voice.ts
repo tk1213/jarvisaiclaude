@@ -127,8 +127,11 @@ export function useMissingThaiVoice(): boolean {
 }
 
 /** Strip markdown-ish symbols so they aren't read aloud, and split into short chunks (Chrome cuts off long utterances). */
+// Words the voices would otherwise spell out letter by letter ("J-A-R-V-I-S").
+const PRONUNCIATIONS: [RegExp, string][] = [[/\bjarvis\b/gi, 'จาร์วิส']]
+
 function chunks(text: string): string[] {
-  const clean = text
+  const clean = PRONUNCIATIONS.reduce((t, [pattern, spoken]) => t.replace(pattern, spoken), text)
     .replace(/[*_`#>|]/g, '')
     .replace(/^\s*[-•]\s+/gm, '')
     .replace(/\s+/g, ' ')

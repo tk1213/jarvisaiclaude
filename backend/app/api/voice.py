@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -43,9 +44,21 @@ _cache: dict[tuple, tuple[float, bytes]] = {}
 _inflight: dict[tuple, asyncio.Future] = {}
 
 
+# Words the voices would otherwise spell out letter by letter ("J-A-R-V-I-S").
+# ASCII-only boundaries: Python counts Thai letters as word characters, and "JARVISค่ะ" has no space.
+PRONUNCIATIONS = [(re.compile(r"(?<![a-z])jarvis(?![a-z])", re.IGNORECASE), "จาร์วิส")]
+
+
+def for_speech(text: str) -> str:
+    for pattern, spoken in PRONUNCIATIONS:
+        text = pattern.sub(spoken, text)
+    return text
+
+
 async def _audio_for(text: str) -> bytes:
     """The MP3 for text, synthesized once: browsers may request the same <audio> URL more than once,
     and every extra synthesis is another call to the voice service (which then tends to fail)."""
+    text = for_speech(text)
     s = get_settings()
     if s.tts_engine != "edge" and not s.google_tts_api_key:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "server voice is off (TTS_ENGINE=browser)")
