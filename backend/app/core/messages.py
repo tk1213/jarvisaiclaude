@@ -2,7 +2,7 @@
 
 Every channel (Dashboard, LINE, Voice) converts its payload into an
 InboundMessage before it reaches the orchestrator, so the brain only ever
-sees one shape. The LLM orchestrator that consumes it arrives in phase 1.
+sees one shape. It is consumed by app.core.orchestrator.
 """
 
 from enum import Enum
@@ -19,5 +19,6 @@ class Channel(str, Enum):
 class InboundMessage(BaseModel):
     user_id: int
     channel: Channel
-    session_id: str = Field(min_length=1, max_length=64)
+    # None starts a new conversation; the reply carries the id to continue it.
+    session_id: str | None = Field(default=None, min_length=1, max_length=64)
     text: str = Field(min_length=1)

@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     tuya_pulsar_endpoint: str = ""  # derived from tuya_endpoint if empty
     tuya_pulsar_env: Literal["event", "event-test"] = "event"
 
+    # Claude (JARVIS Core, spec §4.1)
+    anthropic_api_key: str = ""
+    claude_model: str = "claude-opus-5-5"
+    # low keeps replies fast for short home-control commands; raise for harder tasks
+    claude_effort: Literal["low", "medium", "high", "xhigh", "max"] = "low"
+    claude_max_tool_rounds: int = 8
+    timezone: str = "Asia/Bangkok"
+
     # Rate limits (spec §6), per user for device control, per username+IP for login.
     rate_limit_control_per_minute: int = 30
     rate_limit_login_per_minute: int = 5

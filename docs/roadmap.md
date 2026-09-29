@@ -15,9 +15,11 @@
 - [x] Tuya Pulsar รับสถานะอุปกรณ์แบบเรียลไทม์ (อัปเดต `devices` อัตโนมัติ, reconnect เอง) ทดสอบกับปลั๊กจริงแล้ว
 - [x] Rate limit: สั่งอุปกรณ์ต่อผู้ใช้ และ login ต่อ IP+username
 
-## เฟส 1: 3 ช่องทาง + ควบคุมบ้านด้วย LLM (3-4 สัปดาห์)
+## เฟส 1: 3 ช่องทาง + ควบคุมบ้านด้วย LLM (3-4 สัปดาห์), กำลังทำ
 
-- [ ] ต่อ Claude API + tool calling กลุ่ม `home_control.*` (`get_devices`, `get_device_status`, `control_device`, `set_scene`)
+- [x] ต่อ Claude API + tool calling กลุ่ม `home_control.*` (`get_devices`, `get_device_status`, `control_device`, `list_scenes`, `set_scene`)
+  - `POST /core/chat` และ `python -m app.scripts.chat <username>` ความจำระยะสั้นต่อ session (เก็บใน `chat_sessions`)
+- [ ] ทดสอบคุยกับอุปกรณ์จริง
 - [ ] Dashboard (React + Tailwind) เวอร์ชันแรก + WebSocket
 - [ ] LINE OA (Messaging API webhook + Flex Message)
 - [ ] Voice โหมดพื้นฐาน (STT → Core → TTS)

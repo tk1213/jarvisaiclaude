@@ -19,6 +19,10 @@ backend/
     integrations/tuya/       Tuya OpenAPI client, Pulsar (event เรียลไทม์) + mock
     ratelimit.py             จำกัดจำนวนคำสั่ง/การ login ต่อนาที
     core/messages.py         รูปแบบข้อความกลางของทุกช่องทาง
+    core/orchestrator.py     สมองของ JARVIS: คุยกับ Claude + เรียก tools + จำบทสนทนา
+    core/tools.py            เครื่องมือ home_control ที่ Claude เรียกใช้ได้
+    core/prompts.py          บุคลิก/System prompt ของ JARVIS
+    scripts/chat.py          คุยกับ JARVIS จาก command line
     scripts/tuya_check.py    ทดสอบคุม Tuya ตรงๆ จาก command line
   tests/
 ```
@@ -74,6 +78,22 @@ curl -X POST localhost:8000/devices/1/power -H "Authorization: Bearer $TOKEN" \
 | POST | `/devices/{id}/commands` | ส่งคำสั่ง Tuya แบบ raw |
 | GET | `/scenes` | รายการ scene |
 | POST | `/scenes/{scene_id}/trigger` | สั่ง scene |
+
+## คุยกับ JARVIS (เฟส 1)
+
+ใส่ `ANTHROPIC_API_KEY` ใน `.env` แล้วลองได้ 2 ทาง:
+
+```bash
+cd backend
+python -m app.scripts.chat <username>      # คุยใน terminal
+```
+
+หรือ `POST /core/chat` ใน `/docs` ด้วย body `{"text": "เปิดปลั๊ก 2 หน่อย"}` (ครั้งต่อไปส่ง `session_id` จากคำตอบกลับไปด้วยเพื่อคุยต่อเนื่อง)
+
+- ใช้โมเดล `claude-opus-5-5` (เปลี่ยนได้ที่ `CLAUDE_MODEL`) effort `low` เพื่อให้ตอบเร็ว
+- เปิด server-side fallback ไว้: ถ้าโมเดลหลักปฏิเสธคำขอ ระบบจะลองโมเดลสำรองให้อัตโนมัติ
+- ประวัติการคุยเก็บแบบเพิ่มต่อท้ายอย่างเดียว (append-only) ในตาราง `chat_sessions` ห้ามแก้แถวเก่า
+  เพราะ Claude ผูก thinking กับบทสนทนาที่ส่งไปแบบตรงทุกไบต์
 
 ## ต่อ Tuya จริง
 

@@ -1,0 +1,199 @@
+import copy
+
+import pytest
+from anthropic.types.beta import BetaMessage
+
+from app.core import orchestrator as orch_module
+from app.core.orchestrator import Orchestrator
+from app.core.prompts import SYSTEM_PROMPT
+from app.core.tools import TOOLS
+from app.db import SessionLocal
+from app.integrations.tuya import get_tuya_client
+from app.models import ChatMessage, User
+from app.services.devices import sync_devices
+
+
+def message(content: list[dict], stop_reason: str) -> BetaMessage:
+    return BetaMessage.model_validate(
+        {
+            "id": "msg_test",
+            "type": "message",
+            "role": "assistant",
+            "model": "claude-opus-5-5",
+            "content": content,
+            "stop_reason": stop_reason,
+            "stop_sequence": None,
+            "usage": {"input_tokens": 1, "output_tokens": 1},
+        }
+    )
+
+
+def tool_use(id_: str, name: str, input_: dict) -> dict:
+    return {"type": "tool_use", "id": id_, "name": name, "input": input_}
+
+
+def text(t: str) -> dict:
+    return {"type": "text", "text": t}
+
+
+class FakeClaude:
+    """Returns scripted responses and records every request it receives."""
+
+    def __init__(self, responses: list[BetaMessage]):
+        self.responses = list(responses)
+        self.requests: list[dict] = []
+        self.beta = self
+        self.messages = self
+
+    def create(self, **kwargs):
+        self.requests.append(copy.deepcopy(kwargs))
+        return self.responses.pop(0)
+
+
+@pytest.fixture
+def home():
+    db = SessionLocal()
+    user = User(username="owner", password_hash="x", can_control_devices=True)
+    db.add(user)
+    db.commit()
+    tuya = get_tuya_client()
+    devices = {d.name: d for d in sync_devices(db, tuya)}
+    yield db, tuya, user, devices
+    db.close()
+
+
+def make(fake) -> Orchestrator:
+    return Orchestrator(fake, model="claude-opus-5-5", effort="low", max_tool_rounds=4, timezone="Asia/Bangkok")
+
+
+def ask(orch, db, tuya, user, text_, session_id=None):
+    from app.core.messages import Channel, InboundMessage
+
+    msg = InboundMessage(user_id=user.id, channel=Channel.dashboard, session_id=session_id, text=text_)
+    return orch.handle(db, tuya, user, msg)
+
+
+def test_turns_on_device_via_tools(home):
+    db, tuya, user, devices = home
+    light = devices["ไฟห้องนั่งเล่น"]
+    fake = FakeClaude(
+        [
+            message([tool_use("t1", "get_devices", {"room": "นั่งเล่น"})], "tool_use"),
+            message(
+                [tool_use("t2", "control_device", {"device_id": light.id, "commands": [{"code": "switch_led", "value": True}]})],
+                "tool_use",
+            ),
+            message([text("เปิดไฟห้องนั่งเล่นให้แล้วครับ")], "end_turn"),
+        ]
+    )
+    reply = ask(make(fake), db, tuya, user, "เปิดไฟห้องนั่งเล่นหน่อย")
+
+    assert reply.text == "เปิดไฟห้องนั่งเล่นให้แล้วครับ"
+    assert [c.name for c in reply.tool_calls] == ["get_devices", "control_device"]
+    assert all(c.ok for c in reply.tool_calls)
+    assert tuya.get_device_status("mock-light-living")[0] == {"code": "switch_led", "value": True}
+
+    req = fake.requests[0]
+    assert req["model"] == "claude-opus-5-5"
+    assert req["system"] == SYSTEM_PROMPT and req["tools"] == TOOLS
+    assert req["output_config"] == {"effort": "low"}
+    assert req["thinking"]["type"] == "adaptive"
+    assert "เปิดไฟห้องนั่งเล่นหน่อย" in req["messages"][0]["content"][0]["text"]
+
+    # Tool results come back as one user message after the assistant turn.
+    second = fake.requests[1]["messages"]
+    assert [m["role"] for m in second] == ["user", "assistant", "user"]
+    result = second[2]["content"][0]
+    assert result["tool_use_id"] == "t1" and not result["is_error"]
+    assert "ไฟห้องนั่งเล่น" in result["content"]
+
+
+def test_history_is_replayed_append_only(home):
+    db, tuya, user, _ = home
+    fake = FakeClaude(
+        [
+            message([{"type": "thinking", "thinking": "", "signature": "sig1"}, text("สวัสดีครับ")], "end_turn"),
+            message([text("ยินดีครับ")], "end_turn"),
+        ]
+    )
+    orch = make(fake)
+    first = ask(orch, db, tuya, user, "สวัสดี")
+    ask(orch, db, tuya, user, "ขอบคุณ", session_id=first.session_id)
+
+    turn1, turn2 = fake.requests[0]["messages"], fake.requests[1]["messages"]
+    # The second request starts with exactly what the first request sent plus the reply, byte for byte.
+    assert turn2[: len(turn1)] == turn1
+    assert turn2[1]["content"][0] == {"type": "thinking", "thinking": "", "signature": "sig1"}
+    assert [m["role"] for m in turn2] == ["user", "assistant", "user"]
+    assert db.query(ChatMessage).filter_by(session_id=first.session_id).count() == 4
+
+
+def test_sessions_are_separate(home):
+    db, tuya, user, _ = home
+    fake = FakeClaude([message([text("a")], "end_turn"), message([text("b")], "end_turn")])
+    orch = make(fake)
+    ask(orch, db, tuya, user, "one")
+    ask(orch, db, tuya, user, "two")
+    assert len(fake.requests[1]["messages"]) == 1
+
+
+def test_tool_errors_are_reported_to_claude(home):
+    db, tuya, user, _ = home
+    fake = FakeClaude(
+        [
+            message([tool_use("t1", "control_device", {"device_id": 999, "commands": [{"code": "x", "value": 1}]})], "tool_use"),
+            message([text("ไม่พบอุปกรณ์ครับ")], "end_turn"),
+        ]
+    )
+    reply = ask(make(fake), db, tuya, user, "เปิดอะไรสักอย่าง")
+    result = fake.requests[1]["messages"][2]["content"][0]
+    assert result["is_error"] is True and "999" in result["content"]
+    assert reply.tool_calls[0].ok is False
+
+
+def test_user_without_permission_cannot_control(home):
+    db, tuya, user, devices = home
+    user.can_control_devices = False
+    db.commit()
+    plug = devices["ปลั๊กกาต้มน้ำ"]
+    fake = FakeClaude(
+        [
+            message([tool_use("t1", "control_device", {"device_id": plug.id, "commands": [{"code": "switch_1", "value": True}]})], "tool_use"),
+            message([text("ไม่มีสิทธิ์ครับ")], "end_turn"),
+        ]
+    )
+    ask(make(fake), db, tuya, user, "เปิดปลั๊ก")
+    assert fake.requests[1]["messages"][2]["content"][0]["is_error"] is True
+    assert tuya.get_device_status("mock-plug-kitchen")[0]["value"] is False
+
+
+def test_refusal_is_not_persisted(home):
+    db, tuya, user, _ = home
+    fake = FakeClaude([message([], "refusal")])
+    reply = ask(make(fake), db, tuya, user, "...")
+    assert "ขออภัย" in reply.text
+    assert db.query(ChatMessage).count() == 0
+
+
+def test_runaway_tool_loop_stops_without_persisting(home):
+    db, tuya, user, _ = home
+    fake = FakeClaude([message([tool_use(f"t{i}", "list_scenes", {})], "tool_use") for i in range(4)])
+    reply = ask(make(fake), db, tuya, user, "วนไปเรื่อยๆ")
+    assert len(fake.requests) == 4
+    assert db.query(ChatMessage).count() == 0  # a dangling tool_use would break the next turn
+    assert reply.text
+
+
+def test_chat_endpoint(client, owner_headers, monkeypatch):
+    fake = FakeClaude([message([text("สวัสดีครับ")], "end_turn")])
+    monkeypatch.setattr(orch_module, "_orchestrator", make(fake))
+    r = client.post("/core/chat", json={"text": "สวัสดี"}, headers=owner_headers)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["reply"] == "สวัสดีครับ" and body["session_id"] and body["tool_calls"] == []
+
+
+def test_chat_endpoint_without_key(client, owner_headers, monkeypatch):
+    monkeypatch.setattr(orch_module, "_orchestrator", None)
+    r = client.post("/core/chat", json={"text": "สวัสดี"}, headers=owner_headers)
+    assert r.status_code == 503

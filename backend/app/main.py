@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app.api import auth, devices
+from app.api import auth, core, devices
 from app.config import get_settings
 from app.db import init_db
 from app.integrations.tuya import TuyaError, build_pulsar_consumer
@@ -33,6 +33,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title=get_settings().app_name, lifespan=lifespan)
 app.include_router(auth.router)
 app.include_router(devices.router)
+app.include_router(core.router)
 
 
 @app.exception_handler(TuyaError)
