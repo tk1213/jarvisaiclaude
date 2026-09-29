@@ -20,7 +20,7 @@
 - [x] ต่อ Claude API + tool calling กลุ่ม `home_control.*` (`get_devices`, `get_device_status`, `control_device`, `list_scenes`, `set_scene`)
   - `POST /core/chat` และ `python -m app.scripts.chat <username>` ความจำระยะสั้นต่อ session (เก็บใน `chat_sessions`)
 - [x] ทดสอบคุยกับอุปกรณ์จริง (เปิด/ปิดปลั๊ก, ถามกำลังไฟ, สั่งหลายตัวพร้อมกัน)
-- [ ] Dashboard (React + Tailwind) เวอร์ชันแรก + WebSocket
+- [x] Dashboard (React + Tailwind) เวอร์ชันแรก + WebSocket (หน้าประวัติเอกสารรอเฟส 2 FlowAccount)
 - [ ] LINE OA (Messaging API webhook + Flex Message)
 - [ ] Voice โหมดพื้นฐาน (STT → Core → TTS)
 

@@ -8,6 +8,9 @@
 ## โครงสร้าง
 
 ```
+frontend/                    Dashboard (React + Tailwind + Vite)
+  src/App.tsx                หน้าหลัก: การ์ดอุปกรณ์, scene, กล่องแชท
+  src/useDevices.ts          รับสถานะอุปกรณ์สดผ่าน WebSocket
 backend/
   app/
     main.py                  FastAPI app
@@ -18,6 +21,7 @@ backend/
     services/devices.py      logic ควบคุมอุปกรณ์ (ใช้ร่วมกับ LLM tools ในเฟส 1)
     integrations/tuya/       Tuya OpenAPI client, Pulsar (event เรียลไทม์) + mock
     ratelimit.py             จำกัดจำนวนคำสั่ง/การ login ต่อนาที
+    realtime.py              ส่งการเปลี่ยนแปลงของอุปกรณ์ไปที่ Dashboard ทันที
     core/messages.py         รูปแบบข้อความกลางของทุกช่องทาง
     core/orchestrator.py     สมองของ JARVIS: คุยกับ Claude + เรียก tools + จำบทสนทนา
     core/tools.py            เครื่องมือ home_control ที่ Claude เรียกใช้ได้
@@ -78,6 +82,26 @@ curl -X POST localhost:8000/devices/1/power -H "Authorization: Bearer $TOKEN" \
 | POST | `/devices/{id}/commands` | ส่งคำสั่ง Tuya แบบ raw |
 | GET | `/scenes` | รายการ scene |
 | POST | `/scenes/{scene_id}/trigger` | สั่ง scene |
+| POST | `/core/chat` | คุยกับ JARVIS |
+| WS | `/ws/devices?token=` | สถานะอุปกรณ์แบบสด |
+
+## Dashboard
+
+ต้องมี [Node.js](https://nodejs.org) (LTS) สำหรับ build ครั้งแรกและทุกครั้งที่ frontend เปลี่ยน
+
+```bash
+cd frontend
+npm install
+npm run build        # สร้าง frontend/dist
+```
+
+จากนั้นรัน backend ตามปกติ แล้วเปิด http://localhost:8000 (server จะเปิดหน้า Dashboard จาก `frontend/dist` ให้เอง)
+
+- การ์ดอุปกรณ์พร้อมปุ่มเปิด/ปิด ค่ากำลังไฟ/แรงดัน/อุณหภูมิ และสถานะออนไลน์
+- อัปเดตสดผ่าน WebSocket `/ws/devices` ไม่ว่าจะกดจากแอป, ตัวอุปกรณ์ หรือสั่งผ่าน JARVIS
+- ปุ่ม scene และกล่องแชทคุยกับ JARVIS
+
+ระหว่างแก้หน้าเว็บ ใช้ `npm run dev` (http://localhost:5173) ซึ่งจะส่ง API ต่อไปที่ backend :8000 ให้เอง
 
 ## คุยกับ JARVIS (เฟส 1)
 
