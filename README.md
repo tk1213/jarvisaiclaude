@@ -95,7 +95,7 @@ npm install
 npm run build        # สร้าง frontend/dist
 ```
 
-จากนั้นรัน backend ตามปกติ แล้วเปิด http://localhost:8000 (server จะเปิดหน้า Dashboard จาก `frontend/dist` ให้เอง)
+จากนั้นรัน backend (บน Windows ดับเบิลคลิก `start.bat` ที่โฟลเดอร์หลักได้เลย) แล้วเปิด http://localhost:8000 (server จะเปิดหน้า Dashboard จาก `frontend/dist` ให้เอง)
 
 - การ์ดอุปกรณ์พร้อมปุ่มเปิด/ปิด ค่ากำลังไฟ/แรงดัน/อุณหภูมิ และสถานะออนไลน์
 - อัปเดตสดผ่าน WebSocket `/ws/devices` ไม่ว่าจะกดจากแอป, ตัวอุปกรณ์ หรือสั่งผ่าน JARVIS
