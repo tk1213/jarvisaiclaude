@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { broadcast, ERRORS, isEcho, LANG, recognitionCtor, subscribeVoice, TAB_ID, type Recognition } from './voice'
 
 // "Jarvis" as the Thai recognizer tends to write it: จาร์วิส, จาวิส, จาร์วิด, Jarvis…
-const NAME = '(?:jarvis|จา(?:ร์|ร)?วิ(?:ส|ซ|ด|ท|ต))'
+const NAME = '(?:j[ae]r?vis|จ[่้๊๋]?[าะ]?[่้๊๋]?(?:ร์|ร)?วิ[สซดทตชศษ](?:ต์)?)'
 // Only "Hey Jarvis" / "เฮ้ จาร์วิส" wakes it, so just mentioning the name in conversation doesn't.
 const WAKE_WORD = new RegExp(`(?:hey|เฮ้|เฮ|เฮย์|เฮย)\\s*${NAME}`, 'i')
 const MENTIONS_NAME = new RegExp(NAME, 'i')
@@ -31,6 +31,10 @@ interface Handlers {
   onCommand: (text: string) => void
   onAwake: (awake: boolean, bySpeech: boolean) => void
   onHeard: (text: string) => void
+  /** Every finished sentence the mic picked up, whether or not it was for JARVIS (shown for troubleshooting). */
+  onFinal: (text: string) => void
+  /** A recoverable problem (network, mic busy) to show, or null once it's working again. */
+  onTrouble: (message: string | null) => void
   onFatal: (message: string) => void
 }
 
@@ -46,7 +50,7 @@ class WakeListener {
   private settle: number | undefined
   private running = false
   private restartDelay = 100
-  private on: Handlers = { onCommand: () => {}, onAwake: () => {}, onHeard: () => {}, onFatal: () => {} }
+  private on: Handlers = { onCommand: () => {}, onAwake: () => {}, onHeard: () => {}, onFinal: () => {}, onTrouble: () => {}, onFatal: () => {} }
 
   /** Updated by the component on every render so commands go to the current conversation. */
   setHandlers(handlers: Handlers) {
@@ -93,8 +97,10 @@ class WakeListener {
       let interim = ''
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const res = e.results[i]
-        if (res.isFinal) this.handle(res[0].transcript)
-        else interim += res[0].transcript
+        if (res.isFinal) {
+          this.on.onFinal(res[0].transcript)
+          this.handle(res[0].transcript)
+        } else interim += res[0].transcript
       }
       this.on.onHeard(interim)
       if (interim && this.isForUs(interim)) {
@@ -105,8 +111,9 @@ class WakeListener {
       if (FATAL_ERRORS.has(e.error)) {
         this.running = false
         this.on.onFatal(ERRORS[e.error])
-      } else if (e.error === 'network') {
+      } else if (e.error !== 'no-speech' && e.error !== 'aborted') {
         this.restartDelay = Math.min(this.restartDelay * 2, 10_000)
+        this.on.onTrouble(ERRORS[e.error] ?? `ไมค์ขัดข้อง (${e.error}) กำลังลองใหม่`)
       }
       // 'no-speech' and 'aborted' are routine: onend restarts (or not, when paused).
     }
@@ -118,8 +125,12 @@ class WakeListener {
     this.rec = r
     try {
       r.start()
-    } catch {
+    } catch (err) {
+      // e.g. the mic is still held by the previous session: try again shortly.
       this.rec = null
+      this.on.onTrouble(`เริ่มฟังไม่ได้ (${(err as Error).name}) กำลังลองใหม่`)
+      this.restartDelay = Math.min(this.restartDelay * 2, 10_000)
+      if (this.running) window.setTimeout(() => this.listen(), this.restartDelay)
     }
   }
 
@@ -134,11 +145,13 @@ class WakeListener {
     this.rec = null
     r.abort() // onend restarts listening while running
     this.on.onHeard('')
+    this.on.onFinal(text)
     this.handle(text)
   }
 
   private handle(transcript: string) {
     this.restartDelay = 100
+    this.on.onTrouble(null)
     const text = transcript.trim()
     if (!text || isEcho(text)) return
     if (isStopCommand(text, this.awake)) {
@@ -216,6 +229,10 @@ export function useWakeWord(
   const [heard, setHeard] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [listener] = useState(() => new WakeListener())
+  // The last sentence heard (for a few seconds) and any mic trouble, so it's clear what the mic is doing.
+  const [lastHeard, setLastHeard] = useState('')
+  const [trouble, setTrouble] = useState<string | null>(null)
+  const [lastHeardTimer] = useState<{ id?: number }>(() => ({}))
   // Another dashboard tab is talking, or has taken the mic (only one tab listens at a time).
   const [otherTabSpeaking, setOtherTabSpeaking] = useState(false)
   const [otherTabHasMic, setOtherTabHasMic] = useState(false)
@@ -248,14 +265,23 @@ export function useWakeWord(
         setAwakeState(value)
         onAwakeChange(value, bySpeech)
       },
-      onHeard: setHeard,
+      onHeard: (text) => {
+        setHeard(text)
+        if (text) setTrouble(null)
+      },
+      onFinal: (text) => {
+        setLastHeard(text.trim())
+        window.clearTimeout(lastHeardTimer.id)
+        lastHeardTimer.id = window.setTimeout(() => setLastHeard(''), 6000)
+      },
+      onTrouble: setTrouble,
       onFatal: (message) => {
         setError(message)
         setMicOnState(false)
         saveMicOn(false)
       },
     })
-  }, [listener, onCommand, onAwakeChange])
+  }, [listener, onCommand, onAwakeChange, lastHeardTimer])
 
   const listening = micOn && !paused && !otherTabSpeaking && !otherTabHasMic
   useEffect(() => {
@@ -283,5 +309,5 @@ export function useWakeWord(
   // What's being said to JARVIS right now (not background talk), for a live bubble in the chat.
   const speakingToJarvis = heard && (awake || findWakeWord(heard) !== null) ? heard : ''
 
-  return { micOn, setMicOn, awake, setAwake, heard, speakingToJarvis, error, otherTabHasMic }
+  return { micOn, setMicOn, awake, setAwake, heard, lastHeard, trouble, speakingToJarvis, error, otherTabHasMic }
 }

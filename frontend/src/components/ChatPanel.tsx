@@ -262,7 +262,11 @@ export function ChatPanel() {
         <div aria-live="polite" className="flex items-center gap-2 border-t border-slate-200 px-4 py-2 text-xs dark:border-slate-800">
           <span className={`size-2 shrink-0 rounded-full ${listeningLive ? 'animate-pulse bg-red-500' : busy || speaking ? 'bg-slate-400' : 'bg-emerald-500'}`} />
           <span className={listeningLive ? 'font-medium text-red-700 dark:text-red-300' : 'text-slate-500'}>{wakeStatus}</span>
-          {wake.heard && <span className="min-w-0 truncate text-slate-400">“{wake.heard}”</span>}
+          {wake.trouble ? (
+            <span className="min-w-0 truncate text-amber-700 dark:text-amber-300">{wake.trouble}</span>
+          ) : (
+            (wake.heard || wake.lastHeard) && <span className="min-w-0 truncate text-slate-400">ได้ยิน: “{wake.heard || wake.lastHeard}”</span>
+          )}
         </div>
       )}
 
