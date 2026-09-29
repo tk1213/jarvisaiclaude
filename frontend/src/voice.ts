@@ -108,7 +108,8 @@ function thaiVoice(): SpeechSynthesisVoice | null {
     const match = voices.find((v) => name.test(v.name))
     if (match) return match
   }
-  return voices.find((v) => !MALE_VOICES.test(v.name)) ?? voices[0] ?? null
+  // Never fall back to a male voice: silence (with a notice) is better than the wrong voice.
+  return voices.find((v) => !MALE_VOICES.test(v.name)) ?? null
 }
 
 /** True once voices are loaded and none speaks Thai (the browser then reads with a foreign accent or not at all). */
@@ -145,6 +146,59 @@ function chunks(text: string): string[] {
   return parts
 }
 
+// --- Coordination between dashboard tabs, and echo protection ---------------------------------------
+// Two open dashboards would hear each other's replies and answer them in a loop, so only one tab
+// listens at a time, every tab pauses while any tab is talking, and JARVIS's own recent replies
+// are never taken as commands.
+
+export const TAB_ID = Math.random().toString(36).slice(2)
+export type VoiceMessage = { type: 'speaking'; on: boolean; text?: string; tab: string } | { type: 'listening'; tab: string }
+type Outgoing = { type: 'speaking'; on: boolean; text?: string } | { type: 'listening' }
+
+const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('jarvis-voice') : null
+const listeners = new Set<(m: VoiceMessage) => void>()
+channel?.addEventListener('message', (e: MessageEvent<VoiceMessage>) => {
+  if (e.data.type === 'speaking' && e.data.text) rememberSpoken(e.data.text)
+  listeners.forEach((fn) => fn(e.data))
+})
+
+export function broadcast(message: Outgoing) {
+  channel?.postMessage({ ...message, tab: TAB_ID })
+}
+
+/** Messages from other dashboard tabs; returns an unsubscribe function. */
+export function subscribeVoice(fn: (m: VoiceMessage) => void) {
+  listeners.add(fn)
+  return () => {
+    listeners.delete(fn)
+  }
+}
+
+const ECHO_WINDOW_MS = 60_000
+const recentlySpoken: { text: string; at: number }[] = []
+
+function normalize(text: string) {
+  return text.toLowerCase().replace(/[\s.,!?'"“”…:;()-]/g, '')
+}
+
+function rememberSpoken(text: string) {
+  recentlySpoken.push({ text: normalize(text), at: Date.now() })
+  if (recentlySpoken.length > 10) recentlySpoken.shift()
+}
+
+/** True if what the mic heard is (mostly) something JARVIS said in the last minute. */
+export function isEcho(heard: string): boolean {
+  const h = normalize(heard)
+  if (h.length < 6) return false
+  const pairs = Array.from({ length: h.length - 1 }, (_, i) => h.slice(i, i + 2))
+  return recentlySpoken.some(({ text, at }) => {
+    // A short answer like "ยืนยัน" can appear inside a reply; only a sizeable chunk of the reply counts.
+    if (Date.now() - at > ECHO_WINDOW_MS || h.length < text.length * 0.4) return false
+    const found = pairs.filter((p) => text.includes(p)).length
+    return found / pairs.length >= 0.6
+  })
+}
+
 // Browsers load voices lazily; asking early means they're ready by the first reply
 // (otherwise the first reply falls back to the system's default, often male, voice).
 if (ttsSupported) speechSynthesis.getVoices()
@@ -170,9 +224,16 @@ export function usesServerVoice() {
  * Read text aloud in Thai; onEnd fires when finished or cancelled. onFallback is told why
  * the server voice wasn't used when the browser's own voice had to stand in.
  */
-export function speak(text: string, onEnd?: () => void, onFallback?: (reason: string) => void) {
+export function speak(text: string, whenDone?: () => void, onFallback?: (reason: string) => void) {
   stopSpeaking()
   const id = generation
+  // Other tabs pause their mic while this one talks, and every tab ignores this text if the mic picks it up.
+  rememberSpoken(text)
+  broadcast({ type: 'speaking', on: true, text })
+  const onEnd = () => {
+    broadcast({ type: 'speaking', on: false })
+    whenDone?.()
+  }
   if (engine !== 'server') return speakWithBrowser(text, onEnd)
   const clean = chunks(text).join(' ').slice(0, MAX_SPOKEN_CHARS)
   if (!clean) return onEnd?.()
@@ -224,14 +285,14 @@ function play(src: string, id: number, onEnd: (() => void) | undefined, onFail: 
 function speakWithBrowser(text: string, onEnd?: () => void) {
   if (!ttsSupported) return onEnd?.()
   const parts = chunks(text)
-  if (parts.length === 0) return onEnd?.()
   const voice = thaiVoice()
+  if (parts.length === 0 || !voice) return onEnd?.()
   parts.forEach((part, i) => {
     const u = new SpeechSynthesisUtterance(part)
     u.lang = LANG
     u.pitch = PITCH
     u.rate = RATE
-    if (voice) u.voice = voice
+    u.voice = voice
     if (i === parts.length - 1) {
       u.onend = () => onEnd?.()
       u.onerror = () => onEnd?.()

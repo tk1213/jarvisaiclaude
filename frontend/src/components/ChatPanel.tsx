@@ -100,17 +100,20 @@ export function ChatPanel() {
   }
 
   function toggleStandby() {
-    if (!wake.micOn) chime() // also unlocks audio so later chimes can play
-    wake.setMicOn(!wake.micOn)
+    if (!wake.micOn || wake.otherTabHasMic) chime() // also unlocks audio so later chimes can play
+    // While another dashboard tab has the mic, the button takes it back for this tab.
+    wake.setMicOn(!wake.micOn || wake.otherTabHasMic)
   }
 
-  const wakeStatus = speaking
-    ? 'JARVIS กำลังพูด… กดไมค์เพื่อพูดแทรก'
-    : busy
-      ? 'JARVIS กำลังคิด…'
-      : wake.awake
-        ? 'โหมดปลุก: ฟังอยู่ พูดคำสั่งได้เลย ("Stop Jarvis" เพื่อพัก)'
-        : 'ไมค์รอคำว่า "Hey Jarvis" / "เฮ้ จาร์วิส"'
+  const wakeStatus = wake.otherTabHasMic
+    ? 'ไมค์ถูกใช้อยู่ใน Dashboard อีกแท็บ กดปุ่ม 🎙 เพื่อใช้แท็บนี้แทน'
+    : speaking
+      ? 'JARVIS กำลังพูด… กดไมค์เพื่อพูดแทรก'
+      : busy
+        ? 'JARVIS กำลังคิด…'
+        : wake.awake
+          ? 'โหมดปลุก: ฟังอยู่ พูดคำสั่งได้เลย ("Stop Jarvis" เพื่อพัก)'
+          : 'ไมค์รอคำว่า "Hey Jarvis" / "เฮ้ จาร์วิส"'
   const listeningLive = wake.awake && !busy && !speaking
 
   function quiet() {
@@ -146,7 +149,7 @@ export function ChatPanel() {
                     : 'bg-slate-100 text-slate-500 hover:text-slate-800 dark:bg-slate-800 dark:hover:text-slate-200'
                 }`}
               >
-                {wake.micOn ? '🎙 รอ Hey Jarvis' : '🎙 ปิด'}
+                {wake.otherTabHasMic ? '🎙 ใช้อยู่แท็บอื่น' : wake.micOn ? '🎙 รอ Hey Jarvis' : '🎙 ปิด'}
               </button>
               <button
                 role="switch"
@@ -247,7 +250,7 @@ export function ChatPanel() {
 
       {voiceNotice && (
         <div role="status" className="flex items-start gap-2 border-t border-slate-200 px-4 py-2 text-xs text-amber-800 dark:border-slate-800 dark:text-amber-300">
-          <p className="flex-1">ใช้เสียงสำรองของเบราว์เซอร์อยู่ เพราะเสียงผู้หญิงจาก server ใช้ไม่ได้ ({voiceNotice}) ลองปิดแล้วเปิด start.bat ใหม่</p>
+          <p className="flex-1">เสียงผู้หญิงจาก server ใช้ไม่ได้ ({voiceNotice}) คำตอบจึงแสดงเป็นข้อความอย่างเดียว ลองปิดแล้วเปิด start.bat ใหม่</p>
           <button onClick={() => setVoiceNotice(null)} aria-label="ปิดข้อความ" className="shrink-0 hover:text-amber-950 dark:hover:text-amber-100">
             ✕
           </button>

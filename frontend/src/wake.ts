@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ERRORS, LANG, recognitionCtor, type Recognition } from './voice'
+import { broadcast, ERRORS, isEcho, LANG, recognitionCtor, subscribeVoice, TAB_ID, type Recognition } from './voice'
 
 // "Jarvis" as the Thai recognizer tends to write it: จาร์วิส, จาวิส, จาร์วิด, Jarvis…
 const NAME = '(?:jarvis|จา(?:ร์|ร)?วิ(?:ส|ซ|ด|ท|ต))'
@@ -140,7 +140,7 @@ class WakeListener {
   private handle(transcript: string) {
     this.restartDelay = 100
     const text = transcript.trim()
-    if (!text) return
+    if (!text || isEcho(text)) return
     if (isStopCommand(text, this.awake)) {
       if (this.awake) this.setAwake(false, true)
       return
@@ -216,6 +216,29 @@ export function useWakeWord(
   const [heard, setHeard] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [listener] = useState(() => new WakeListener())
+  // Another dashboard tab is talking, or has taken the mic (only one tab listens at a time).
+  const [otherTabSpeaking, setOtherTabSpeaking] = useState(false)
+  const [otherTabHasMic, setOtherTabHasMic] = useState(false)
+
+  useEffect(() => {
+    let safety: number | undefined
+    const unsubscribe = subscribeVoice((m) => {
+      if (m.tab === TAB_ID) return
+      if (m.type === 'listening') {
+        setOtherTabHasMic(true)
+        listener.setAwake(false)
+      } else {
+        setOtherTabSpeaking(m.on)
+        window.clearTimeout(safety)
+        // In case that tab closes mid-sentence and never says it finished.
+        if (m.on) safety = window.setTimeout(() => setOtherTabSpeaking(false), 30_000)
+      }
+    })
+    return () => {
+      unsubscribe()
+      window.clearTimeout(safety)
+    }
+  }, [listener])
 
   useEffect(() => {
     listener.setHandlers({
@@ -234,27 +257,31 @@ export function useWakeWord(
     })
   }, [listener, onCommand, onAwakeChange])
 
+  const listening = micOn && !paused && !otherTabSpeaking && !otherTabHasMic
   useEffect(() => {
-    if (micOn && !paused) listener.resume()
-    else listener.pause()
-  }, [micOn, paused, listener])
+    if (listening) {
+      broadcast({ type: 'listening' })
+      listener.resume()
+    } else listener.pause()
+  }, [listening, listener])
 
   useEffect(() => () => listener.pause(), [listener])
 
   function setMicOn(on: boolean) {
     saveMicOn(on)
     setError(null)
+    setOtherTabHasMic(false) // turning it on here takes the mic back from another tab
     setMicOnState(on)
     if (!on) listener.setAwake(false)
   }
 
   function setAwake(on: boolean) {
-    if (on && !micOn) setMicOn(true)
+    if (on && (!micOn || otherTabHasMic)) setMicOn(true)
     listener.setAwake(on)
   }
 
   // What's being said to JARVIS right now (not background talk), for a live bubble in the chat.
   const speakingToJarvis = heard && (awake || findWakeWord(heard) !== null) ? heard : ''
 
-  return { micOn, setMicOn, awake, setAwake, heard, speakingToJarvis, error }
+  return { micOn, setMicOn, awake, setAwake, heard, speakingToJarvis, error, otherTabHasMic }
 }
