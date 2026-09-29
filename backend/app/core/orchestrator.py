@@ -147,7 +147,7 @@ class Orchestrator:
 
             if response.stop_reason == "refusal":
                 # Nothing is persisted for a declined turn, keeping the history clean.
-                return CoreReply(session_id, "ขออภัยค่ะ เรื่องนี้ JARVIS ช่วยไม่ได้", calls)
+                return CoreReply(session_id, "ขออภัยค่ะ เรื่องนี้จาร์วิสช่วยไม่ได้", calls)
 
             new_messages.append({"role": "assistant", "content": [_block_dict(b) for b in response.content]})
             # Searches run on Anthropic's side; list them too so the chat shows what JARVIS did.

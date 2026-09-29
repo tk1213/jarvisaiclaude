@@ -46,7 +46,12 @@ _inflight: dict[tuple, asyncio.Future] = {}
 
 # Words the voices would otherwise spell out letter by letter ("J-A-R-V-I-S").
 # ASCII-only boundaries: Python counts Thai letters as word characters, and "JARVISค่ะ" has no space.
-PRONUNCIATIONS = [(re.compile(r"(?<![a-z])jarvis(?![a-z])", re.IGNORECASE), "จาร์วิส")]
+PRONUNCIATIONS = [
+    # "JARVIS", "Jarvis", "J.A.R.V.I.S.", "J A R V I S"
+    (re.compile(r"(?<![a-z])j[.\s]*a[.\s]*r[.\s]*v[.\s]*i[.\s]*s(?![a-z])\.?", re.IGNORECASE), "จาร์วิส"),
+    # the name spelled out in Thai letters
+    (re.compile(r"เจ\s*เอ\s*อาร์\s*วี\s*ไอ\s*เอส"), "จาร์วิส"),
+]
 
 
 def for_speech(text: str) -> str:

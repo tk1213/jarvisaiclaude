@@ -168,3 +168,6 @@ def test_jarvis_is_pronounced_as_a_name(client, owner_headers, monkeypatch):
     client.post("/voice/tts", json={"text": "JARVIS อยู่ตรงนี้ค่ะ"}, headers=owner_headers)
     assert FakeCommunicate.calls[-1][0] == "จาร์วิส อยู่ตรงนี้ค่ะ"
     assert voice_api.for_speech("ค่ะ JARVISค่ะ jarvis2") == "ค่ะ จาร์วิสค่ะ จาร์วิส2"
+    assert voice_api.for_speech("ฉันชื่อ J.A.R.V.I.S. ค่ะ") == "ฉันชื่อ จาร์วิส ค่ะ"
+    assert voice_api.for_speech("เจ เอ อาร์ วี ไอ เอส") == "จาร์วิส"
+    assert voice_api.for_speech("ไปจาการ์ตา javascript") == "ไปจาการ์ตา javascript"
