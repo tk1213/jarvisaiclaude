@@ -5,6 +5,7 @@
     python -m app.scripts.tuya_check on  <device_id>    # turn a device on
     python -m app.scripts.tuya_check off <device_id>    # turn a device off
     python -m app.scripts.tuya_check cmd <device_id> <code> <json-value>
+    python -m app.scripts.tuya_check ir <ir_hub_device_id>   # remotes + keys of an IR hub
 """
 
 import json
@@ -42,6 +43,20 @@ def main(argv: list[str]) -> int:
     elif action == "cmd" and len(argv) == 4:
         tuya.send_commands(argv[1], [{"code": argv[2], "value": json.loads(argv[3])}])
         print(json.dumps(tuya.get_device_status(argv[1]), ensure_ascii=False))
+    elif action == "ir" and len(argv) == 2:
+        remotes = tuya.ir_list_remotes(argv[1])
+        if not remotes:
+            print("No remotes on this IR hub. Add one (e.g. your AC) to it in the Tuya Smart app first.")
+        for r in remotes:
+            print(json.dumps(r, ensure_ascii=False))
+            keys = tuya.ir_remote_keys(argv[1], r["remote_id"])
+            print("  category_id:", keys.get("category_id"), "| single_air:", keys.get("single_air"))
+            for k in keys.get("key_list", []):
+                print(f"    key_id={k.get('key_id')} key={k.get('key')} name={k.get('key_name')} standard={k.get('standard_key')}")
+            try:
+                print("  ac/status:", json.dumps(tuya.ir_ac_status(argv[1], r["remote_id"]), ensure_ascii=False))
+            except Exception as e:  # not an AC remote, or not supported
+                print("  ac/status: n/a", e)
     else:
         print(__doc__)
         return 2

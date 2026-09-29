@@ -222,3 +222,27 @@ class TuyaClient:
 
     def trigger_scene(self, scene_id: str) -> bool:
         return bool(self.request("POST", f"/v1.0/homes/{self._resolve_home_id()}/scenes/{scene_id}/trigger"))
+
+    # ---- IR control hub (universal remotes such as the wnykq "Temp Smart" hub) ----
+    # Requires the "IR Control Hub Open Service" API in the cloud project and at
+    # least one remote (AC, TV, fan...) added to the hub in the Tuya Smart app.
+
+    def ir_list_remotes(self, infrared_id: str) -> list[dict]:
+        return self.request("GET", f"/v2.0/infrareds/{infrared_id}/remotes") or []
+
+    def ir_remote_keys(self, infrared_id: str, remote_id: str) -> dict:
+        return self.request("GET", f"/v2.0/infrareds/{infrared_id}/remotes/{remote_id}/keys") or {}
+
+    def ir_send_key(self, infrared_id: str, remote_id: str, category_id: int, key_id: int, key: str) -> bool:
+        body = {"category_id": category_id, "key_id": key_id, "key": key}
+        return bool(self.request("POST", f"/v2.0/infrareds/{infrared_id}/remotes/{remote_id}/raw/command", payload=body))
+
+    def ir_ac_status(self, infrared_id: str, remote_id: str) -> dict:
+        return self.request("GET", f"/v2.0/infrareds/{infrared_id}/remotes/{remote_id}/ac/status") or {}
+
+    def ir_ac_set(self, infrared_id: str, remote_id: str, *, power: int, mode: int, temp: int, wind: int) -> bool:
+        """power 0/1; mode 0 cool, 1 heat, 2 auto, 3 fan, 4 dry; wind 0 auto, 1 low, 2 mid, 3 high."""
+        body = {"power": power, "mode": mode, "temp": temp, "wind": wind}
+        path = f"/v2.0/infrareds/{infrared_id}/air-conditioners/{remote_id}/scenes/command"
+        return bool(self.request("POST", path, payload=body))
+
