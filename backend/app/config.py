@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     tts_rate: str = "-8%"  # speed, e.g. "+0%" normal
     tts_pitch: str = "+15Hz"  # higher = brighter
     tts_number_rate: str = "-30%"  # numbers are read at this (slower) speed so they're easy to catch
+    # Google Cloud Text-to-Speech, used first when a key is set (Edge stays as the fallback).
+    # TTS_RATE and TTS_NUMBER_RATE apply to it too; pitch is in semitones (-20..20).
+    google_tts_api_key: str = ""
+    google_tts_voice: str = "th-TH-Neural2-C"  # female; th-TH-Standard-A is another
+    google_tts_pitch: float = 1.5
 
     # Rate limits (spec §6), per user for device control, per username+IP for login.
     rate_limit_control_per_minute: int = 30

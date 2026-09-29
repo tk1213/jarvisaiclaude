@@ -145,6 +145,16 @@ Tuya ไม่ส่ง event เมื่อสั่งแอร์ IR จา�
 
 #### เสียงตอบ
 
+**แนะนำ: เสียงของ Google (ทางการ เสถียร)** ใส่ `GOOGLE_TTS_API_KEY` แล้วระบบจะใช้ Google ก่อน ถ้าใช้ไม่ได้ค่อยใช้เสียง Edge ด้านล่าง
+
+1. https://console.cloud.google.com เลือกโปรเจกต์ (ต้องเปิด billing แต่ใช้ฟรีเดือนละ 1 ล้านตัวอักษรสำหรับเสียง Neural2)
+2. APIs & Services > Library ค้นหา **Cloud Text-to-Speech API** กด Enable
+3. APIs & Services > Credentials > Create credentials > API key ตั้ง API restrictions ให้ใช้ได้แค่ Cloud Text-to-Speech API
+4. ใส่ `GOOGLE_TTS_API_KEY=...` ใน `backend/.env` แล้วเปิด server ใหม่ (log จะขึ้น `speaking with Google ...`)
+- ปรับเสียง: `GOOGLE_TTS_VOICE` (ค่าเริ่มต้น `th-TH-Neural2-C` เสียงผู้หญิง), `GOOGLE_TTS_PITCH` (semitone), ความเร็วใช้ `TTS_RATE`/`TTS_NUMBER_RATE` ร่วมกัน
+
+**สำรอง: เสียง Edge (ฟรี ไม่ต้องมี key แต่บางช่วงไม่ตอบ)**
+
 ค่าเริ่มต้นใช้เสียงผู้หญิง **Premwadee** (neural) ของ Microsoft Edge ผ่าน server (แพ็กเกจ `edge-tts`)
 ฟรี ไม่ต้องมี key และได้เสียงเดียวกันไม่ว่าจะเปิดด้วยเบราว์เซอร์ไหน ปรับให้แหลมขึ้นเล็กน้อยให้ฟังสดใส และพูดช้าลงเล็กน้อยให้ฟังชัด
 

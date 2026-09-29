@@ -124,3 +124,39 @@ def test_repeated_requests_reuse_one_synthesis(client, owner_headers, monkeypatc
     for _ in range(3):
         assert client.get("/voice/tts", params={"text": "สวัสดีค่ะ", "token": token}).content == b"mp3"
     assert len(FakeCommunicate.calls) == 1
+
+
+def test_google_voice_first_with_slow_numbers(client, owner_headers, monkeypatch):
+    import base64
+
+    import httpx
+
+    from app.integrations import google_tts
+
+    sent = {}
+
+    async def fake_post(self, url, params, json):
+        sent.update(json)
+        return httpx.Response(200, json={"audioContent": base64.b64encode(b"g-mp3").decode()})
+
+    monkeypatch.setattr(get_settings(), "google_tts_api_key", "k")
+    monkeypatch.setattr(google_tts.httpx.AsyncClient, "post", fake_post)
+    assert client.get("/voice/config", headers=owner_headers).json()["voice"] == "th-TH-Neural2-C"
+    r = client.post("/voice/tts", json={"text": "อุณหภูมิ 28.6 องศา <ร้อน>"}, headers=owner_headers)
+    assert r.content == b"g-mp3"
+    assert sent["input"]["ssml"] == '<speak>อุณหภูมิ <prosody rate="70%">28.6</prosody> องศา &lt;ร้อน&gt;</speak>'
+    assert sent["audioConfig"] == {"audioEncoding": "MP3", "speakingRate": 0.92, "pitch": 1.5}
+
+
+def test_google_failure_falls_back_to_edge(client, owner_headers, monkeypatch):
+    import httpx
+
+    from app.integrations import google_tts
+
+    async def denied(self, url, params, json):
+        return httpx.Response(403, json={"error": {"message": "API key not valid"}})
+
+    monkeypatch.setattr(get_settings(), "google_tts_api_key", "bad")
+    monkeypatch.setattr(google_tts.httpx.AsyncClient, "post", denied)
+    monkeypatch.setattr(edge_voice.edge_tts, "Communicate", FakeCommunicate)
+    assert client.post("/voice/tts", json={"text": "สวัสดีค่ะ"}, headers=owner_headers).content == b"mp3"

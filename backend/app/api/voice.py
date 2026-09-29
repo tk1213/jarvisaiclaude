@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from app.config import get_settings
 from app.db import SessionLocal
 from app.deps import get_current_user
-from app.integrations import edge_voice
+from app.integrations import edge_voice, google_tts
 from app.models import User
 from app.security import decode_access_token
 
@@ -31,6 +31,8 @@ class TtsRequest(BaseModel):
 @router.get("/config", response_model=VoiceConfig)
 def voice_config(_: User = Depends(get_current_user)):
     s = get_settings()
+    if s.google_tts_api_key:
+        return VoiceConfig(engine="server", voice=s.google_tts_voice)
     if s.tts_engine == "edge":
         return VoiceConfig(engine="server", voice=s.tts_voice)
     return VoiceConfig(engine="browser", voice=None)
@@ -45,9 +47,9 @@ async def _audio_for(text: str) -> bytes:
     """The MP3 for text, synthesized once: browsers may request the same <audio> URL more than once,
     and every extra synthesis is another call to the voice service (which then tends to fail)."""
     s = get_settings()
-    if s.tts_engine != "edge":
+    if s.tts_engine != "edge" and not s.google_tts_api_key:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "server voice is off (TTS_ENGINE=browser)")
-    key = (text, s.tts_voice, s.tts_rate, s.tts_pitch, s.tts_number_rate)
+    key = (text, s.google_tts_api_key != "", s.google_tts_voice, s.google_tts_pitch, s.tts_voice, s.tts_rate, s.tts_pitch, s.tts_number_rate)
     now = time.monotonic()
     for k in [k for k, (at, _) in _cache.items() if now - at > _CACHE_SECONDS]:
         del _cache[k]
@@ -59,10 +61,8 @@ async def _audio_for(text: str) -> bytes:
     future = asyncio.get_running_loop().create_future()
     _inflight[key] = future
     try:
-        log.info("speaking with %s rate=%s pitch=%s numbers=%s", s.tts_voice, s.tts_rate, s.tts_pitch, s.tts_number_rate)
         started = time.perf_counter()
-        parts = edge_voice.speak_parts(text, voice=s.tts_voice, rate=s.tts_rate, pitch=s.tts_pitch, number_rate=s.tts_number_rate)
-        audio = b"".join([chunk async for chunk in parts])
+        audio = await _synthesize(text)
         log.info("voice ready in %.1fs", time.perf_counter() - started)
     except Exception as e:
         future.set_exception(e)
@@ -73,6 +73,35 @@ async def _audio_for(text: str) -> bytes:
     future.set_result(audio)
     _cache[key] = (time.monotonic(), audio)
     return audio
+
+
+async def _synthesize(text: str) -> bytes:
+    s = get_settings()
+    google_error = None
+    if s.google_tts_api_key:
+        log.info("speaking with Google %s rate=%s pitch=%sst", s.google_tts_voice, s.tts_rate, s.google_tts_pitch)
+        try:
+            return await google_tts.synthesize(
+                text,
+                api_key=s.google_tts_api_key,
+                voice=s.google_tts_voice,
+                rate=s.tts_rate,
+                pitch=s.google_tts_pitch,
+                number_rate=s.tts_number_rate,
+            )
+        except google_tts.TtsError as e:
+            google_error = e
+            if s.tts_engine != "edge":
+                raise edge_voice.TtsError(str(e)) from None
+            log.warning("Google voice failed, trying Edge: %s", e)
+    log.info("speaking with Edge %s rate=%s pitch=%s numbers=%s", s.tts_voice, s.tts_rate, s.tts_pitch, s.tts_number_rate)
+    try:
+        parts = edge_voice.speak_parts(text, voice=s.tts_voice, rate=s.tts_rate, pitch=s.tts_pitch, number_rate=s.tts_number_rate)
+        return b"".join([chunk async for chunk in parts])
+    except edge_voice.TtsError as e:
+        if google_error:
+            raise edge_voice.TtsError(f"{google_error} / {e}") from None
+        raise
 
 
 def _failed(e: Exception) -> HTTPException:
