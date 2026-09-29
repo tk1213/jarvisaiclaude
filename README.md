@@ -111,6 +111,10 @@ npm run build        # สร้าง frontend/dist
 3. ตั้ง Device Permission ของตัวรีโมท IR และแอร์เป็น Controllable
 4. กด "อัปเดตอุปกรณ์" บน Dashboard ระบบจะผูกแอร์เข้ากับตัวส่ง IR ให้เอง
 5. ตรวจได้ด้วย `python -m app.scripts.tuya_check ir <device_id ของตัวรีโมท IR>`
+
+Tuya ไม่ส่ง event เมื่อสั่งแอร์ IR จากแอป Tuya Smart ระบบจึงถามสถานะแอร์จาก Tuya ทุก 30 วินาที
+(ปรับได้ที่ `IR_AC_POLL_SECONDS`, `0` = ปิด) การ์ดบน Dashboard จะเปลี่ยนตามภายในเวลานั้น
+ส่วนการกดรีโมทตัวจริงที่ตัวแอร์ ระบบจะไม่รู้ เพราะ IR เป็นสัญญาณทางเดียว
 - อัปเดตสดผ่าน WebSocket `/ws/devices` ไม่ว่าจะกดจากแอป, ตัวอุปกรณ์ หรือสั่งผ่าน JARVIS
 - ปุ่ม scene และกล่องแชทคุยกับ JARVIS
 

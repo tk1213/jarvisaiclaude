@@ -130,6 +130,13 @@ class MockTuyaClient:
             return []
         return [{"remote_id": "mock-ir-ac", "remote_name": "แอร์ห้องทำงาน", "category_id": 5, "brand_name": "Mock"}]
 
+    def ir_ac_status(self, infrared_id: str, remote_id: str) -> dict:
+        if remote_id not in {r["remote_id"] for r in self.ir_list_remotes(infrared_id)}:
+            raise TuyaError(2009, f"remote {remote_id} not on hub {infrared_id}")
+        with self._lock:
+            st = {s["code"]: s["value"] for s in self._devices[remote_id]["status"]}
+        return {"power": "1" if st["switch_power"] else "0", "mode": str(st["mode"]), "temp": str(st["temperature"]), "wind": str(st["fan"])}
+
     def ir_ac_set(self, infrared_id: str, remote_id: str, *, power: int, mode: int, temp: int, wind: int) -> bool:
         if remote_id not in {r["remote_id"] for r in self.ir_list_remotes(infrared_id)}:
             raise TuyaError(2009, f"remote {remote_id} not on hub {infrared_id}")

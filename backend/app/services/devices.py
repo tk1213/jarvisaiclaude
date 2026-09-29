@@ -45,6 +45,44 @@ def _fresh_status(tuya, device_id: str, listed: list[dict]) -> dict:
         return {}
 
 
+def _ir_ac_status(tuya, device: Device) -> dict:
+    """An IR AC's last-sent settings (from any source: Tuya app, dashboard, JARVIS) as status codes.
+
+    Changes made in the Tuya app don't reliably arrive via Pulsar or the device listing
+    for virtual IR remotes, but the IR API's ac/status always has them.
+    """
+    if device.category != IR_AC_CATEGORY or not device.ir_hub_id:
+        return {}
+    try:
+        raw = tuya.ir_ac_status(device.ir_hub_id, device.tuya_device_id)
+    except (TuyaError, AttributeError):
+        return {}
+    status = {}
+    try:
+        if raw.get("power") is not None:
+            status["switch_power"] = str(raw["power"]) == "1"
+        for src, code in (("mode", "mode"), ("temp", "temperature"), ("wind", "fan")):
+            if raw.get(src) not in (None, ""):
+                status[code] = int(raw[src])
+    except (TypeError, ValueError):
+        log.warning("unexpected IR AC status for %s: %s", device.tuya_device_id, raw)
+        return {}
+    return status
+
+
+def refresh_ir_acs(db: Session, tuya) -> list[Device]:
+    """Re-read every linked IR AC's settings; returns the devices whose status changed."""
+    changed = []
+    for device in db.scalars(select(Device).where(Device.category == IR_AC_CATEGORY)):
+        fresh = _ir_ac_status(tuya, device)
+        merged = {**(device.status or {}), **fresh}
+        if fresh and merged != device.status:
+            device.status = merged
+            changed.append(device)
+    db.commit()
+    return changed
+
+
 def sync_devices(db: Session, tuya) -> list[Device]:
     """Pull the device list (and room assignment) from Tuya into the database."""
     room_of: dict[str, str] = {}
@@ -71,6 +109,9 @@ def sync_devices(db: Session, tuya) -> list[Device]:
         db.add(device)
         synced.append(device)
     _link_ir_remotes(tuya, synced)
+    for device in synced:
+        if ac := _ir_ac_status(tuya, device):
+            device.status = {**device.status, **ac}
     # Drop devices that are no longer in the Tuya account.
     seen = {d.tuya_device_id for d in synced}
     for tuya_id, device in existing.items():
@@ -106,6 +147,8 @@ def refresh_all_status(db: Session, tuya) -> None:
         if raw is not None:
             device.status = {**(device.status or {}), **_fresh_status(tuya, device.tuya_device_id, raw.get("status", []))}
             device.online = bool(raw.get("online", False))
+        if ac := _ir_ac_status(tuya, device):
+            device.status = {**device.status, **ac}
     db.commit()
 
 
@@ -128,7 +171,7 @@ def find_devices(db: Session, name: str | None = None, room: str | None = None) 
 
 def refresh_status(db: Session, tuya, device: Device) -> Device:
     fresh = _fresh_status(tuya, device.tuya_device_id, tuya.get_device_status(device.tuya_device_id))
-    device.status = {**(device.status or {}), **fresh}
+    device.status = {**(device.status or {}), **fresh, **_ir_ac_status(tuya, device)}
     db.commit()
     return device
 

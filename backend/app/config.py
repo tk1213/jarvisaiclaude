@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     tuya_pulsar_enabled: bool = True
     tuya_pulsar_endpoint: str = ""  # derived from tuya_endpoint if empty
     tuya_pulsar_env: Literal["event", "event-test"] = "event"
+    # Tuya doesn't push changes to IR air conditioners made in its app, so poll them (0 = off).
+    ir_ac_poll_seconds: int = 30
 
     # Claude (JARVIS Core, spec §4.1)
     anthropic_api_key: str = ""
