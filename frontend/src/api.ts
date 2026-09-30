@@ -123,6 +123,11 @@ export interface VoiceConfig {
   voice: string | null
 }
 
+export interface LineStatus {
+  configured: boolean
+  linked: boolean
+}
+
 export const api = {
   login: (username: string, password: string) =>
     request<{ access_token: string }>('POST', '/auth/login', { username, password }),
@@ -141,6 +146,9 @@ export const api = {
   voiceLastError: () => request<{ error: string | null }>('GET', '/voice/last-error'),
   chat: (text: string, sessionId: string | null, channel: 'dashboard' | 'voice' = 'dashboard') =>
     request<ChatResponse>('POST', '/core/chat', { text, session_id: sessionId, channel }),
+  lineStatus: () => request<LineStatus>('GET', '/line/status'),
+  lineLinkCode: () => request<{ code: string; expires_in: number }>('POST', '/line/link-code'),
+  lineUnlink: () => request<void>('DELETE', '/line/link'),
 }
 
 export function deviceStreamUrl(token: string): string {

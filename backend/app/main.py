@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import auth, core, devices, voice, ws
+from app.api import auth, core, devices, line, voice, ws
 from app.config import get_settings
 from app.db import SessionLocal, init_db
 from app.integrations.tuya import TuyaError, build_pulsar_consumer, get_tuya_client
@@ -64,6 +64,7 @@ app.include_router(devices.router)
 app.include_router(core.router)
 app.include_router(ws.router)
 app.include_router(voice.router)
+app.include_router(line.router)
 
 
 @app.exception_handler(TuyaError)

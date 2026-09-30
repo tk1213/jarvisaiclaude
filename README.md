@@ -3,7 +3,7 @@
 ผู้ช่วยส่วนตัวอัจฉริยะ: ควบคุมบ้าน (Tuya Smart Home), ออกเอกสารธุรกิจ (FlowAccount)
 และในอนาคตดึงยอดขายจาก Lazada/Shopee ผ่าน 3 ช่องทาง: Dashboard, LINE และ Voice
 
-แผนงานและสถานะดูได้ที่ [docs/roadmap.md](docs/roadmap.md) ตอนนี้อยู่ที่ **เฟส 1** (เหลือ LINE OA)
+แผนงานและสถานะดูได้ที่ [docs/roadmap.md](docs/roadmap.md) ตอนนี้อยู่ที่ **เฟส 1** (LINE OA พร้อมใช้แล้ว ถัดไปคือเฟส 2 FlowAccount)
 
 ## โครงสร้าง
 
@@ -17,7 +17,9 @@ backend/
     config.py                ตั้งค่าจาก environment / .env
     models.py                Data model (users, devices, contacts, documents_log, chat_sessions, tokens)
     security.py              รหัสผ่าน, JWT, เข้ารหัส token
-    api/                     REST endpoints (auth, devices, scenes)
+    api/                     REST endpoints (auth, devices, scenes, voice, line)
+    api/line.py              LINE webhook + เชื่อมบัญชี LINE ด้วยรหัส 6 หลัก
+    integrations/line.py     LINE Messaging API (ตรวจลายเซ็น, reply/push, Flex Message)
     services/devices.py      logic ควบคุมอุปกรณ์ (ใช้ร่วมกับ LLM tools ในเฟส 1)
     integrations/tuya/       Tuya OpenAPI client, Pulsar (event เรียลไทม์) + mock
     ratelimit.py             จำกัดจำนวนคำสั่ง/การ login ต่อนาที
@@ -83,6 +85,8 @@ curl -X POST localhost:8000/devices/1/power -H "Authorization: Bearer $TOKEN" \
 | GET | `/scenes` | รายการ scene |
 | POST | `/scenes/{scene_id}/trigger` | สั่ง scene |
 | POST | `/core/chat` | คุยกับ JARVIS |
+| POST | `/line/webhook` | รับข้อความจาก LINE OA (ตรวจลายเซ็น) |
+| GET/POST/DELETE | `/line/status`, `/line/link-code`, `/line/link` | เชื่อม/ยกเลิกบัญชี LINE |
 | WS | `/ws/devices?token=` | สถานะอุปกรณ์แบบสด |
 
 ## Dashboard
@@ -189,6 +193,49 @@ JARVIS ค้นเว็บเองได้ (web search ของ Anthropic) 
 - ถ้าผู้ดูแลองค์กรปิด web search ไว้ใน Claude Console ต้องเปิดก่อน ไม่อย่างนั้น JARVIS จะตอบว่าค้นไม่ได้
 - คิดเงินเพิ่มตามจำนวนครั้งที่ค้น ตั้งได้ด้วย `WEB_SEARCH_MAX_USES` (ค่าเริ่มต้น 3 ต่อคำตอบ) หรือปิดด้วย `WEB_SEARCH_ENABLED=false`
 - การค้นทำให้ตอบช้าลงอีกไม่กี่วินาที
+
+## LINE OA (เฟส 1)
+
+คุยกับจาร์วิสผ่านแชท LINE ได้เหมือนบน Dashboard (สั่งอุปกรณ์, ถามสถานะ, ค้นเว็บ) พอสั่งอุปกรณ์แล้วจะตอบเป็นการ์ด (Flex Message)
+บอกสถานะเปิด/ปิดของอุปกรณ์ที่เพิ่งสั่ง และมีปุ่มลัด "สถานะบ้าน", "ปิดทุกอย่าง", "อุณหภูมิตอนนี้" ใต้คำตอบ
+
+**ความปลอดภัย:** จาร์วิสตอบเฉพาะบัญชี LINE ที่เชื่อมกับผู้ใช้ JARVIS แล้วเท่านั้น คนอื่นที่แอด OA สั่งบ้านไม่ได้
+และทุกคำขอจาก LINE ต้องมีลายเซ็นที่ถูกต้องจาก Channel secret
+
+### ตั้งค่าครั้งแรก
+
+1. สร้าง LINE Official Account ที่ [LINE Official Account Manager](https://manager.line.biz)
+   แล้วไปที่ **ตั้งค่า > Messaging API > เปิดใช้ Messaging API** (เลือกหรือสร้าง Provider)
+2. เปิด [LINE Developers Console](https://developers.line.biz/console/) เลือก channel ของ OA
+   - แท็บ **Basic settings**: คัดลอก **Channel secret**
+   - แท็บ **Messaging API**: กด **Issue** ที่ **Channel access token (long-lived)** แล้วคัดลอก
+3. ใส่ใน `backend\.env` แล้วปิด-เปิด `start.bat` ใหม่
+   ```
+   LINE_CHANNEL_SECRET=...
+   LINE_CHANNEL_ACCESS_TOKEN=...
+   ```
+4. เปิด URL สาธารณะ (https) ให้ LINE ส่งข้อความเข้ามาได้ ด้วย Cloudflare Tunnel
+   - ติดตั้งครั้งเดียว: `winget install --id Cloudflare.cloudflared`
+   - ดับเบิลคลิก `tunnel.bat` (เปิดไว้คู่กับ `start.bat`) แล้วคัดลอกที่อยู่ `https://....trycloudflare.com` ที่ขึ้นมา
+5. LINE Developers Console แท็บ **Messaging API > Webhook settings**
+   - Webhook URL: `https://....trycloudflare.com/line/webhook` แล้วกด **Verify** ต้องขึ้น Success
+   - เปิด **Use webhook**
+6. LINE Official Account Manager **ตั้งค่า > การตอบกลับ**: ปิด **ข้อความตอบกลับอัตโนมัติ** และ **ข้อความทักทาย**
+   (ไม่อย่างนั้น LINE จะตอบซ้ำกับจาร์วิส) และเปิด **Webhook**
+7. แอดเพื่อน OA (QR ในแท็บ Messaging API) แล้วบน Dashboard กดปุ่ม **LINE** ที่มุมบน > **ขอรหัสเชื่อม LINE**
+   ส่งรหัส 6 หลักในแชท OA ภายใน 10 นาที จาร์วิสจะตอบว่าเชื่อมแล้ว
+
+### การใช้งาน
+
+- พิมพ์คำสั่งได้เลย เช่น "เปิดปลั๊ก 2", "อุณหภูมิห้องทำงาน", "ราคาทองวันนี้"
+- คุยต่อเนื่องได้ จาร์วิสจำบทสนทนาจนกว่าจะเงียบ 30 นาที (`LINE_SESSION_IDLE_MINUTES`) พิมพ์ **"เริ่มใหม่"** เพื่อเริ่มบทสนทนาใหม่ทันที
+- ระหว่างคิดจะขึ้นจุด "..." ในแชท ถ้าตอบช้าจน reply token หมดอายุ ระบบจะส่งแบบ push แทน (นับโควตาข้อความของ OA)
+- รับเฉพาะแชทส่วนตัว ในกลุ่มจาร์วิสจะไม่ตอบ และตอนนี้อ่านได้แค่ข้อความตัวอักษร (ยังไม่รับรูปหรือเสียง)
+- ยกเลิกการเชื่อมได้ที่ปุ่ม **LINE** บน Dashboard
+
+**หมายเหตุ Cloudflare Tunnel:** ที่อยู่ `trycloudflare.com` เปลี่ยนทุกครั้งที่เปิด `tunnel.bat` ใหม่ ต้องไปแก้ Webhook URL ทุกครั้ง
+ถ้าจะใช้ถาวรให้ทำ named tunnel กับโดเมนของตัวเอง และเมื่อเปิด tunnel แล้ว Dashboard จะเข้าจากอินเทอร์เน็ตได้ด้วย
+(ต้อง login ทุกครั้ง) จึงควรตั้งรหัสผ่านที่เดายาก
 
 ## ต่อ Tuya จริง
 
