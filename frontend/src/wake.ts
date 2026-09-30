@@ -4,16 +4,16 @@ import { broadcast, ERRORS, isEcho, LANG, recognitionCtor, subscribeVoice, TAB_I
 // "Jarvis" as the Thai recognizer tends to write it: จาร์วิส, จาวิส, จาร์วิด, จาวิก, Jarvis…
 const NAME = '(?:j[ae]r?vi[sk]|จ[่้๊๋]?[าะ]?[่้๊๋]?(?:ร์|ร)?วิ[สซดทตชศษก](?:ต์)?)'
 // Only "Hey Jarvis" / "เฮ้ จาร์วิส" wakes it, so just mentioning the name in conversation doesn't.
-// Chrome sometimes hears "Hey Jarvis" as "Hey David" / "เฮ้ เดวิด" / "เฮ้ เดวิก".
-const WAKE_WORD = new RegExp(`(?:hey|เฮ้|เฮ|เฮย์|เฮย)\\s*(?:${NAME}|d[ae]vi[dk]|เดวิ[ดก])`, 'i')
+// Chrome sometimes hears "Hey Jarvis" as "Hey David", "เฮ้ เดวิด/เดวิก", "hang javis", "hen heavy", "เฮ้ยจาร์วิส".
+const WAKE_WORD = new RegExp(`(?:hey|hang|hen|เฮ้ย|เฮ้|เฮ|เฮย์|เฮย)\\s*(?:${NAME}|d[ae]vi[dk]|heavy|เดวิ[ดก])`, 'i')
 const MENTIONS_NAME = new RegExp(NAME, 'i')
 const NAME_ONLY = new RegExp(`^\\s*${NAME}\\s*[.!?]?\\s*$`, 'i')
 // "Stop Jarvis", "จาร์วิส หยุดการทำงาน": back to sleep.
 const STOP_WORDS = /(?:หยุดการทำงาน|หยุดทำงาน|หยุดฟัง|ปิดโหมดปลุก|\bstop\b|สต็อป|สต๊อป|สตอป)/i
 // Awake, it goes back to sleep after this long without anything said to it (so a TV isn't taken as commands).
 export const IDLE_SLEEP_MS = 60_000
-// Chrome's continuous mode is slow to mark speech final; once the words stop changing for this long, act on them.
-const SETTLE_MS = 700
+// Act on what was said once the words stop for this long, so a pause mid-sentence doesn't cut a command short.
+const SETTLE_MS = 3_500
 const FATAL_ERRORS = new Set(['not-allowed', 'service-not-allowed', 'audio-capture'])
 
 /** The command in a sentence that contains the wake word ("เฮ้ จาร์วิส เปิดไฟ" → "เปิดไฟ"), or null without it. */
@@ -50,6 +50,9 @@ class WakeListener {
   private awake = false
   private idle: number | undefined
   private settle: number | undefined
+  // Finished sentences waiting for the speaker to stop (the pause may split one command into several).
+  private pending = ''
+  private interim = ''
   private running = false
   private restartDelay = 100
   private on: Handlers = { onCommand: () => {}, onAwake: () => {}, onHeard: () => {}, onFinal: () => {}, onTrouble: () => {}, onFatal: () => {} }
@@ -67,6 +70,8 @@ class WakeListener {
 
   pause() {
     window.clearTimeout(this.settle)
+    this.pending = ''
+    this.interim = ''
     window.clearTimeout(this.idle)
     this.running = false
     this.rec?.abort()
@@ -95,18 +100,24 @@ class WakeListener {
     r.continuous = true
     r.interimResults = true
     r.onresult = (e) => {
+      if (this.rec !== r) return // a session dropped by flush()
       window.clearTimeout(this.settle)
       let interim = ''
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const res = e.results[i]
         if (res.isFinal) {
           this.on.onFinal(res[0].transcript)
-          this.handle(res[0].transcript)
+          this.pending = `${this.pending} ${res[0].transcript}`.trim()
         } else interim += res[0].transcript
       }
-      this.on.onHeard(interim)
-      if (interim && this.isForUs(interim)) {
-        this.settle = window.setTimeout(() => this.settleEarly(r, interim), SETTLE_MS)
+      this.interim = interim
+      const said = `${this.pending} ${interim}`.trim()
+      if (said && this.isForUs(said)) {
+        this.on.onHeard(said)
+        this.settle = window.setTimeout(() => this.flush(), SETTLE_MS)
+      } else {
+        this.on.onHeard(interim)
+        if (!interim) this.pending = '' // background talk, not for JARVIS
       }
     }
     r.onerror = (e) => {
@@ -120,8 +131,15 @@ class WakeListener {
       // 'no-speech' and 'aborted' are routine: onend restarts (or not, when paused).
     }
     r.onend = () => {
-      if (this.rec === r) this.rec = null
-      this.on.onHeard('')
+      if (this.rec !== r) return
+      this.rec = null
+      // Chrome can end a session during a pause; keep what was said so far for the next one.
+      this.pending = `${this.pending} ${this.interim}`.trim()
+      this.interim = ''
+      if (!this.pending || !this.isForUs(this.pending)) {
+        this.pending = ''
+        this.on.onHeard('')
+      }
       if (this.running) window.setTimeout(() => this.listen(), this.restartDelay)
     }
     this.rec = r
@@ -141,12 +159,19 @@ class WakeListener {
     return this.awake || findWakeWord(text) !== null || isStopCommand(text, false)
   }
 
-  /** Act on the interim words now and drop this session so the late final result isn't handled twice. */
-  private settleEarly(r: Recognition, text: string) {
-    if (this.rec !== r) return
-    this.rec = null
-    r.abort() // onend restarts listening while running
+  /** The speaker stopped: act on everything said, and drop this session so its late final result isn't handled twice. */
+  private flush() {
+    const text = `${this.pending} ${this.interim}`.trim()
+    this.pending = ''
+    this.interim = ''
+    const r = this.rec
+    if (r) {
+      this.rec = null
+      r.abort()
+      if (this.running) window.setTimeout(() => this.listen(), this.restartDelay)
+    }
     this.on.onHeard('')
+    if (!text) return
     this.on.onFinal(text)
     this.handle(text)
   }
