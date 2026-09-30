@@ -38,16 +38,16 @@ export function ChatPanel() {
   const wake = useWakeWord(
     (command) => void send(command, 'voice'),
     busy || speaking || mic.listening,
-    (awake, bySpeech, withCommand) => {
+    (awake, bySpeech) => {
       const text = awake
         ? '🔔 โหมดปลุกเปิดแล้ว พูดคำสั่งต่อเนื่องได้เลย (พูด "Stop Jarvis" เพื่อพัก)'
         : bySpeech
           ? '💤 JARVIS พักแล้ว เรียก "Hey Jarvis" เพื่อปลุก'
           : '💤 ปิดโหมดปลุกแล้ว'
       setMessages((m) => [...m, { role: 'note', text }])
-      // Answer a bare "Hey Jarvis" right away, without a round trip to Claude.
-      if (awake && bySpeech && !withCommand) say(GREETING)
     },
+    // Answer a bare "Hey Jarvis" locally, without a round trip to Claude.
+    () => say(GREETING),
   )
 
   useEffect(() => {
