@@ -99,7 +99,7 @@ npm install
 npm run build        # สร้าง frontend/dist
 ```
 
-จากนั้นรัน backend (บน Windows ดับเบิลคลิก `start.bat` ที่โฟลเดอร์หลักได้เลย) แล้วเปิด http://localhost:8000 (server จะเปิดหน้า Dashboard จาก `frontend/dist` ให้เอง)
+จากนั้นรัน backend (บน Windows ดับเบิลคลิก `start.bat` ที่โฟลเดอร์หลักได้เลย) แล้วเปิด http://localhost:8765 (`start.bat` รันที่พอร์ต 8765; server จะเปิดหน้า Dashboard จาก `frontend/dist` ให้เอง)
 
 - การ์ดอุปกรณ์พร้อมปุ่มเปิด/ปิด ค่ากำลังไฟ/แรงดัน/อุณหภูมิ และสถานะออนไลน์ จัดกลุ่มตามห้อง
 - ปุ่มดินสอบนการ์ด: แก้ชื่อและห้อง (ค่าที่แก้จะไม่ถูกทับตอนอัปเดตจาก Tuya และ JARVIS ใช้ห้องในการเข้าใจคำสั่ง)
@@ -167,7 +167,7 @@ Tuya ไม่ส่ง event เมื่อสั่งแอร์ IR จา�
 - เป็นบริการ "อ่านออกเสียง" ของ Edge ที่ไม่ได้เปิดเป็น API ทางการ ถ้าวันหนึ่งใช้ไม่ได้ ระบบจะกลับไปใช้เสียงของเบราว์เซอร์ให้เอง
   (หรือตั้ง `TTS_ENGINE=browser`)
 
-ระหว่างแก้หน้าเว็บ ใช้ `npm run dev` (http://localhost:5173) ซึ่งจะส่ง API ต่อไปที่ backend :8000 ให้เอง
+ระหว่างแก้หน้าเว็บ ใช้ `npm run dev` (http://localhost:5173) ซึ่งจะส่ง API ต่อไปที่ backend :8765 ให้เอง
 
 ## คุยกับ JARVIS (เฟส 1)
 
@@ -243,9 +243,10 @@ JARVIS ค้นเว็บเองได้ (web search ของ Anthropic) 
 1. [dash.cloudflare.com](https://dash.cloudflare.com) > **Zero Trust** > **Networks** > **Tunnels** > **Create a tunnel** > **Cloudflared** ตั้งชื่อ `jarvis`
 2. เลือก **Windows** แล้วคัดลอกคำสั่ง `cloudflared.exe service install <token>` ไปรันใน PowerShell แบบ **Run as Administrator**
    (token เป็นความลับ ห้ามส่งให้ใคร) รอจนหน้าเว็บขึ้นว่า Connector **Connected**
-3. **Public Hostname**: Subdomain `jarvis`, Domain โดเมนของเรา, Service Type `HTTP`, URL `localhost:8000`
+3. **Public Hostname**: Subdomain `jarvis`, Domain โดเมนของเรา, Service Type `HTTP`, URL `localhost:8765`
+   (ใส่ Path `^/line/webhook$` ได้ เพื่อให้อินเทอร์เน็ตเข้าได้แค่ webhook ไม่ใช่ Dashboard)
    (ถ้าขึ้นว่ามี DNS record ชื่อนี้อยู่แล้ว ให้ลบ record เดิมในหน้า DNS ก่อน)
-4. เปิด `https://jarvis.<โดเมน>/health` ต้องได้ `{"status":"ok",...}` (ต้องเปิด `start.bat` อยู่)
+4. ถ้าไม่ได้ใส่ Path เปิด `https://jarvis.<โดเมน>/health` ต้องได้ `{"status":"ok",...}` (ต้องเปิด `start.bat` อยู่)
 5. แก้ Webhook URL ใน LINE Developers เป็น `https://jarvis.<โดเมน>/line/webhook` แล้วกด **Verify**
 
 ## ต่อ Tuya จริง
