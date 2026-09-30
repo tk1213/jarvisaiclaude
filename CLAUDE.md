@@ -68,6 +68,6 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
 
 ## Next up
 
-Phase 2: FlowAccount (phase 1 is done; LINE OA runs through `tunnel.bat`, a Cloudflare quick tunnel
-whose URL changes each run). A LINE account is answered only after linking with the dashboard's 6-digit code. Remind the owner to renew the Anthropic API key
+Phase 2: FlowAccount (phase 1 is done). LINE OA's webhook is `https://jarvis.jarvisthai.com/line/webhook`
+through a named Cloudflare tunnel (Windows service → `localhost:8000`); `tunnel.bat` (quick tunnel) is the fallback. A LINE account is answered only after linking with the dashboard's 6-digit code. Remind the owner to renew the Anthropic API key
 before it expires on 29 Dec 2026.
