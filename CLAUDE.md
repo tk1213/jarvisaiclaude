@@ -9,7 +9,8 @@
   - frontend changes: also `cd frontend && npm run build`, then Ctrl+F5 in the dashboard
   - new Python dependencies: `cd backend && .venv\Scripts\activate && pip install -e ".[dev]"`
 - **Secrets live only in `backend\.env` on the owner's machine** (gitignored): `ANTHROPIC_API_KEY`,
-  `TUYA_ACCESS_SECRET`, `GOOGLE_TTS_API_KEY`, `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN`, `JWT_SECRET`,
+  `TUYA_ACCESS_SECRET`, `GOOGLE_TTS_API_KEY`, `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN`,
+  `FLOWACCOUNT_CLIENT_SECRET`, `JWT_SECRET`,
   `ENCRYPTION_KEY`. Never ask for them in chat;
   if one shows up in a screenshot or log, tell the owner to rotate it.
 - Work phase by phase following `docs/roadmap.md` (spec: the owner's Thai JARVIS PDF). Update the roadmap
@@ -25,6 +26,7 @@
   - `app/services/devices.py` device logic (sync, power, IR air conditioner)
   - `app/api/voice.py` + `app/integrations/google_tts.py` / `edge_voice.py` spoken replies
   - `app/api/line.py` + `app/integrations/line.py` LINE OA webhook, account linking, Flex replies
+  - `app/services/documents.py` + `app/integrations/flowaccount.py` FlowAccount documents (v1 API, mock mode)
 - `frontend/` React 19 + TypeScript + Vite + Tailwind v4; built `frontend/dist` is served by the backend at `/`
   - `src/components/ChatPanel.tsx` chat, mic, wake-word UI; `src/voice.ts` speech in/out; `src/wake.ts` "Hey Jarvis"
 
@@ -68,7 +70,10 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
 
 ## Next up
 
-Phase 2: FlowAccount (phase 1 is done). LINE OA's webhook is `https://jarvis.jarvisthai.com/line/webhook`
+Phase 2: FlowAccount is built and runs in `FLOWACCOUNT_MODE=mock`; next is testing with the owner's real
+account (sandbox `https://openapi.flowaccount.com/test` first). Documents are two-step: `prepare_document`
+saves a draft, `issue_document` is refused unless the draft came from an earlier message (user confirmed).
+Phase 1 is done. LINE OA's webhook is `https://jarvis.jarvisthai.com/line/webhook`
 through a named Cloudflare tunnel (Windows service, path `^/line/webhook$` → `127.0.0.1:8765`;
 `start.bat` runs uvicorn on port 8765, so the dashboard is http://localhost:8765); `tunnel.bat` (quick tunnel) is the fallback. A LINE account is answered only after linking with the dashboard's 6-digit code. Remind the owner to renew the Anthropic API key
 before it expires on 29 Dec 2026.

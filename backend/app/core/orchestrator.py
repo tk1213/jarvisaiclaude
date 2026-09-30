@@ -15,7 +15,7 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 import anthropic
@@ -137,7 +137,7 @@ class Orchestrator:
         history = self._history(db, user, session_id)
         # Attaching the device list saves Claude a get_devices round trip on most commands.
         new_messages = [self._user_turn(msg.text, msg.channel, device_snapshot(db))]
-        ctx = ToolContext(db=db, tuya=tuya, user=user)
+        ctx = ToolContext(db=db, tuya=tuya, user=user, channel=msg.channel.value, turn_started=datetime.now(timezone.utc))
         calls: list[ToolCallRecord] = []
 
         for round_no in range(1, self.max_tool_rounds + 1):

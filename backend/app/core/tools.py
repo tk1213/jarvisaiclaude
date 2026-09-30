@@ -1,4 +1,4 @@
-"""home_control.* tools exposed to Claude (spec §4.1, §4.2).
+"""home_control.* and flowaccount.* tools exposed to Claude (spec §4.1-4.3).
 
 Each tool is a JSON schema for the API plus a handler that runs with the
 caller's database session, Tuya client and user, so permissions and rate
@@ -7,17 +7,21 @@ limits apply exactly as they do on the REST API.
 
 import json
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.integrations.flowaccount import FlowAccountError
 from app.integrations.tuya import TuyaError, pulsar
 from app.models import Device, User
 from app.ratelimit import limiter
 from app.services import devices as svc
+from app.services import documents as docs
 
 
 class ToolError(Exception):
@@ -29,6 +33,9 @@ class ToolContext:
     db: Session
     tuya: Any
     user: User
+    channel: str = "dashboard"
+    # When the user's current message arrived: a document may only be issued from a draft made before it.
+    turn_started: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 def _device_summary(d: Device) -> dict:
@@ -107,6 +114,42 @@ def set_scene(ctx: ToolContext, scene_id: str) -> Any:
     ctx.tuya.trigger_scene(scene_id)
     return {"triggered": scene_id}
 
+
+def find_customers(ctx: ToolContext, query: str) -> Any:
+    return [
+        {"name": c.name, "tax_id": c.tax_id, "address": c.address, "email": c.email, "phone": c.phone}
+        for c in docs.find_customers(ctx.db, query)
+    ]
+
+
+def prepare_document(
+    ctx: ToolContext,
+    doc_type: str,
+    customer: dict,
+    items: list[dict],
+    vat: bool,
+    vat_inclusive: bool,
+    credit_days: int,
+    remarks: str | None,
+) -> Any:
+    today = datetime.now(ZoneInfo(get_settings().timezone)).date()
+    doc = docs.prepare(ctx.db, ctx.user, ctx.channel, doc_type, customer, items, vat, vat_inclusive, credit_days, remarks or "", today)
+    return docs.summary(doc)
+
+
+def issue_document(ctx: ToolContext, draft_id: int) -> Any:
+    return docs.summary(docs.issue(ctx.db, ctx.user, draft_id, ctx.turn_started))
+
+
+def list_documents(ctx: ToolContext, limit: int) -> Any:
+    return [
+        {"draft_id": d.id, "document": docs.DOC_NAMES.get(d.doc_type, d.doc_type), "status": d.status, "serial": d.document_serial,
+         "customer": (d.payload.get("customer") or {}).get("name"), "grand_total": d.total_amount, "created_at": d.created_at.isoformat()}
+        for d in docs.recent(ctx.db, ctx.user, max(1, min(limit, 20)))
+    ]
+
+
+_NULLABLE_STR = {"type": ["string", "null"]}
 
 _VALUE_SCHEMA = {"anyOf": [{"type": "boolean"}, {"type": "number"}, {"type": "string"}]}
 
@@ -206,6 +249,94 @@ TOOLS: list[dict] = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "find_customers",
+        "description": "Search customers remembered from earlier documents by name or tax id, to reuse their details.",
+        "strict": True,
+        "input_schema": {
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "prepare_document",
+        "description": (
+            "Step 1 of issuing a FlowAccount document: validates it, computes totals/VAT and saves a DRAFT. "
+            "Nothing is sent to FlowAccount. Read the returned summary back to the user and ask them to confirm. "
+            "doc_type: quotation (ใบเสนอราคา), billing_note (ใบวางบิล), tax_invoice (ใบกำกับภาษี/ใบแจ้งหนี้), "
+            "receipt (ใบเสร็จรับเงิน). vat: add 7% VAT; vat_inclusive: the prices already include VAT. "
+            "credit_days: payment term / validity in days (0 = cash)."
+        ),
+        "strict": True,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "doc_type": {"type": "string", "enum": ["quotation", "billing_note", "tax_invoice", "receipt"]},
+                "customer": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "tax_id": _NULLABLE_STR,
+                        "address": _NULLABLE_STR,
+                        "branch": _NULLABLE_STR,
+                        "email": _NULLABLE_STR,
+                        "phone": _NULLABLE_STR,
+                    },
+                    "required": ["name", "tax_id", "address", "branch", "email", "phone"],
+                    "additionalProperties": False,
+                },
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "quantity": {"type": "number"},
+                            "unit_price": {"type": "number", "description": "baht per unit"},
+                            "unit": _NULLABLE_STR,
+                        },
+                        "required": ["name", "quantity", "unit_price", "unit"],
+                        "additionalProperties": False,
+                    },
+                },
+                "vat": {"type": "boolean"},
+                "vat_inclusive": {"type": "boolean"},
+                "credit_days": {"type": "integer"},
+                "remarks": _NULLABLE_STR,
+            },
+            "required": ["doc_type", "customer", "items", "vat", "vat_inclusive", "credit_days", "remarks"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "issue_document",
+        "description": (
+            "Step 2: send a prepared draft to FlowAccount and get its document number. Only call this after the "
+            "user has explicitly confirmed the summary in a new message (e.g. \"ยืนยัน\", \"ออกได้เลย\"); "
+            "it is refused in the same message that prepared the draft."
+        ),
+        "strict": True,
+        "input_schema": {
+            "type": "object",
+            "properties": {"draft_id": {"type": "integer"}},
+            "required": ["draft_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_documents",
+        "description": "The user's most recent documents (drafts and issued), newest first.",
+        "strict": True,
+        "input_schema": {
+            "type": "object",
+            "properties": {"limit": {"type": "integer", "description": "1-20"}},
+            "required": ["limit"],
+            "additionalProperties": False,
+        },
+    },
 ]
 
 _HANDLERS: dict[str, Callable[..., Any]] = {
@@ -215,6 +346,10 @@ _HANDLERS: dict[str, Callable[..., Any]] = {
     "control_air_conditioner": control_air_conditioner,
     "list_scenes": list_scenes,
     "set_scene": set_scene,
+    "find_customers": find_customers,
+    "prepare_document": prepare_document,
+    "issue_document": issue_document,
+    "list_documents": list_documents,
 }
 
 
@@ -229,6 +364,10 @@ def run_tool(ctx: ToolContext, name: str, tool_input: dict) -> tuple[str, bool]:
         return str(e), True
     except TuyaError as e:
         return f"Tuya ตอบกลับ error: {e.msg} (code {e.code})", True
+    except docs.DocumentError as e:
+        return str(e), True
+    except FlowAccountError as e:
+        return str(e), True
     except (TypeError, ValueError) as e:
         return f"Invalid input for {name}: {e}", True
     return json.dumps(result, ensure_ascii=False), False

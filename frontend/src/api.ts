@@ -123,6 +123,17 @@ export interface VoiceConfig {
   voice: string | null
 }
 
+export interface DocumentRow {
+  id: number
+  document: string
+  status: 'draft' | 'issued' | string
+  serial: string | null
+  customer: string | null
+  grand_total: string
+  channel: string
+  created_at: string
+}
+
 export interface LineStatus {
   configured: boolean
   linked: boolean
@@ -146,6 +157,7 @@ export const api = {
   voiceLastError: () => request<{ error: string | null }>('GET', '/voice/last-error'),
   chat: (text: string, sessionId: string | null, channel: 'dashboard' | 'voice' = 'dashboard') =>
     request<ChatResponse>('POST', '/core/chat', { text, session_id: sessionId, channel }),
+  documents: () => request<DocumentRow[]>('GET', '/documents?limit=10'),
   lineStatus: () => request<LineStatus>('GET', '/line/status'),
   lineLinkCode: () => request<{ code: string; expires_in: number }>('POST', '/line/link-code'),
   lineUnlink: () => request<void>('DELETE', '/line/link'),

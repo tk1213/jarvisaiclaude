@@ -72,6 +72,7 @@ class DocumentLog(Base):
     channel: Mapped[str] = mapped_column(String(16))
     doc_type: Mapped[str] = mapped_column(String(32))  # quotation, billing_note, receipt, ...
     flowaccount_document_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    document_serial: Mapped[str | None] = mapped_column(String(64), nullable=True)  # e.g. QT2026100001
     total_amount: Mapped[str] = mapped_column(String(32), default="0")
     status: Mapped[str] = mapped_column(String(32), default="draft")
     payload: Mapped[dict] = mapped_column(JSON, default=dict)

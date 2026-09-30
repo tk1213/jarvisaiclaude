@@ -18,13 +18,18 @@ const TOOL_LABELS: Record<string, string> = {
   list_scenes: 'ดู scene',
   set_scene: 'สั่ง scene',
   web_search: 'ค้นเว็บ',
+  find_customers: 'ค้นลูกค้า',
+  prepare_document: 'ร่างเอกสาร',
+  issue_document: 'ออกเอกสาร',
+  list_documents: 'ดูเอกสาร',
 }
 
 const GREETING = 'ค่ะ TK มีอะไรให้ช่วยไหมคะ'
 
 const SUGGESTIONS = ['มีอุปกรณ์อะไรบ้าง', 'ปลั๊ก 1 ใช้ไฟกี่วัตต์', 'ปิดทุกอย่างให้หน่อย']
 
-export function ChatPanel() {
+/** onDocuments: JARVIS just drafted or issued a document (the dashboard's list refreshes). */
+export function ChatPanel({ onDocuments }: { onDocuments?: () => void }) {
   const [messages, setMessages] = useState<Message[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [text, setText] = useState('')
@@ -75,6 +80,7 @@ export function ChatPanel() {
       const res = await api.chat(trimmed, sessionId, channel)
       setSessionId(res.session_id)
       setMessages((m) => [...m, { role: 'jarvis', text: res.reply, toolCalls: res.tool_calls }])
+      if (res.tool_calls.some((t) => t.name.endsWith('_document'))) onDocuments?.()
       // A spoken question gets a spoken answer.
       if (channel === 'voice') {
         setSpeaking(true)

@@ -31,12 +31,15 @@
   - ส่ง `channel: "voice"` ให้ JARVIS ตอบสั้นแบบอ่านออกเสียงได้, พูดแทรกเพื่อหยุดเสียงตอบได้
   - เสียงตอบผู้หญิง (Google Cloud TTS, สำรองด้วย Edge Premwadee), โหมดปลุก "เฮ้ จาร์วิส / Hey Jarvis" ฟังต่อเนื่อง + ถามต่อได้โดยไม่ต้องเรียกชื่อซ้ำ
 
-## เฟส 2: FlowAccount + Persona เลขา (3-4 สัปดาห์)
+## เฟส 2: FlowAccount + Persona เลขา (3-4 สัปดาห์), กำลังทำ (รอทดสอบกับบัญชีจริง)
 
-- [ ] FlowAccount Open API (OAuth2 client-credentials)
-- [ ] Tools `flowaccount.*` (ใบเสนอราคา/ใบวางบิล/ใบเสร็จ) + confirmation flow
-- [ ] Persona / System Prompt แบบเลขา
-- [ ] Long-term memory เบื้องต้น (จำลูกค้าประจำ)
+- [x] FlowAccount Open API (OAuth2 client-credentials) พร้อมโหมด mock, token เก็บเข้ารหัสในตาราง `tokens`
+  - [ ] ทดสอบกับบัญชี FlowAccount จริง (sandbox ก่อน แล้ว production)
+- [x] Tools `flowaccount.*` (ใบเสนอราคา/ใบวางบิล/ใบกำกับภาษี/ใบเสร็จ) + confirmation flow
+  - `prepare_document` สร้างร่าง + สรุป, `issue_document` ออกจริงได้เฉพาะเมื่อผู้ใช้ยืนยันในข้อความถัดไป (ระบบบังคับ ไม่ใช่แค่ prompt)
+  - บันทึกทุกเอกสารใน `documents_log` (ใคร/ช่องทางไหน) และแสดง "เอกสารล่าสุด" บน Dashboard
+- [x] Persona / System Prompt แบบเลขา (ขั้นตอนสรุป-ยืนยัน, ห้ามเดาข้อมูลลูกค้า/ราคา)
+- [x] Long-term memory เบื้องต้น (จำลูกค้าประจำใน `contacts`, ค้นด้วย `find_customers`)
 
 ## เฟส 3: ยกระดับความเป็นธรรมชาติ (2-3 สัปดาห์)
 
