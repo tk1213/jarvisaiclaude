@@ -3,7 +3,7 @@
 ผู้ช่วยส่วนตัวอัจฉริยะ: ควบคุมบ้าน (Tuya Smart Home), ออกเอกสารธุรกิจ (FlowAccount)
 และในอนาคตดึงยอดขายจาก Lazada/Shopee ผ่าน 3 ช่องทาง: Dashboard, LINE และ Voice
 
-แผนงานและสถานะดูได้ที่ [docs/roadmap.md](docs/roadmap.md) ตอนนี้อยู่ที่ **เฟส 0**
+แผนงานและสถานะดูได้ที่ [docs/roadmap.md](docs/roadmap.md) ตอนนี้อยู่ที่ **เฟส 1** (เหลือ LINE OA)
 
 ## โครงสร้าง
 

@@ -26,7 +26,7 @@
 - [ ] LINE OA (Messaging API webhook + Flex Message)
 - [x] Voice โหมดพื้นฐาน (STT → Core → TTS) ปุ่มไมค์ในกล่องแชทบน Dashboard ใช้ Web Speech API ของเบราว์เซอร์
   - ส่ง `channel: "voice"` ให้ JARVIS ตอบสั้นแบบอ่านออกเสียงได้, พูดแทรกเพื่อหยุดเสียงตอบได้
-  - เสียงตอบผู้หญิง (Edge Premwadee ผ่าน server), โหมดปลุก "เฮ้ จาร์วิส / Hey Jarvis" ฟังต่อเนื่อง + ถามต่อได้โดยไม่ต้องเรียกชื่อซ้ำ
+  - เสียงตอบผู้หญิง (Google Cloud TTS, สำรองด้วย Edge Premwadee), โหมดปลุก "เฮ้ จาร์วิส / Hey Jarvis" ฟังต่อเนื่อง + ถามต่อได้โดยไม่ต้องเรียกชื่อซ้ำ
 
 ## เฟส 2: FlowAccount + Persona เลขา (3-4 สัปดาห์)
 
