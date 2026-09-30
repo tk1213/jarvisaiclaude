@@ -3,7 +3,7 @@
 ผู้ช่วยส่วนตัวอัจฉริยะ: ควบคุมบ้าน (Tuya Smart Home), ออกเอกสารธุรกิจ (FlowAccount)
 และในอนาคตดึงยอดขายจาก Lazada/Shopee ผ่าน 3 ช่องทาง: Dashboard, LINE และ Voice
 
-แผนงานและสถานะดูได้ที่ [docs/roadmap.md](docs/roadmap.md) ตอนนี้อยู่ที่ **เฟส 1** (LINE OA พร้อมใช้แล้ว ถัดไปคือเฟส 2 FlowAccount)
+แผนงานและสถานะดูได้ที่ [docs/roadmap.md](docs/roadmap.md) ตอนนี้อยู่ที่ **เฟส 2** (ออกเอกสาร FlowAccount ผ่านจาร์วิส พร้อมทดสอบกับบัญชีจริง)
 
 ## โครงสร้าง
 
@@ -20,6 +20,8 @@ backend/
     api/                     REST endpoints (auth, devices, scenes, voice, line)
     api/line.py              LINE webhook + เชื่อมบัญชี LINE ด้วยรหัส 6 หลัก
     integrations/line.py     LINE Messaging API (ตรวจลายเซ็น, reply/push, Flex Message)
+    integrations/flowaccount.py  FlowAccount Open API (token + สร้างเอกสาร) + mock
+    services/documents.py    ร่าง/ยืนยัน/ออกเอกสาร, คำนวณ VAT, จำลูกค้า
     services/devices.py      logic ควบคุมอุปกรณ์ (ใช้ร่วมกับ LLM tools ในเฟส 1)
     integrations/tuya/       Tuya OpenAPI client, Pulsar (event เรียลไทม์) + mock
     ratelimit.py             จำกัดจำนวนคำสั่ง/การ login ต่อนาที
@@ -87,6 +89,7 @@ curl -X POST localhost:8000/devices/1/power -H "Authorization: Bearer $TOKEN" \
 | POST | `/core/chat` | คุยกับ JARVIS |
 | POST | `/line/webhook` | รับข้อความจาก LINE OA (ตรวจลายเซ็น) |
 | GET/POST/DELETE | `/line/status`, `/line/link-code`, `/line/link` | เชื่อม/ยกเลิกบัญชี LINE |
+| GET | `/documents` | เอกสาร FlowAccount ล่าสุด (ร่าง/ออกแล้ว) |
 | WS | `/ws/devices?token=` | สถานะอุปกรณ์แบบสด |
 
 ## Dashboard
@@ -248,6 +251,39 @@ JARVIS ค้นเว็บเองได้ (web search ของ Anthropic) 
    (ถ้าขึ้นว่ามี DNS record ชื่อนี้อยู่แล้ว ให้ลบ record เดิมในหน้า DNS ก่อน)
 4. ถ้าไม่ได้ใส่ Path เปิด `https://jarvis.<โดเมน>/health` ต้องได้ `{"status":"ok",...}` (ต้องเปิด `start.bat` อยู่)
 5. แก้ Webhook URL ใน LINE Developers เป็น `https://jarvis.<โดเมน>/line/webhook` แล้วกด **Verify**
+
+## ออกเอกสาร FlowAccount (เฟส 2)
+
+สั่งจาร์วิสออก **ใบเสนอราคา, ใบวางบิล, ใบกำกับภาษี, ใบเสร็จรับเงิน** ได้ทั้งจาก Dashboard, เสียง และ LINE เช่น
+
+> ออกใบเสนอราคาให้บริษัท ABC จำกัด เลขผู้เสียภาษี 0105555555555 ค่าออกแบบ 2 งาน งานละ 6,000 บาท บวก VAT เครดิต 30 วัน
+
+1. จาร์วิสสร้าง **ร่าง** แล้วสรุปให้ตรวจ: ลูกค้า รายการ VAT ยอดสุทธิ แล้วถามว่ายืนยันไหม (ยังไม่ส่งอะไรไป FlowAccount)
+2. ตอบ **"ยืนยัน"** ในข้อความถัดไป จาร์วิสจึงออกเอกสารจริงและบอกเลขที่เอกสาร
+   ระบบบังคับขั้นนี้เอง: ถ้าพยายามออกในข้อความเดียวกับที่ร่าง จะถูกปฏิเสธ และร่างที่เกิน 24 ชั่วโมงต้องทำใหม่
+3. อยากแก้ก่อนยืนยัน บอกได้เลย เช่น "แก้เป็น 3 งาน" จาร์วิสจะร่างใหม่และสรุปให้ยืนยันอีกรอบ
+
+- ลูกค้าที่เคยออกเอกสารแล้วจะถูกจำไว้ (ตาราง `contacts`) ครั้งหน้าบอกแค่ชื่อ จาร์วิสดึงเลขผู้เสียภาษี/ที่อยู่เดิมมาใช้
+- ทุกเอกสารบันทึกใน `documents_log` ว่าใครสั่ง ผ่านช่องทางไหน และแสดงที่ **"เอกสารล่าสุด"** บน Dashboard
+- ต้องเป็นผู้ใช้ที่มีสิทธิ์ "ออกเอกสารการเงิน" (บัญชีเจ้าของมีสิทธิ์นี้)
+- รายการสินค้าส่งเป็น "สินค้าไม่นับสต๊อก" จึงไม่กระทบยอดสต๊อกใน FlowAccount
+
+### ตั้งค่า
+
+ค่าเริ่มต้น `FLOWACCOUNT_MODE=mock` จาร์วิสจะออกเอกสารปลอม (เลขที่แบบ `QT-MOCK-0001`) ให้ลองขั้นตอนได้ก่อน ไม่แตะบัญชีจริง
+เมื่อพร้อมใช้จริง:
+
+1. ตรวจว่าแพ็กเกจ FlowAccount รองรับ **Open API** แล้วขอ **Client ID / Client Secret** จาก FlowAccount
+   (เมนูตั้งค่าบริษัท > เชื่อมต่อ API หรือติดต่อทีม FlowAccount)
+2. แนะนำให้ลองกับ **sandbox** ก่อน (บัญชีทดลองที่ sandbox-new.flowaccount.com) แล้วใส่ใน `backend\.env`
+   ```
+   FLOWACCOUNT_MODE=live
+   FLOWACCOUNT_BASE_URL=https://openapi.flowaccount.com/test
+   FLOWACCOUNT_CLIENT_ID=...
+   FLOWACCOUNT_CLIENT_SECRET=...
+   ```
+3. ปิด-เปิด `start.bat` ใหม่ แล้วลองออกใบเสนอราคา ตรวจว่าเอกสารขึ้นใน FlowAccount ถูกต้อง
+4. ใช้จริง: เปลี่ยน `FLOWACCOUNT_BASE_URL=https://openapi.flowaccount.com/v1` และใช้ Client ID/Secret ของบัญชีจริง
 
 ## ต่อ Tuya จริง
 

@@ -65,6 +65,14 @@ class Settings(BaseSettings):
     # A LINE chat continues the same conversation until it's been quiet this long.
     line_session_idle_minutes: int = 30
 
+    # FlowAccount Open API (spec §4.3). "mock" issues fake documents so the flow can be tried without an account.
+    flowaccount_mode: Literal["mock", "live"] = "mock"
+    # Production https://openapi.flowaccount.com/v1, sandbox (sandbox-new.flowaccount.com) https://openapi.flowaccount.com/test
+    flowaccount_base_url: str = "https://openapi.flowaccount.com/v1"
+    flowaccount_client_id: str = ""
+    flowaccount_client_secret: str = ""
+    flowaccount_scope: str = "flowaccount-api"
+
     # Rate limits (spec §6), per user for device control, per username+IP for login.
     rate_limit_control_per_minute: int = 30
     rate_limit_login_per_minute: int = 5
