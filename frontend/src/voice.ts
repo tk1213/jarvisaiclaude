@@ -193,16 +193,36 @@ function rememberSpoken(text: string) {
   if (recentlySpoken.length > 10) recentlySpoken.shift()
 }
 
+/** Characters of a found in b in the same order, as runs (like difflib's matching blocks). */
+function sharedInOrder(a: string, b: string): number {
+  if (!a || !b) return 0
+  // Longest common run, then the same on each side of it.
+  let best = 0
+  let endA = 0
+  let endB = 0
+  let prev = new Array<number>(b.length + 1).fill(0)
+  for (let i = 1; i <= a.length; i++) {
+    const row = new Array<number>(b.length + 1).fill(0)
+    for (let j = 1; j <= b.length; j++) {
+      if (a[i - 1] !== b[j - 1]) continue
+      row[j] = prev[j - 1] + 1
+      if (row[j] > best) [best, endA, endB] = [row[j], i, j]
+    }
+    prev = row
+  }
+  if (best < 2) return 0
+  return best + sharedInOrder(a.slice(0, endA - best), b.slice(0, endB - best)) + sharedInOrder(a.slice(endA), b.slice(endB))
+}
+
 /** True if what the mic heard is (mostly) something JARVIS said in the last minute. */
 export function isEcho(heard: string): boolean {
   const h = normalize(heard)
   if (h.length < 6) return false
-  const pairs = Array.from({ length: h.length - 1 }, (_, i) => h.slice(i, i + 2))
   return recentlySpoken.some(({ text, at }) => {
     // A short answer like "ยืนยัน" can appear inside a reply; only a sizeable chunk of the reply counts.
     if (Date.now() - at > ECHO_WINDOW_MS || h.length < text.length * 0.4) return false
-    const found = pairs.filter((p) => text.includes(p)).length
-    return found / pairs.length >= 0.6
+    // In order, not just shared words: "เปิดปลั๊ก 2 และปิดปลั๊ก 1" after "เปิดปลั๊ก 2 ... ให้แล้วค่ะ" is a new command.
+    return sharedInOrder(h, text) / h.length >= 0.75
   })
 }
 
