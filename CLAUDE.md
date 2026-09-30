@@ -61,7 +61,8 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
   waking turns on the "โหมดปลุก" switch for a continuous conversation; "Stop Jarvis" /
   "จาร์วิส หยุดการทำงาน" / "จบการทำงาน" goes back to waiting (mic stays on); 60 s of silence also sleeps. The wake phrase wakes it at once
   (first transcript that has it); a command is sent after 3.5 s without speech (`SETTLE_MS`), so pausing mid-sentence doesn't cut it short. One dashboard tab
-  listens at a time and JARVIS's own replies are ignored as commands.
+  listens at a time and JARVIS's own replies are ignored as commands. Standby/wake mode is desktop-only
+  (`standbySupported`): phones beep on every recognition restart, so they get push-to-talk only.
 - New devices are added only by the "อัปเดตอุปกรณ์" button, never automatically.
 - The IR air conditioner (Air PANASONIC via the Temp Smart Jarvis hub) can't report changes made in the
   Tuya app or with its physical remote; the dashboard/JARVIS side is the source of truth.

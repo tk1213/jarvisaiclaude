@@ -32,6 +32,25 @@ export function recognitionCtor(): RecognitionCtor | null {
 
 export const sttSupported = typeof window !== 'undefined' && recognitionCtor() !== null
 export const ttsSupported = typeof window !== 'undefined' && 'speechSynthesis' in window
+// Phones beep every time recognition starts (Android) and have no real continuous mode, so waiting for
+// "Hey Jarvis" would restart it, and beep, every few seconds: hands-free standby is desktop-only.
+export const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+export const standbySupported = sttSupported && !isMobile
+
+/**
+ * Adds a final transcript to what was heard so far. Android Chrome delivers finals more than once,
+ * sometimes as the whole sentence again ("เปิด", then "เปิดปลั๊ก 2"), which would otherwise be doubled.
+ */
+export function mergeTranscript(heard: string, next: string): string {
+  const a = heard.trim()
+  const b = next.trim()
+  if (!a) return b
+  if (!b) return a
+  const bare = (s: string) => s.replace(/\s+/g, '')
+  if (bare(b).startsWith(bare(a))) return b
+  if (bare(a).endsWith(bare(b))) return a
+  return `${a} ${b}`
+}
 
 export const ERRORS: Record<string, string> = {
   'not-allowed': 'เบราว์เซอร์ไม่ได้รับอนุญาตให้ใช้ไมค์ กดไอคอนแม่กุญแจที่แถบที่อยู่แล้วอนุญาตไมโครโฟน',
@@ -67,10 +86,10 @@ export function useSpeechRecognition(onFinal: (text: string) => void) {
       let partial = ''
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const res = e.results[i]
-        if (res.isFinal) finalText += res[0].transcript
+        if (res.isFinal) finalText = mergeTranscript(finalText, res[0].transcript)
         else partial += res[0].transcript
       }
-      setInterim(finalText + partial)
+      setInterim(`${finalText} ${partial}`.trim())
     }
     r.onerror = (e) => {
       if (e.error !== 'aborted') setError(ERRORS[e.error] ?? `แปลงเสียงไม่สำเร็จ (${e.error})`)

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { broadcast, ERRORS, isEcho, LANG, recognitionCtor, subscribeVoice, TAB_ID, type Recognition } from './voice'
+import { broadcast, ERRORS, isEcho, LANG, mergeTranscript, recognitionCtor, standbySupported, subscribeVoice, TAB_ID, type Recognition } from './voice'
 
 // "Jarvis" as the Thai recognizer tends to write it: จาร์วิส, จาวิส, จาร์วิด, จาวิก, Jarvis…
 const NAME = '(?:j[ae]r?vi[sk]|จ[่้๊๋]?[าะ]?[่้๊๋]?(?:ร์|ร)?วิ[สซดทตชศษก](?:ต์)?)'
@@ -112,11 +112,11 @@ class WakeListener {
         const res = e.results[i]
         if (res.isFinal) {
           this.on.onFinal(res[0].transcript)
-          this.pending = `${this.pending} ${res[0].transcript}`.trim()
+          this.pending = mergeTranscript(this.pending, res[0].transcript)
         } else interim += res[0].transcript
       }
       this.interim = interim
-      const said = `${this.pending} ${interim}`.trim()
+      const said = mergeTranscript(this.pending, interim)
       const wake = this.awake ? null : findWakeWord(said)
       if (wake && !isEcho(said)) {
         // Wake at once, on the first transcript that has the wake word: Chrome's final version of the
@@ -154,7 +154,7 @@ class WakeListener {
       if (this.rec !== r) return
       this.rec = null
       // Chrome can end a session during a pause; keep what was said so far for the next one.
-      this.pending = `${this.pending} ${this.interim}`.trim()
+      this.pending = mergeTranscript(this.pending, this.interim)
       this.interim = ''
       if (!this.pending || !this.isForUs(this.pending)) {
         this.pending = ''
@@ -181,7 +181,7 @@ class WakeListener {
 
   /** The speaker stopped: act on everything said, and drop this session so its late final result isn't handled twice. */
   private flush() {
-    const text = `${this.pending} ${this.interim}`.trim()
+    const text = mergeTranscript(this.pending, this.interim)
     const greet = this.greet
     this.greet = false
     this.pending = ''
@@ -254,6 +254,7 @@ export function chime(direction: 'up' | 'down' = 'up') {
 const STORAGE_KEY = 'jarvis.wake'
 
 function loadMicOn(): boolean {
+  if (!standbySupported) return false
   try {
     return localStorage.getItem(STORAGE_KEY) === 'on'
   } catch {
@@ -340,7 +341,7 @@ export function useWakeWord(
     })
   }, [listener, onCommand, onAwakeChange, onGreet, lastHeardTimer])
 
-  const listening = micOn && !paused && !otherTabSpeaking && !otherTabHasMic
+  const listening = standbySupported && micOn && !paused && !otherTabSpeaking && !otherTabHasMic
   useEffect(() => {
     if (listening) {
       broadcast({ type: 'listening' })

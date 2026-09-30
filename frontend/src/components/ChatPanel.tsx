@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { api, type ToolCall } from '../api'
 import { chime, useWakeWord } from '../wake'
-import { setVoiceEngine, speak, stopSpeaking, sttSupported, useMissingThaiVoice, usesServerVoice, useSpeechRecognition } from '../voice'
+import { setVoiceEngine, speak, standbySupported, stopSpeaking, sttSupported, useMissingThaiVoice, usesServerVoice, useSpeechRecognition } from '../voice'
 
 interface Message {
   // 'note': a local status line (JARVIS woke up / went to sleep), never sent anywhere.
@@ -153,7 +153,7 @@ export function ChatPanel() {
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
         <h2 className="font-semibold">คุยกับ JARVIS</h2>
         <div className="flex flex-wrap items-center gap-3 whitespace-nowrap">
-          {sttSupported && (
+          {standbySupported && (
             <>
               <button
                 aria-pressed={wake.micOn}
@@ -198,7 +198,7 @@ export function ChatPanel() {
         {messages.length === 0 && (
           <div className="space-y-3 text-sm text-slate-500">
             <p>{sttSupported ? 'พิมพ์ หรือกดไมค์แล้วพูดสั่งงานบ้านได้เลย เช่น' : 'สั่งงานบ้านได้ด้วยภาษาพูด เช่น'}</p>
-            {sttSupported && !wake.micOn && <p>อยากเรียกด้วยเสียง "Hey Jarvis" กดปุ่ม 🎙 เปิดไมค์รอเรียก ด้านบนก่อน</p>}
+            {standbySupported && !wake.micOn && <p>อยากเรียกด้วยเสียง "Hey Jarvis" กดปุ่ม 🎙 เปิดไมค์รอเรียก ด้านบนก่อน</p>}
             <div className="flex flex-wrap gap-2">
               {SUGGESTIONS.map((s) => (
                 <button
