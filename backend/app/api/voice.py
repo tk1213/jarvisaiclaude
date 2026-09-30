@@ -51,6 +51,10 @@ PRONUNCIATIONS = [
     (re.compile(r"(?<![a-z])j[.\s]*a[.\s]*r[.\s]*v[.\s]*i[.\s]*s(?![a-z])\.?", re.IGNORECASE), "จาร์วิส"),
     # the name spelled out in Thai letters
     (re.compile(r"เจ\s*เอ\s*อาร์\s*วี\s*ไอ\s*เอส"), "จาร์วิส"),
+    # Units after a number, as words: the Edge voice speaks numbers as separate parts and a lone "%" is dropped.
+    (re.compile(r"(?<=\d)\s*(?:°\s*C|℃)(?![a-z])", re.IGNORECASE), " องศาเซลเซียส"),
+    (re.compile(r"(?<=\d)\s*°"), " องศา"),
+    (re.compile(r"(?<=\d)\s*%"), " เปอร์เซ็นต์"),
 ]
 
 
