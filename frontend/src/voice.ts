@@ -165,7 +165,10 @@ type Outgoing = { type: 'speaking'; on: boolean; text?: string } | { type: 'list
 const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('jarvis-voice') : null
 const listeners = new Set<(m: VoiceMessage) => void>()
 channel?.addEventListener('message', (e: MessageEvent<VoiceMessage>) => {
-  if (e.data.type === 'speaking' && e.data.text) rememberSpoken(e.data.text)
+  if (e.data.type === 'speaking') {
+    if (e.data.text) rememberSpoken(e.data.text)
+    else if (!e.data.on) finishedSpeaking()
+  }
   listeners.forEach((fn) => fn(e.data))
 })
 
@@ -181,16 +184,26 @@ export function subscribeVoice(fn: (m: VoiceMessage) => void) {
   }
 }
 
-const ECHO_WINDOW_MS = 60_000
-const recentlySpoken: { text: string; at: number }[] = []
+// The mic is paused while JARVIS talks, so an echo can only be the tail the recognizer still had
+// buffered: a few seconds after the reply ends. Later, a sentence like it is a real command
+// (short replies such as "ปิดปลั๊ก 1 แล้วค่ะ" look almost like the next "เปิดปลั๊ก 1").
+const ECHO_TAIL_MS = 4_000
+// In case the end of a reply is never reported (a tab closed mid-sentence).
+const ECHO_MAX_MS = 120_000
+const recentlySpoken: { text: string; at: number; until: number }[] = []
 
 function normalize(text: string) {
   return text.toLowerCase().replace(/[\s.,!?'"“”…:;()-]/g, '')
 }
 
 function rememberSpoken(text: string) {
-  recentlySpoken.push({ text: normalize(text), at: Date.now() })
+  recentlySpoken.push({ text: normalize(text), at: Date.now(), until: Infinity })
   if (recentlySpoken.length > 10) recentlySpoken.shift()
+}
+
+function finishedSpeaking() {
+  const until = Date.now() + ECHO_TAIL_MS
+  for (const s of recentlySpoken) if (s.until === Infinity) s.until = until
 }
 
 /** Characters of a found in b in the same order, as runs (like difflib's matching blocks). */
@@ -214,13 +227,15 @@ function sharedInOrder(a: string, b: string): number {
   return best + sharedInOrder(a.slice(0, endA - best), b.slice(0, endB - best)) + sharedInOrder(a.slice(endA), b.slice(endB))
 }
 
-/** True if what the mic heard is (mostly) something JARVIS said in the last minute. */
+/** True if what the mic heard is (mostly) something JARVIS is saying or just said. */
 export function isEcho(heard: string): boolean {
   const h = normalize(heard)
   if (h.length < 6) return false
-  return recentlySpoken.some(({ text, at }) => {
+  const now = Date.now()
+  return recentlySpoken.some(({ text, at, until }) => {
+    if (now > until || now - at > ECHO_MAX_MS) return false
     // A short answer like "ยืนยัน" can appear inside a reply; only a sizeable chunk of the reply counts.
-    if (Date.now() - at > ECHO_WINDOW_MS || h.length < text.length * 0.4) return false
+    if (h.length < text.length * 0.4) return false
     // In order, not just shared words: "เปิดปลั๊ก 2 และปิดปลั๊ก 1" after "เปิดปลั๊ก 2 ... ให้แล้วค่ะ" is a new command.
     return sharedInOrder(h, text) / h.length >= 0.75
   })
@@ -258,6 +273,7 @@ export function speak(text: string, whenDone?: () => void, onFallback?: (reason:
   rememberSpoken(text)
   broadcast({ type: 'speaking', on: true, text })
   const onEnd = () => {
+    finishedSpeaking()
     broadcast({ type: 'speaking', on: false })
     whenDone?.()
   }
@@ -326,6 +342,7 @@ function speakWithBrowser(text: string, onEnd?: () => void) {
 
 export function stopSpeaking() {
   generation++
+  finishedSpeaking()
   audio?.pause()
   audio = null
   if (ttsSupported) speechSynthesis.cancel()
