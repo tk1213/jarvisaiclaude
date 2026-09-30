@@ -9,7 +9,8 @@
   - frontend changes: also `cd frontend && npm run build`, then Ctrl+F5 in the dashboard
   - new Python dependencies: `cd backend && .venv\Scripts\activate && pip install -e ".[dev]"`
 - **Secrets live only in `backend\.env` on the owner's machine** (gitignored): `ANTHROPIC_API_KEY`,
-  `TUYA_ACCESS_SECRET`, `GOOGLE_TTS_API_KEY`, `JWT_SECRET`, `ENCRYPTION_KEY`. Never ask for them in chat;
+  `TUYA_ACCESS_SECRET`, `GOOGLE_TTS_API_KEY`, `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN`, `JWT_SECRET`,
+  `ENCRYPTION_KEY`. Never ask for them in chat;
   if one shows up in a screenshot or log, tell the owner to rotate it.
 - Work phase by phase following `docs/roadmap.md` (spec: the owner's Thai JARVIS PDF). Update the roadmap
   checkboxes and the Thai `README.md` when a feature lands.
@@ -23,6 +24,7 @@
   - `app/integrations/tuya/` OpenAPI client, Pulsar realtime events, mock home
   - `app/services/devices.py` device logic (sync, power, IR air conditioner)
   - `app/api/voice.py` + `app/integrations/google_tts.py` / `edge_voice.py` spoken replies
+  - `app/api/line.py` + `app/integrations/line.py` LINE OA webhook, account linking, Flex replies
 - `frontend/` React 19 + TypeScript + Vite + Tailwind v4; built `frontend/dist` is served by the backend at `/`
   - `src/components/ChatPanel.tsx` chat, mic, wake-word UI; `src/voice.ts` speech in/out; `src/wake.ts` "Hey Jarvis"
 
@@ -66,6 +68,6 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
 
 ## Next up
 
-Phase 1: LINE OA (Messaging API webhook + Flex Message; needs a LINE Official Account and a public URL,
-e.g. Cloudflare Tunnel). Then phase 2: FlowAccount. Remind the owner to renew the Anthropic API key
+Phase 2: FlowAccount (phase 1 is done; LINE OA runs through `tunnel.bat`, a Cloudflare quick tunnel
+whose URL changes each run). A LINE account is answered only after linking with the dashboard's 6-digit code. Remind the owner to renew the Anthropic API key
 before it expires on 29 Dec 2026.

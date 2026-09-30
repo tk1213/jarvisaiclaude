@@ -15,7 +15,7 @@
 - [x] Tuya Pulsar รับสถานะอุปกรณ์แบบเรียลไทม์ (อัปเดต `devices` อัตโนมัติ, reconnect เอง) ทดสอบกับปลั๊กจริงแล้ว
 - [x] Rate limit: สั่งอุปกรณ์ต่อผู้ใช้ และ login ต่อ IP+username
 
-## เฟส 1: 3 ช่องทาง + ควบคุมบ้านด้วย LLM (3-4 สัปดาห์), กำลังทำ
+## เฟส 1: 3 ช่องทาง + ควบคุมบ้านด้วย LLM (3-4 สัปดาห์), ✅ เสร็จแล้ว
 
 - [x] ต่อ Claude API + tool calling กลุ่ม `home_control.*` (`get_devices`, `get_device_status`, `control_device`, `list_scenes`, `set_scene`)
   - `POST /core/chat` และ `python -m app.scripts.chat <username>` ความจำระยะสั้นต่อ session (เก็บใน `chat_sessions`)
@@ -23,7 +23,10 @@
 - [x] Dashboard (React + Tailwind) เวอร์ชันแรก + WebSocket (หน้าประวัติเอกสารรอเฟส 2 FlowAccount)
   - แก้ชื่อ/ห้องบนการ์ด, ปุ่มอัปเดตอุปกรณ์พร้อมสรุป, ป้ายเตือนสิทธิ์ Read
   - คุมแอร์ผ่านรีโมท IR (Dashboard + tool `control_air_conditioner`), อ่านอุณหภูมิ/ความชื้นจากตัวรีโมท IR
-- [ ] LINE OA (Messaging API webhook + Flex Message)
+- [x] LINE OA (Messaging API webhook + Flex Message)
+  - `POST /line/webhook` ตรวจลายเซ็น, ตอบผ่าน reply API (push เมื่อ token หมดอายุ), การ์ด Flex บอกสถานะอุปกรณ์ที่สั่ง + ปุ่มลัด
+  - ตอบเฉพาะบัญชี LINE ที่เชื่อมด้วยรหัส 6 หลักจาก Dashboard, คุยต่อเนื่องจนเงียบ 30 นาที
+  - URL สาธารณะผ่าน Cloudflare Tunnel (`tunnel.bat`)
 - [x] Voice โหมดพื้นฐาน (STT → Core → TTS) ปุ่มไมค์ในกล่องแชทบน Dashboard ใช้ Web Speech API ของเบราว์เซอร์
   - ส่ง `channel: "voice"` ให้ JARVIS ตอบสั้นแบบอ่านออกเสียงได้, พูดแทรกเพื่อหยุดเสียงตอบได้
   - เสียงตอบผู้หญิง (Google Cloud TTS, สำรองด้วย Edge Premwadee), โหมดปลุก "เฮ้ จาร์วิส / Hey Jarvis" ฟังต่อเนื่อง + ถามต่อได้โดยไม่ต้องเรียกชื่อซ้ำ

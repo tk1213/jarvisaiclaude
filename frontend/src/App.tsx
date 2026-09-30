@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, getToken, setToken, type User } from './api'
 import { ChatPanel } from './components/ChatPanel'
 import { DeviceCard } from './components/DeviceCard'
+import { LineLink } from './components/LineLink'
 import { Login } from './components/Login'
 import { Scenes } from './components/Scenes'
 import { powerCode } from './readings'
@@ -94,6 +95,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         </div>
         <div className="flex items-center gap-2 text-sm">
           {user && <span className="hidden text-slate-500 sm:inline">{user.display_name}</span>}
+          <LineLink />
           <button
             onClick={() => void sync()}
             disabled={syncing}

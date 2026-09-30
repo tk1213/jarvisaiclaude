@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     google_tts_voice: str = "th-TH-Neural2-C"  # female; th-TH-Standard-A is another
     google_tts_pitch: float = 1.5
 
+    # LINE Official Account (Messaging API). The webhook is POST /line/webhook on a public https URL.
+    line_channel_secret: str = ""
+    line_channel_access_token: str = ""
+    # A LINE chat continues the same conversation until it's been quiet this long.
+    line_session_idle_minutes: int = 30
+
     # Rate limits (spec §6), per user for device control, per username+IP for login.
     rate_limit_control_per_minute: int = 30
     rate_limit_login_per_minute: int = 5
