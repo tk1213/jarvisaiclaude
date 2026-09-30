@@ -58,7 +58,18 @@ PRONUNCIATIONS = [
 ]
 
 
+# Clock times ("14:40 น.", "14.40 น.", "09:05") as "14 นาฬิกา 40 นาที", not "สิบสี่จุดสี่ศูนย์ นอ".
+# A dot only counts with "น." after it, so "24.6" stays a decimal.
+_CLOCK = re.compile(r"(?<![\d.:])([01]?\d|2[0-3])(?::([0-5]\d)(?:\s*น\.)?|\.([0-5]\d)\s*น\.)(?![\d:])")
+
+
+def _clock(m: re.Match) -> str:
+    hour, minute = int(m[1]), int(m[2] or m[3])
+    return f"{hour} นาฬิกา {minute} นาที" if minute else f"{hour} นาฬิกาตรง"
+
+
 def for_speech(text: str) -> str:
+    text = _CLOCK.sub(_clock, text)
     for pattern, spoken in PRONUNCIATIONS:
         text = pattern.sub(spoken, text)
     return text

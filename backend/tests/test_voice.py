@@ -193,3 +193,14 @@ def test_units_after_numbers_are_spoken(client, owner_headers, monkeypatch):
         "72": "-30%",
         "เปอร์เซ็นต์": "-8%",
     }
+
+
+def test_clock_times_are_spoken_as_times():
+    assert voice_api.for_speech("ตอนนี้ 14:40 น. ค่ะ") == "ตอนนี้ 14 นาฬิกา 40 นาที ค่ะ"
+    assert voice_api.for_speech("ตอนนี้ 14.40 น.ค่ะ") == "ตอนนี้ 14 นาฬิกา 40 นาทีค่ะ"
+    assert voice_api.for_speech("ปลุกตอน 09:05") == "ปลุกตอน 9 นาฬิกา 5 นาที"
+    assert voice_api.for_speech("ตอนนี้ 8:00 น. ค่ะ") == "ตอนนี้ 8 นาฬิกาตรง ค่ะ"
+    # decimals and non-times are left alone
+    assert voice_api.for_speech("ตอนนี้ 24.6 °C ค่ะ") == "ตอนนี้ 24.6 องศาเซลเซียส ค่ะ"
+    assert voice_api.for_speech("ใช้ไป 14.40 หน่วย") == "ใช้ไป 14.40 หน่วย"
+    assert voice_api.for_speech("อัตราส่วน 25:75") == "อัตราส่วน 25:75"
