@@ -1,0 +1,32 @@
+[project]
+name = "jarvis-core"
+version = "0.1.0"
+description = "JARVIS AI Core: orchestrator for Tuya Smart Home, FlowAccount and more"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.1",
+    "pydantic-settings>=2.2",
+    "pyjwt>=2.8",
+    "cryptography>=42",
+    "httpx>=0.27",
+    "websockets>=13",
+    "anthropic>=1.9",
+    "edge-tts>=7.0",
+    "tzdata",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
