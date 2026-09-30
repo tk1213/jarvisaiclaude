@@ -9,7 +9,7 @@ const WAKE_WORD = new RegExp(`(?:hey|hang|hen|เฮ้ย|เฮ้|เฮ|เ�
 const MENTIONS_NAME = new RegExp(NAME, 'i')
 const NAME_ONLY = new RegExp(`^\\s*${NAME}\\s*[.!?]?\\s*$`, 'i')
 // "Stop Jarvis", "จาร์วิส หยุดการทำงาน": back to sleep.
-const STOP_WORDS = /(?:หยุดการทำงาน|หยุดทำงาน|หยุดฟัง|ปิดโหมดปลุก|\bstop\b|สต็อป|สต๊อป|สตอป)/i
+const STOP_WORDS = /(?:หยุดการทำงาน|หยุดทำงาน|จบการทำงาน|หยุดฟัง|ปิดโหมดปลุก|\bstop\b|สต็อป|สต๊อป|สตอป)/i
 // Awake, it goes back to sleep after this long without anything said to it (so a TV isn't taken as commands).
 export const IDLE_SLEEP_MS = 60_000
 // Act on what was said once the words stop for this long, so a pause mid-sentence doesn't cut a command short.
@@ -32,6 +32,8 @@ interface Handlers {
   onCommand: (text: string) => void
   /** withCommand: the wake phrase already carried a command ("Hey Jarvis เปิดไฟ"), so no greeting is needed. */
   onAwake: (awake: boolean, bySpeech: boolean, withCommand: boolean) => void
+  /** Woken by speech and nothing followed the wake phrase: answer it. */
+  onGreet: () => void
   onHeard: (text: string) => void
   /** Every finished sentence the mic picked up, whether or not it was for JARVIS (shown for troubleshooting). */
   onFinal: (text: string) => void
@@ -53,9 +55,11 @@ class WakeListener {
   // Finished sentences waiting for the speaker to stop (the pause may split one command into several).
   private pending = ''
   private interim = ''
+  // Woken by speech just now: greet at the next flush unless a command came with it.
+  private greet = false
   private running = false
   private restartDelay = 100
-  private on: Handlers = { onCommand: () => {}, onAwake: () => {}, onHeard: () => {}, onFinal: () => {}, onTrouble: () => {}, onFatal: () => {} }
+  private on: Handlers = { onCommand: () => {}, onAwake: () => {}, onGreet: () => {}, onHeard: () => {}, onFinal: () => {}, onTrouble: () => {}, onFatal: () => {} }
 
   /** Updated by the component on every render so commands go to the current conversation. */
   setHandlers(handlers: Handlers) {
@@ -70,6 +74,7 @@ class WakeListener {
 
   pause() {
     window.clearTimeout(this.settle)
+    this.greet = false
     this.pending = ''
     this.interim = ''
     window.clearTimeout(this.idle)
@@ -112,6 +117,21 @@ class WakeListener {
       }
       this.interim = interim
       const said = `${this.pending} ${interim}`.trim()
+      const wake = this.awake ? null : findWakeWord(said)
+      if (wake && !isEcho(said)) {
+        // Wake at once, on the first transcript that has the wake word: Chrome's final version of the
+        // same words is often spelled differently ("เฮ จ๋าวิด") and would no longer match.
+        this.pending = ''
+        this.interim = ''
+        this.dropSession()
+        this.on.onHeard('')
+        this.on.onFinal(said)
+        this.greet = true
+        this.setAwake(true, true, true)
+        this.pending = wake.command
+        this.settle = window.setTimeout(() => this.flush(), SETTLE_MS)
+        return
+      }
       if (said && this.isForUs(said)) {
         this.on.onHeard(said)
         this.settle = window.setTimeout(() => this.flush(), SETTLE_MS)
@@ -162,18 +182,25 @@ class WakeListener {
   /** The speaker stopped: act on everything said, and drop this session so its late final result isn't handled twice. */
   private flush() {
     const text = `${this.pending} ${this.interim}`.trim()
+    const greet = this.greet
+    this.greet = false
     this.pending = ''
     this.interim = ''
-    const r = this.rec
-    if (r) {
-      this.rec = null
-      r.abort()
-      if (this.running) window.setTimeout(() => this.listen(), this.restartDelay)
-    }
+    this.dropSession()
     this.on.onHeard('')
-    if (!text) return
-    this.on.onFinal(text)
-    this.handle(text)
+    if (text) {
+      this.on.onFinal(text)
+      this.handle(text)
+    } else if (greet && this.awake) this.on.onGreet()
+  }
+
+  /** End the current recognition session without handling its late results, and start a fresh one. */
+  private dropSession() {
+    const r = this.rec
+    if (!r) return
+    this.rec = null
+    r.abort()
+    if (this.running) window.setTimeout(() => this.listen(), this.restartDelay)
   }
 
   private handle(transcript: string) {
@@ -251,6 +278,7 @@ export function useWakeWord(
   onCommand: (text: string) => void,
   paused: boolean,
   onAwakeChange: (awake: boolean, bySpeech: boolean, withCommand: boolean) => void = () => {},
+  onGreet: () => void = () => {},
 ) {
   const [micOn, setMicOnState] = useState(loadMicOn)
   const [awake, setAwakeState] = useState(false)
@@ -293,6 +321,7 @@ export function useWakeWord(
         setAwakeState(value)
         onAwakeChange(value, bySpeech, withCommand)
       },
+      onGreet,
       onHeard: (text) => {
         setHeard(text)
         if (text) setTrouble(null)
@@ -309,7 +338,7 @@ export function useWakeWord(
         saveMicOn(false)
       },
     })
-  }, [listener, onCommand, onAwakeChange, lastHeardTimer])
+  }, [listener, onCommand, onAwakeChange, onGreet, lastHeardTimer])
 
   const listening = micOn && !paused && !otherTabSpeaking && !otherTabHasMic
   useEffect(() => {
