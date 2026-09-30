@@ -171,3 +171,25 @@ def test_jarvis_is_pronounced_as_a_name(client, owner_headers, monkeypatch):
     assert voice_api.for_speech("ฉันชื่อ J.A.R.V.I.S. ค่ะ") == "ฉันชื่อ จาร์วิส ค่ะ"
     assert voice_api.for_speech("เจ เอ อาร์ วี ไอ เอส") == "จาร์วิส"
     assert voice_api.for_speech("ไปจาการ์ตา javascript") == "ไปจาการ์ตา javascript"
+
+
+def test_units_after_numbers_are_spoken(client, owner_headers, monkeypatch):
+    assert voice_api.for_speech("ความชื้น 72%") == "ความชื้น 72 เปอร์เซ็นต์"
+    assert voice_api.for_speech("ตอนนี้ 24.6 °C ค่ะ") == "ตอนนี้ 24.6 องศาเซลเซียส ค่ะ"
+    assert voice_api.for_speech("ตั้งไว้ 25°Cค่ะ, 30℃, 18 °") == "ตั้งไว้ 25 องศาเซลเซียสค่ะ, 30 องศาเซลเซียส, 18 องศา"
+    assert voice_api.for_speech("ลด % ลง") == "ลด % ลง"  # only right after a number
+
+    # Edge speaks numbers as separate parts; the unit must survive as its own spoken part.
+    monkeypatch.setattr(edge_voice.edge_tts, "Communicate", FakeCommunicate)
+    FakeCommunicate.calls.clear()
+    token = owner_headers["Authorization"].split()[1]
+    r = client.get("/voice/tts", params={"text": "JARVIS วัดได้ 24.6 °C ความชื้น 72%", "token": token})
+    assert r.status_code == 200
+    rates = {text: rate for text, _, rate, _ in FakeCommunicate.calls}
+    assert rates == {
+        "จาร์วิส วัดได้": "-8%",
+        "24.6": "-30%",
+        "องศาเซลเซียส ความชื้น": "-8%",
+        "72": "-30%",
+        "เปอร์เซ็นต์": "-8%",
+    }
