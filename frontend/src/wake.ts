@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { broadcast, ERRORS, isEcho, LANG, recognitionCtor, subscribeVoice, TAB_ID, type Recognition } from './voice'
 
-// "Jarvis" as the Thai recognizer tends to write it: จาร์วิส, จาวิส, จาร์วิด, Jarvis…
-const NAME = '(?:j[ae]r?vis|จ[่้๊๋]?[าะ]?[่้๊๋]?(?:ร์|ร)?วิ[สซดทตชศษ](?:ต์)?)'
+// "Jarvis" as the Thai recognizer tends to write it: จาร์วิส, จาวิส, จาร์วิด, จาวิก, Jarvis…
+const NAME = '(?:j[ae]r?vi[sk]|จ[่้๊๋]?[าะ]?[่้๊๋]?(?:ร์|ร)?วิ[สซดทตชศษก](?:ต์)?)'
 // Only "Hey Jarvis" / "เฮ้ จาร์วิส" wakes it, so just mentioning the name in conversation doesn't.
-// Chrome sometimes hears "Hey Jarvis" as "Hey David".
-const WAKE_WORD = new RegExp(`(?:hey|เฮ้|เฮ|เฮย์|เฮย)\\s*(?:${NAME}|d[ae]vid|เดวิด)`, 'i')
+// Chrome sometimes hears "Hey Jarvis" as "Hey David" / "เฮ้ เดวิด" / "เฮ้ เดวิก".
+const WAKE_WORD = new RegExp(`(?:hey|เฮ้|เฮ|เฮย์|เฮย)\\s*(?:${NAME}|d[ae]vi[dk]|เดวิ[ดก])`, 'i')
 const MENTIONS_NAME = new RegExp(NAME, 'i')
 const NAME_ONLY = new RegExp(`^\\s*${NAME}\\s*[.!?]?\\s*$`, 'i')
 // "Stop Jarvis", "จาร์วิส หยุดการทำงาน": back to sleep.

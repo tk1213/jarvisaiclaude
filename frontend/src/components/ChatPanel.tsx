@@ -20,7 +20,7 @@ const TOOL_LABELS: Record<string, string> = {
   web_search: 'ค้นเว็บ',
 }
 
-const GREETING = 'ค่ะ มีอะไรให้ช่วยไหมคะ'
+const GREETING = 'ค่ะ TK มีอะไรให้ช่วยไหมคะ'
 
 const SUGGESTIONS = ['มีอุปกรณ์อะไรบ้าง', 'ปลั๊ก 1 ใช้ไฟกี่วัตต์', 'ปิดทุกอย่างให้หน่อย']
 

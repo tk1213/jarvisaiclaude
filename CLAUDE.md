@@ -48,12 +48,14 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
 ## Decisions already made with the owner
 
 - JARVIS is female, bright and cheerful, ends sentences with ค่ะ/คะ. Her name is said **"จาร์วิส"**
-  (never spelled J-A-R-V-I-S); speech also rewrites "JARVIS" to จาร์วิส.
+  (never spelled J-A-R-V-I-S); speech also rewrites "JARVIS" to จาร์วิส. She calls the owner "คุณ TK" and
+  ends finished tasks with "ค่ะ คุณ TK" ("เปิดปลั๊ก 2 แล้วค่ะ คุณ TK").
 - Replies write numbers as digits (24.6 °C, 72%); the voice reads numbers slower (`TTS_NUMBER_RATE`).
 - Voice: Google Cloud TTS (`th-TH-Neural2-C`) first when `GOOGLE_TTS_API_KEY` is set, then Edge
   Premwadee, then text only. **Never fall back to a male voice** (Windows Pattara and Edge Niwat are male).
 - Hands-free: the 🎙 button keeps the mic waiting for "Hey Jarvis"/"เฮ้ จาร์วิส" only (the bare name doesn't
-  wake it); waking turns on the "โหมดปลุก" switch for a continuous conversation; "Stop Jarvis" /
+  wake it; sound-alikes "Hey David", "เฮ้ เดวิด/เดวิก/จาวิก" also wake it); JARVIS greets "ค่ะ TK มีอะไรให้ช่วยไหมคะ";
+  waking turns on the "โหมดปลุก" switch for a continuous conversation; "Stop Jarvis" /
   "จาร์วิส หยุดการทำงาน" goes back to waiting (mic stays on); 60 s of silence also sleeps. One dashboard tab
   listens at a time and JARVIS's own replies are ignored as commands.
 - New devices are added only by the "อัปเดตอุปกรณ์" button, never automatically.
