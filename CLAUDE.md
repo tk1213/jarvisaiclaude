@@ -53,7 +53,8 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
 - Voice: Google Cloud TTS (`th-TH-Neural2-C`) first when `GOOGLE_TTS_API_KEY` is set, then Edge
   Premwadee, then text only. **Never fall back to a male voice** (Windows Pattara and Edge Niwat are male).
 - Hands-free: the 🎙 button keeps the mic waiting for "Hey Jarvis"/"เฮ้ จาร์วิส" only (the bare name doesn't
-  wake it); waking turns on the "โหมดปลุก" switch for a continuous conversation; "Stop Jarvis" /
+  wake it; sound-alikes "Hey David", "เฮ้ เดวิด/เดวิก/จาวิก" also wake it); JARVIS greets "ค่ะ TK มีอะไรให้ช่วยไหมคะ";
+  waking turns on the "โหมดปลุก" switch for a continuous conversation; "Stop Jarvis" /
   "จาร์วิส หยุดการทำงาน" goes back to waiting (mic stays on); 60 s of silence also sleeps. One dashboard tab
   listens at a time and JARVIS's own replies are ignored as commands.
 - New devices are added only by the "อัปเดตอุปกรณ์" button, never automatically.
