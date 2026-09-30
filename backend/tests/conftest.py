@@ -9,6 +9,11 @@ os.environ["JWT_SECRET"] = "test-secret-that-is-at-least-32-bytes-long"
 os.environ["ENCRYPTION_KEY"] = Fernet.generate_key().decode()
 os.environ["TUYA_MODE"] = "mock"
 
+from app.config import Settings  # noqa: E402
+
+# Tests must not pick up the owner's real backend/.env (API keys, voice tuning).
+Settings.model_config["env_file"] = None
+
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
