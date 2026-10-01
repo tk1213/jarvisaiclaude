@@ -110,7 +110,7 @@ def test_numbers_are_spoken_slower_and_streamed(client, owner_headers, monkeypat
     r = client.get("/voice/tts", params={"text": "กำลังไฟ 1,250 วัตต์", "token": token})
     assert r.status_code == 200 and r.content == b"mp3" * 3 and r.headers["content-type"] == "audio/mpeg"
     rates = {text: rate for text, _, rate, _ in FakeCommunicate.calls}
-    assert rates == {"กำลังไฟ": "-8%", "1,250": "-30%", "วัตต์": "-8%"}
+    assert rates == {"กำลังไฟ": "-8%", "1,250": "-20%", "วัตต์": "-8%"}
 
 
 def test_stream_requires_token(client):
@@ -144,7 +144,7 @@ def test_google_voice_first_with_slow_numbers(client, owner_headers, monkeypatch
     assert client.get("/voice/config", headers=owner_headers).json()["voice"] == "th-TH-Neural2-C"
     r = client.post("/voice/tts", json={"text": "อุณหภูมิ 28.6 องศา <ร้อน>"}, headers=owner_headers)
     assert r.content == b"g-mp3"
-    assert sent["input"]["ssml"] == '<speak>อุณหภูมิ <prosody rate="70%">28.6</prosody> องศา &lt;ร้อน&gt;</speak>'
+    assert sent["input"]["ssml"] == '<speak>อุณหภูมิ <prosody rate="80%">28.6</prosody> องศา &lt;ร้อน&gt;</speak>'
     assert sent["audioConfig"] == {"audioEncoding": "MP3", "speakingRate": 0.92, "pitch": 1.5}
 
 
@@ -188,9 +188,9 @@ def test_units_after_numbers_are_spoken(client, owner_headers, monkeypatch):
     rates = {text: rate for text, _, rate, _ in FakeCommunicate.calls}
     assert rates == {
         "จาร์วิส วัดได้": "-8%",
-        "24.6": "-30%",
+        "24.6": "-20%",
         "องศาเซลเซียส ความชื้น": "-8%",
-        "72": "-30%",
+        "72": "-20%",
         "เปอร์เซ็นต์": "-8%",
     }
 

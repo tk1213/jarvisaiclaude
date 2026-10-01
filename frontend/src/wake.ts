@@ -4,8 +4,10 @@ import { broadcast, ERRORS, isEcho, LANG, recognitionCtor, subscribeVoice, TAB_I
 // "Jarvis" as the Thai recognizer tends to write it: จาร์วิส, จาวิส, จาร์วิด, จาวิก, Jarvis…
 const NAME = '(?:j[ae]r?vi[sk]|จ[่้๊๋]?[าะ]?[่้๊๋]?(?:ร์|ร)?วิ[สซดทตชศษก](?:ต์)?)'
 // Only "Hey Jarvis" / "เฮ้ จาร์วิส" wakes it, so just mentioning the name in conversation doesn't.
-// Chrome sometimes hears "Hey Jarvis" as "Hey David", "เฮ้ เดวิด/เดวิก", "hang javis", "hen heavy", "เฮ้ยจาร์วิส".
-const WAKE_WORD = new RegExp(`(?:hey|hang|hen|เฮ้ย|เฮ้|เฮ|เฮย์|เฮย)\\s*(?:${NAME}|d[ae]vi[dk]|heavy|เดวิ[ดก])`, 'i')
+// Chrome sometimes hears "Hey Jarvis" as "Hey David", "เฮ้ เดวิด/เดวิก", "hang javis", "hen heavy", "เฮ้ยจาร์วิส",
+// "เพลงจาร์วิส".
+// "เพลงจาร์วิส" too, but only with the name itself (not "เพลง" + David/heavy, which is ordinary talk).
+const WAKE_WORD = new RegExp(`(?:(?:hey|hang|hen|เฮ้ย|เฮ้|เฮ|เฮย์|เฮย)\\s*(?:${NAME}|d[ae]vi[dk]|heavy|เดวิ[ดก])|เพลง\\s*${NAME})`, 'i')
 const MENTIONS_NAME = new RegExp(NAME, 'i')
 const NAME_ONLY = new RegExp(`^\\s*${NAME}\\s*[.!?]?\\s*$`, 'i')
 // "Stop Jarvis", "จาร์วิส หยุดการทำงาน": back to sleep.
