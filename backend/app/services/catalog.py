@@ -80,10 +80,7 @@ def _exact(db: Session, name: str) -> Product | None:
     return None
 
 
-def save_set(db: Session, name: str, items: list[dict], customer: str | None = None, remarks: str | None = None) -> ProductSet:
-    name = name.strip()
-    if not name:
-        raise CatalogError("ต้องตั้งชื่อชุด")
+def _clean_set_items(db: Session, items: list[dict]) -> list[tuple]:
     if not items:
         raise CatalogError("ชุดต้องมีสินค้าอย่างน้อย 1 รายการ")
     clean = []
@@ -94,15 +91,47 @@ def save_set(db: Session, name: str, items: list[dict], customer: str | None = N
             raise CatalogError("ทุกรายการในชุดต้องมีชื่อสินค้าและจำนวนมากกว่า 0")
         match = _exact(db, product)
         price = i.get("unit_price")
+        if price is not None and float(price) < 0:
+            raise CatalogError("ราคาต้องไม่ติดลบ")
         clean.append((match.name if match else product, quantity, float(price) if price is not None else None, i.get("unit") or (match.unit if match else None)))
+    return clean
+
+
+def _replace_items(db: Session, product_set: ProductSet, clean: list[tuple]) -> None:
+    db.execute(delete(ProductSetItem).where(ProductSetItem.set_id == product_set.id))
+    for pos, (product, quantity, price, unit) in enumerate(clean):
+        db.add(ProductSetItem(set_id=product_set.id, position=pos, product=product, quantity=quantity, unit_price=price, unit=unit))
+
+
+def save_set(db: Session, name: str, items: list[dict], customer: str | None = None, remarks: str | None = None) -> ProductSet:
+    """JARVIS's "บันทึกชุด ...": creates or replaces a set by name (its dashboard description is kept)."""
+    name = name.strip()
+    if not name:
+        raise CatalogError("ต้องตั้งชื่อชุด")
+    clean = _clean_set_items(db, items)
     product_set = db.scalar(select(ProductSet).where(func.lower(ProductSet.name) == name.lower())) or ProductSet(name=name)
     product_set.customer = (customer or "").strip() or None
     product_set.remarks = (remarks or "").strip() or None
     db.add(product_set)
     db.flush()
-    db.execute(delete(ProductSetItem).where(ProductSetItem.set_id == product_set.id))
-    for pos, (product, quantity, price, unit) in enumerate(clean):
-        db.add(ProductSetItem(set_id=product_set.id, position=pos, product=product, quantity=quantity, unit_price=price, unit=unit))
+    _replace_items(db, product_set, clean)
+    db.commit()
+    return product_set
+
+
+def update_set(db: Session, product_set: ProductSet, name: str, description: str | None, remarks: str | None, items: list[dict]) -> ProductSet:
+    """The dashboard's ✏️ editor: everything about a set at once (a blank unit_price = the FlowAccount price)."""
+    name = name.strip()
+    if not name:
+        raise CatalogError("ต้องตั้งชื่อชุด")
+    other = db.scalar(select(ProductSet).where(func.lower(ProductSet.name) == name.lower(), ProductSet.id != product_set.id))
+    if other is not None:
+        raise CatalogError(f"มีชุดชื่อ '{other.name}' อยู่แล้ว")
+    clean = _clean_set_items(db, items)
+    product_set.name = name
+    product_set.description = (description or "").strip()[:200] or None
+    product_set.remarks = (remarks or "").strip() or None
+    _replace_items(db, product_set, clean)
     db.commit()
     return product_set
 
@@ -140,10 +169,15 @@ def expand_set(db: Session, name: str, times: float = 1) -> dict:
 
 
 def list_sets(db: Session) -> list[dict]:
-    return [
-        {"id": s.id, "name": s.name, "customer": s.customer, "remarks": s.remarks, "items": [{"product": i.product, "quantity": i.quantity, "unit": i.unit, "unit_price": i.unit_price} for i in set_items(db, s)]}
-        for s in db.scalars(select(ProductSet).order_by(ProductSet.name))
-    ]
+    """Sets for the dashboard; list_price is the item's current FlowAccount price (None when the product isn't listed)."""
+    out = []
+    for s in db.scalars(select(ProductSet).order_by(ProductSet.name)):
+        items = []
+        for i in set_items(db, s):
+            product = _exact(db, i.product)
+            items.append({"product": i.product, "quantity": i.quantity, "unit": i.unit, "unit_price": i.unit_price, "list_price": product.price if product else None})
+        out.append({"id": s.id, "name": s.name, "customer": s.customer, "description": s.description, "remarks": s.remarks, "items": items})
+    return out
 
 
 def set_remarks(db: Session, name: str, remarks: str) -> ProductSet:

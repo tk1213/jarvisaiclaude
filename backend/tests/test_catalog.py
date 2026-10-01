@@ -152,3 +152,43 @@ def test_catalog_lives_in_its_own_file_and_old_sets_are_moved(tmp_path, monkeypa
     with cat.connect() as c:
         assert c.execute(text("SELECT id, name, remarks FROM product_sets")).all() == [(7, "ชุด A", None)]
         assert c.execute(text("SELECT set_id, product, quantity FROM product_set_items")).all() == [(7, "โช๊คประตู GUTE ขนาด 1 เมตร", 2.0)]
+
+
+def test_dashboard_edits_a_set(client, owner_headers):
+    client.post("/products/sync", headers=owner_headers)
+    with CatalogSession() as s:
+        catalog.save_set(s, "ชุด A", [{"product": "โช๊คประตู GUTE ขนาด 1 เมตร", "quantity": 2}], remarks="รับประกัน 1 ปี")
+        catalog.save_set(s, "ชุด B", [{"product": "ค่าติดตั้ง", "quantity": 1}])
+    set_a = next(x for x in client.get("/product-sets", headers=owner_headers).json() if x["name"] == "ชุด A")
+    assert set_a["description"] is None and set_a["items"][0]["list_price"] > 0 and set_a["items"][0]["unit_price"] is None
+
+    body = {
+        "name": "ชุด A",
+        "description": "โช๊คประตูบ้านเดี่ยว",
+        "remarks": "รับประกัน 2 ปี",
+        "items": [
+            {"product": "โช๊คประตู GUTE ขนาด 1 เมตร", "quantity": 3, "unit": "กล่อง", "unit_price": 1990},  # special price
+            {"product": "โช๊คประตู GUTE ขนาด 1.5 เมตร", "quantity": 1, "unit": None, "unit_price": None},  # added, FlowAccount price
+        ],
+    }
+    r = client.put(f"/product-sets/{set_a['id']}", json=body, headers=owner_headers)
+    assert r.status_code == 200
+    out = r.json()
+    assert (out["description"], out["remarks"]) == ("โช๊คประตูบ้านเดี่ยว", "รับประกัน 2 ปี")
+    assert [(i["product"], i["quantity"], i["unit_price"]) for i in out["items"]] == [
+        ("โช๊คประตู GUTE ขนาด 1 เมตร", 3, 1990),
+        ("โช๊คประตู GUTE ขนาด 1.5 เมตร", 1, None),
+    ]
+    with CatalogSession() as s:
+        expanded = catalog.expand_set(s, "ชุด A")
+        assert expanded["items"][0]["unit_price"] == 1990 and expanded["remarks"] == "รับประกัน 2 ปี"
+        # JARVIS re-saving the set keeps the dashboard description.
+        catalog.save_set(s, "ชุด A", [{"product": "ค่าติดตั้ง", "quantity": 1}])
+    assert next(x for x in client.get("/product-sets", headers=owner_headers).json() if x["name"] == "ชุด A")["description"] == "โช๊คประตูบ้านเดี่ยว"
+
+    # Renaming onto another set, bad quantities and unknown sets are refused.
+    assert client.put(f"/product-sets/{set_a['id']}", json=body | {"name": "ชุด b"}, headers=owner_headers).status_code == 400
+    bad = body | {"items": [{"product": "ค่าติดตั้ง", "quantity": 0}]}
+    assert client.put(f"/product-sets/{set_a['id']}", json=bad, headers=owner_headers).status_code == 422
+    assert client.put(f"/product-sets/{set_a['id']}", json=body | {"items": []}, headers=owner_headers).status_code == 422
+    assert client.put("/product-sets/999", json=body, headers=owner_headers).status_code == 404

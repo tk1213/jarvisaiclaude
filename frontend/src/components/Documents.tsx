@@ -1,11 +1,29 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { api, type DocumentRow } from '../api'
 
 const baht = new Intl.NumberFormat('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+// The list shows this many documents at a time; the rest scroll inside it.
+const VISIBLE_ROWS = 6
 
 /** Recent FlowAccount documents JARVIS drafted or issued (refreshes after each chat reply). */
 export function Documents({ refreshKey }: { refreshKey: number }) {
   const [rows, setRows] = useState<DocumentRow[] | null>(null)
+  const list = useRef<HTMLUListElement>(null)
+  const [maxHeight, setMaxHeight] = useState<number>()
+
+  // Measured, not a fixed height: a row can wrap onto two lines on a narrow screen.
+  useLayoutEffect(() => {
+    const el = list.current
+    if (!el) return
+    const measure = () => {
+      const cut = el.children[VISIBLE_ROWS] as HTMLElement | undefined
+      setMaxHeight(cut ? cut.offsetTop + 2 : undefined) // + the top and bottom border
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [rows])
 
   useEffect(() => {
     api.documents().then(setRows, () => setRows([]))
@@ -24,8 +42,14 @@ export function Documents({ refreshKey }: { refreshKey: number }) {
 
   return (
     <section className="space-y-2">
-      <h2 className="text-sm font-medium text-slate-500">เอกสารล่าสุด</h2>
-      <ul className="divide-y divide-slate-200 rounded-2xl border border-slate-200 bg-white text-sm dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900">
+      <h2 className="text-sm font-medium text-slate-500">
+        เอกสารล่าสุด {rows.length > VISIBLE_ROWS && <span className="font-normal text-slate-400">({rows.length} รายการ เลื่อนดูได้)</span>}
+      </h2>
+      <ul
+        ref={list}
+        style={{ maxHeight }}
+        className="relative divide-y divide-slate-200 overflow-y-auto rounded-2xl border border-slate-200 bg-white text-sm dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900"
+      >
         {rows.map((d) => (
           <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5">
             <span

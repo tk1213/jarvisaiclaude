@@ -105,7 +105,8 @@ Products are copied from FlowAccount (`app/services/catalog.py`, "อัปเ�
 file, `backend/data/flowaccount/catalog.db` (`CATALOG_DATABASE_URL`, `app/catalog_models.py`, `CatalogSession`), which
 the owner opens with DB Browser for SQLite; named sets ("ชุด A", tables
 `product_sets`/`product_set_items`, items by product name, list price unless a special price is fixed, optional
-per-set `remarks` that become the document's หมายเหตุ) and
+per-set `remarks` that become the document's หมายเหตุ; a short dashboard-only `description`; the dashboard shows sets
+as cards with a hover/tap pop-up and edits them in `SetEditor.tsx` via `PUT /product-sets/{id}`) and
 `last_order` ("เหมือนครั้งก่อน") feed `prepare_document`. The sandbox connection and test quotation work.
 Phase 1 is done. LINE OA's webhook is `https://jarvis.jarvisthai.com/line/webhook`
 through a named Cloudflare tunnel (Windows service, path `^/line/webhook$` → `127.0.0.1:8765`;
