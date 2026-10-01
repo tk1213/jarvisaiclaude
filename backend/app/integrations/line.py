@@ -91,20 +91,23 @@ def _https(url: str | None) -> bool:
 
 
 def info_messages(text: str, links: list[dict] | None = None, location: dict | None = None, image_url: str | None = None) -> list[dict]:
-    """What JARVIS pushes to LINE on request: a text with its links, then a map pin and/or a picture."""
+    """What JARVIS pushes to LINE on request: a text with its links, a Google Maps link, and/or a picture."""
     body = text.strip()
     for link in links or []:
         if _https(link.get("url")):
             body += f"\n\n{link.get('label') or 'ลิงก์'}: {link['url']}"
     messages = [{"type": "text", "text": body[:MAX_TEXT]}] if body else []
     if location:
+        # Always a Google Maps link (the owner's choice): it opens straight in Google Maps for directions.
         lat, lng = location.get("latitude"), location.get("longitude")
         title = (location.get("title") or "ตำแหน่ง")[:100]
-        address = (location.get("address") or title)[:100]
+        address = (location.get("address") or "").strip()
         if lat is not None and lng is not None and -90 <= lat <= 90 and -180 <= lng <= 180:
-            messages.append({"type": "location", "title": title, "address": address, "latitude": lat, "longitude": lng})
-        else:  # no reliable coordinates: a Maps search link still opens the place
-            messages.append({"type": "text", "text": f"📍 {title}\n{maps_link(address)}"})
+            query = f"{lat},{lng}"
+        else:  # no reliable coordinates: search by name and address
+            query = f"{title} {address}".strip()
+        lines = [f"📍 {title}", address if address and address != title else "", maps_link(query)]
+        messages.append({"type": "text", "text": "\n".join(line for line in lines if line)})
     if _https(image_url):
         messages.append({"type": "image", "originalContentUrl": image_url, "previewImageUrl": image_url})
     if not messages:

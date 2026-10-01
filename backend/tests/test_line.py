@@ -216,13 +216,13 @@ def test_info_messages():
         location={"title": "สยามพารากอน", "address": "ถ.พระราม 1 กรุงเทพฯ", "latitude": 13.7466, "longitude": 100.5347},
         image_url="https://example.com/gold.jpg",
     )
-    assert [m["type"] for m in msgs] == ["text", "location", "image"]
+    assert [m["type"] for m in msgs] == ["text", "text", "image"]
     assert msgs[0]["text"].endswith("สมาคมค้าทองคำ: https://www.goldtraders.or.th") and "javascript" not in msgs[0]["text"]
-    assert (msgs[1]["latitude"], msgs[1]["longitude"]) == (13.7466, 100.5347)
+    assert msgs[1]["text"] == "📍 สยามพารากอน\nถ.พระราม 1 กรุงเทพฯ\nhttps://www.google.com/maps/search/?api=1&query=13.7466%2C100.5347"
     assert msgs[2] == {"type": "image", "originalContentUrl": "https://example.com/gold.jpg", "previewImageUrl": "https://example.com/gold.jpg"}
-    # Unknown coordinates: a Maps search link instead of a wrong pin; non-https images are dropped.
-    msgs = line_int.info_messages("", location={"title": "ร้านป้าแดง", "address": "ร้านป้าแดง สีลม", "latitude": None, "longitude": None}, image_url="http://x/y.jpg")
-    assert msgs == [{"type": "text", "text": "📍 ร้านป้าแดง\nhttps://www.google.com/maps/search/?api=1&query=%E0%B8%A3%E0%B9%89%E0%B8%B2%E0%B8%99%E0%B8%9B%E0%B9%89%E0%B8%B2%E0%B9%81%E0%B8%94%E0%B8%87%20%E0%B8%AA%E0%B8%B5%E0%B8%A5%E0%B8%A1"}]
+    # Unknown coordinates: the link searches by name and address; non-https images are dropped.
+    msgs = line_int.info_messages("", location={"title": "ร้านป้าแดง", "address": "สีลม", "latitude": None, "longitude": None}, image_url="http://x/y.jpg")
+    assert msgs == [{"type": "text", "text": "📍 ร้านป้าแดง\nสีลม\n" + line_int.maps_link("ร้านป้าแดง สีลม")}]
 
 
 def test_send_to_line_tool(client, owner_headers, line, monkeypatch):
