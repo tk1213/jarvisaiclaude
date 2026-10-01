@@ -34,6 +34,8 @@ class ProductSet(CatalogBase):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     customer: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    # A short label shown on the dashboard's set card ("โช๊คประตูบ้านเดี่ยว"); never put into documents.
+    description: Mapped[str | None] = mapped_column(String(200), nullable=True)
     # Goes into the document's หมายเหตุ when this set is quoted (e.g. warranty or installation terms).
     remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

@@ -143,12 +143,29 @@ export interface ProductRow {
   price_includes_vat: boolean
 }
 
+export interface ProductSetItem {
+  product: string
+  quantity: number
+  unit: string | null
+  // The set's special price; null = the FlowAccount price (list_price, null when the product isn't in the list).
+  unit_price: number | null
+  list_price?: number | null
+}
+
 export interface ProductSetRow {
   id: number
   name: string
   customer: string | null
+  description: string | null
   remarks: string | null
-  items: { product: string; quantity: number; unit: string | null; unit_price: number | null }[]
+  items: ProductSetItem[]
+}
+
+export interface ProductSetInput {
+  name: string
+  description: string | null
+  remarks: string | null
+  items: Omit<ProductSetItem, 'list_price'>[]
 }
 
 export interface LineStatus {
@@ -174,11 +191,12 @@ export const api = {
   voiceLastError: () => request<{ error: string | null }>('GET', '/voice/last-error'),
   chat: (text: string, sessionId: string | null, channel: 'dashboard' | 'voice' = 'dashboard', voice: 'female' | 'male' = 'female', images: string[] = []) =>
     request<ChatResponse>('POST', '/core/chat', { text, session_id: sessionId, channel, voice, images }),
-  documents: () => request<DocumentRow[]>('GET', '/documents?limit=10'),
+  documents: () => request<DocumentRow[]>('GET', '/documents?limit=100'),
   products: () => request<ProductRow[]>('GET', '/products'),
   syncProducts: () => request<ProductRow[]>('POST', '/products/sync'),
   productSets: () => request<ProductSetRow[]>('GET', '/product-sets'),
   deleteProductSet: (id: number) => request<void>('DELETE', `/product-sets/${id}`),
+  updateProductSet: (id: number, body: ProductSetInput) => request<ProductSetRow>('PUT', `/product-sets/${id}`, body),
   lineStatus: () => request<LineStatus>('GET', '/line/status'),
   lineLinkCode: () => request<{ code: string; expires_in: number }>('POST', '/line/link-code'),
   lineUnlink: () => request<void>('DELETE', '/line/link'),
