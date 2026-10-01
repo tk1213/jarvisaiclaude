@@ -135,6 +135,11 @@ def prepare(
             for i in lines
         ],
     }
+    # A new draft (an edit, "ไม่เอาแวท") replaces the open ones for the same document and customer,
+    # so an outdated version can't be issued by mistake.
+    for old in db.scalars(select(DocumentLog).where(DocumentLog.user_id == user.id, DocumentLog.doc_type == doc_type, DocumentLog.status == "draft")):
+        if (old.payload.get("customer") or {}).get("name") == cust["name"]:
+            old.status = "cancelled"
     doc = DocumentLog(
         user_id=user.id,
         channel=channel,

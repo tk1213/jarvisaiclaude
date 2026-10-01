@@ -22,6 +22,17 @@ DATA_API = "https://api-data.line.me/v2/bot"
 MAX_TEXT = 4000
 # The only quick-reply buttons: under a document summary that waits for the owner's answer.
 CONFIRM_CHOICES = ["OK", "Cancel"]
+# A quotation drafted with VAT also offers dropping it (the other documents follow their quotation's VAT).
+NO_VAT = "ไม่เอาแวท"
+
+
+def confirm_choices(tool_calls) -> list[str] | None:
+    """The buttons for a reply: OK / Cancel (+ ไม่เอาแวท for a quotation with VAT) after a draft, otherwise none."""
+    drafts = [c for c in tool_calls if c.ok and c.name == "prepare_document"]
+    if not drafts:
+        return None
+    last = drafts[-1].input
+    return CONFIRM_CHOICES + [NO_VAT] if last.get("doc_type") == "quotation" and last.get("vat") else CONFIRM_CHOICES
 
 
 class LineError(RuntimeError):

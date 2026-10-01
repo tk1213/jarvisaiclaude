@@ -235,3 +235,27 @@ def test_persona_keeps_document_replies_short():
     assert '"ร่าง<ประเภทเอกสาร>ของ<ชื่อลูกค้า> ยืนยันไหมคะ TK"' in SYSTEM_PROMPT
     assert '"ออก<ประเภทเอกสาร>ของ<ชื่อลูกค้า>เรียบร้อยแล้วค่ะ TK"' in SYSTEM_PROMPT
     assert "ไม่บอกเลขที่เอกสาร" in SYSTEM_PROMPT
+
+
+def test_new_draft_replaces_the_open_one_for_that_customer(db, owner):
+    day = date(2026, 10, 1)
+    with_vat = docs.prepare(db, owner, "line", "quotation", CUSTOMER, ITEMS, True, False, 30, "", day)
+    other = docs.prepare(db, owner, "line", "quotation", CUSTOMER | {"name": "ร้าน บี"}, ITEMS, True, False, 30, "", day)
+    no_vat = docs.prepare(db, owner, "line", "quotation", CUSTOMER, ITEMS, False, False, 30, "", day)  # "ไม่เอาแวท"
+    db.refresh(with_vat)
+    db.refresh(other)
+    assert (with_vat.status, other.status, no_vat.status) == ("cancelled", "draft", "draft")
+    assert no_vat.payload["flowaccount"]["isVat"] is False and no_vat.total_amount == "2000.00"
+
+    # The other documents follow the customer's quotation, never a replaced draft.
+    from app.services import catalog
+
+    assert catalog.last_order(db, CUSTOMER["name"])["vat"] is False
+
+
+def test_persona_makes_vat_the_quotation_standard():
+    from app.core.prompts import SYSTEM_PROMPT
+
+    assert "ใบเสนอราคามี VAT 7% เป็นมาตรฐาน" in SYSTEM_PROMPT
+    assert '"ไม่เอาแวท"' in SYSTEM_PROMPT and "แบบไม่มี VAT" in SYSTEM_PROMPT
+    assert "price_includes_vat) ให้ตั้ง" not in SYSTEM_PROMPT  # FlowAccount prices never include VAT
