@@ -25,3 +25,5 @@ class InboundMessage(BaseModel):
     text: str = Field(min_length=1)
     # The dashboard's chosen speaking voice; a male voice answers with ครับ instead of ค่ะ.
     voice: Literal["female", "male"] = "female"
+    # Pictures sent with this message, already shrunk to base64 JPEG by app.core.images.
+    images: list[str] = Field(default_factory=list, max_length=4)

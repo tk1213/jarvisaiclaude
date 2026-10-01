@@ -16,6 +16,8 @@ from app.services import devices as svc
 log = logging.getLogger(__name__)
 
 API = "https://api.line.me/v2/bot"
+# Pictures and files users send are downloaded from a different host.
+DATA_API = "https://api-data.line.me/v2/bot"
 # LINE rejects text over 5,000 characters; Flex text is shown in full, so keep replies well under it.
 MAX_TEXT = 4000
 # Quick replies under every answer, for the commands used most from a phone.
@@ -59,6 +61,17 @@ class LineClient:
         except LineError as e:
             log.warning("LINE reply failed, pushing instead: %s", e)
             self.push(to, messages)
+
+    def get_content(self, message_id: str) -> bytes:
+        """The picture (or file) a user sent; LINE keeps it only for a while after the message."""
+        url = f"{DATA_API}/message/{message_id}/content"
+        try:
+            r = self.http.get(url, timeout=30)
+        except httpx.HTTPError as e:
+            raise LineError(f"LINE content: {e.__class__.__name__} {e}") from None
+        if r.status_code >= 400:
+            raise LineError(f"LINE content {r.status_code}: {r.text[:300]}")
+        return r.content
 
     def show_loading(self, chat_id: str, seconds: int = 20) -> None:
         """The "..." typing animation while JARVIS thinks; purely cosmetic, so failures are ignored."""

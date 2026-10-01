@@ -76,6 +76,10 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
   listens at a time and JARVIS's own replies are ignored as commands. The listener also checks the recognizer's
   alternative transcripts for the wake word, recycles an idle session every 45 s and restarts itself if it stops.
 - Locations JARVIS sends to LINE are always a Google Maps link (not a LINE location pin).
+- Pictures (customer name cards/addresses for documents): LINE keeps an image message silently for the user's next
+  text (max 4, 10 min, `_pending_images` in `app/api/line.py`); the dashboard's 📎 button sends up to 4 with the message.
+  `app/core/images.py` (Pillow) re-encodes them as JPEG ≤1024 px. Images go to Claude in that turn only: `_persist` stores
+  a text placeholder instead, so they're never re-sent with later turns.
 - New devices are added only by the "อัปเดตอุปกรณ์" button, never automatically.
 - The IR air conditioner (Air PANASONIC via the Temp Smart Jarvis hub) can't report changes made in the
   Tuya app or with its physical remote; the dashboard/JARVIS side is the source of truth.
