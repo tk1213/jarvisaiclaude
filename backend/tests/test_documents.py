@@ -226,3 +226,12 @@ def test_issued_document_cannot_be_cancelled(db, owner):
     db.commit()
     with pytest.raises(docs.DocumentError, match="ออกไปแล้ว"):
         docs.cancel(db, owner, doc.id)
+
+
+def test_persona_keeps_document_replies_short():
+    from app.core.prompts import SYSTEM_PROMPT
+
+    # The owner checks details in FlowAccount; JARVIS only names the document and the customer.
+    assert '"ร่าง<ประเภทเอกสาร>ของ<ชื่อลูกค้า> ยืนยันไหมคะ TK"' in SYSTEM_PROMPT
+    assert '"ออก<ประเภทเอกสาร>ของ<ชื่อลูกค้า>เรียบร้อยแล้วค่ะ TK"' in SYSTEM_PROMPT
+    assert "ไม่บอกเลขที่เอกสาร" in SYSTEM_PROMPT
