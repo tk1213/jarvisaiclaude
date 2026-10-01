@@ -41,7 +41,11 @@ async def lifespan(_: FastAPI):
     if s.tuya_mode == "live" and s.jwt_secret == "change-me":
         raise RuntimeError("Set JWT_SECRET before running with TUYA_MODE=live")
     init_db()
-    log.info("voice: engine=%s voice=%s rate=%s pitch=%s (from .env; restart the server after changing)", s.tts_engine, s.tts_voice, s.tts_rate, s.tts_pitch)
+    female = f"Google {s.google_tts_voice}" if s.google_tts_api_key else f"Edge {s.tts_voice}"
+    log.info(
+        "voice: female=%s rate=%s pitch=%s | numbers rate=%s | male=Edge %s rate=%s (from .env; restart the server after changing)",
+        female, s.tts_rate, s.google_tts_pitch if s.google_tts_api_key else s.tts_pitch, s.tts_number_rate, s.tts_voice_male, s.tts_rate_male,
+    )
     hub.bind_loop(asyncio.get_running_loop())
 
     consumer = build_pulsar_consumer()
