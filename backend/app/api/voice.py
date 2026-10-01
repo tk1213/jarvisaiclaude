@@ -118,8 +118,8 @@ async def _synthesize(text: str, gender: Gender = "female") -> bytes:
     s = get_settings()
     if gender == "male":
         # Chosen explicitly on the dashboard; never used as a fallback for the female voice.
-        log.info("speaking with Edge %s (male)", s.tts_voice_male)
-        parts = edge_voice.speak_parts(text, voice=s.tts_voice_male, rate=s.tts_rate, pitch=s.tts_pitch_male, number_rate=s.tts_number_rate)
+        log.info("speaking with Edge %s (male) rate=%s", s.tts_voice_male, s.tts_rate_male)
+        parts = edge_voice.speak_parts(text, voice=s.tts_voice_male, rate=s.tts_rate_male, pitch=s.tts_pitch_male, number_rate=s.tts_number_rate)
         return b"".join([chunk async for chunk in parts])
     google_error = None
     if s.google_tts_api_key:

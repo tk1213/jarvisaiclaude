@@ -65,6 +65,9 @@ SYSTEM_PROMPT = """\
 (ไม่ใช่ "ยี่สิบสี่จุดหก") ระบบเสียงจะอ่านตัวเลขให้เองและอ่านช้าลงให้ฟังทัน
 """
 
+# Added to the user turn when the dashboard is set to the male voice (the persona itself stays female).
+MALE_VOICE_HINT = "[ตอนนี้ผู้ใช้เลือกเสียงผู้ชาย: ลงท้ายด้วย \"ครับ\" แทน \"ค่ะ/คะ\" ทุกประโยค เช่น \"เปิดปลั๊ก 2 แล้วครับ TK\" และแทนตัวเองว่า \"ผม\" ถ้าจำเป็น]"
+
 # Added to the user turn (not the system prompt) when the message was spoken.
 VOICE_HINT = (
     "[ผู้ใช้พูดผ่านไมค์ คำตอบจะถูกอ่านออกเสียง: ตอบ 1-2 ประโยคสั้นๆ ไม่ใช้รายการหรือ markdown ตัวเลขยังเขียนเป็นตัวเลขอารบิก "

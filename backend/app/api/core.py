@@ -22,6 +22,8 @@ class ChatRequest(BaseModel):
     session_id: str | None = Field(default=None, max_length=64)
     # "voice" when the dashboard's mic produced the text; JARVIS then answers in a speakable form.
     channel: Literal["dashboard", "voice"] = "dashboard"
+    # The voice chosen on the dashboard; a male voice answers with ครับ.
+    voice: Literal["female", "male"] = "female"
 
 
 class ToolCallOut(BaseModel):
@@ -44,7 +46,7 @@ def chat(body: ChatRequest, db: Session = Depends(get_db), tuya=Depends(get_tuya
     except CoreNotConfigured as e:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(e)) from None
 
-    msg = InboundMessage(user_id=user.id, channel=Channel(body.channel), session_id=body.session_id, text=body.text)
+    msg = InboundMessage(user_id=user.id, channel=Channel(body.channel), session_id=body.session_id, text=body.text, voice=body.voice)
     try:
         reply = orchestrator.handle(db, tuya, user, msg)
     except anthropic.AuthenticationError:
