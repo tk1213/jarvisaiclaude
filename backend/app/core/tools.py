@@ -272,8 +272,8 @@ TOOLS: list[dict] = [
         "description": (
             "Push information to the user's own LINE chat (their linked account), e.g. when they say "
             "\"ส่งเข้าไลน์\". text: the content to keep (news summary, gold prices...) with sources' dates. "
-            "links: source pages. location: a place to show as a map pin; give latitude/longitude only when you "
-            "are sure of them (else null and a Google Maps link is sent). image_url: a direct https link to a "
+            "links: source pages. location: a place, sent as a Google Maps link; give latitude/longitude only when "
+            "you are sure of them (else null and the link searches by name/address). image_url: a direct https link to a "
             "JPEG/PNG file (not a web page), or null. Pushes count toward the LINE OA's monthly message quota."
         ),
         # Not strict: the API allows at most 16 nullable/union parameters across strict tools, and
