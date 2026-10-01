@@ -11,7 +11,6 @@ import threading
 import time
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
-from functools import lru_cache
 
 import anthropic
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
@@ -24,6 +23,7 @@ from app.core.messages import Channel, InboundMessage
 from app.core.orchestrator import CoreNotConfigured, get_orchestrator
 from app.db import SessionLocal, get_db
 from app.deps import get_current_user
+from app.integrations import line as line_integration
 from app.integrations.line import (
     LineClient,
     LineError,
@@ -54,13 +54,8 @@ def _configured() -> bool:
     return bool(s.line_channel_secret and s.line_channel_access_token)
 
 
-@lru_cache
-def _client_for(access_token: str) -> LineClient:
-    return LineClient(access_token)
-
-
 def get_line_client() -> LineClient:
-    return _client_for(get_settings().line_channel_access_token)
+    return line_integration.get_line_client()
 
 
 # --- Linking a LINE user to a JARVIS account -------------------------------------------------------

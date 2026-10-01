@@ -4,9 +4,12 @@ import base64
 import hashlib
 import hmac
 import logging
+from functools import lru_cache
+from urllib.parse import quote, urlparse
 
 import httpx
 
+from app.config import get_settings
 from app.models import Device
 from app.services import devices as svc
 
@@ -60,6 +63,50 @@ class LineClient:
             self._post("/chat/loading/start", {"chatId": chat_id, "loadingSeconds": seconds})
         except (LineError, httpx.HTTPError) as e:
             log.info("LINE loading animation not shown: %s", e)
+
+
+@lru_cache
+def _client_for(access_token: str) -> LineClient:
+    return LineClient(access_token)
+
+
+def get_line_client() -> LineClient:
+    return _client_for(get_settings().line_channel_access_token)
+
+
+def line_configured() -> bool:
+    s = get_settings()
+    return bool(s.line_channel_secret and s.line_channel_access_token)
+
+
+def maps_link(query: str) -> str:
+    return f"https://www.google.com/maps/search/?api=1&query={quote(query)}"
+
+
+def _https(url: str | None) -> bool:
+    return bool(url) and urlparse(url).scheme == "https" and bool(urlparse(url).netloc)
+
+
+def info_messages(text: str, links: list[dict] | None = None, location: dict | None = None, image_url: str | None = None) -> list[dict]:
+    """What JARVIS pushes to LINE on request: a text with its links, then a map pin and/or a picture."""
+    body = text.strip()
+    for link in links or []:
+        if _https(link.get("url")):
+            body += f"\n\n{link.get('label') or 'ลิงก์'}: {link['url']}"
+    messages = [{"type": "text", "text": body[:MAX_TEXT]}] if body else []
+    if location:
+        lat, lng = location.get("latitude"), location.get("longitude")
+        title = (location.get("title") or "ตำแหน่ง")[:100]
+        address = (location.get("address") or title)[:100]
+        if lat is not None and lng is not None and -90 <= lat <= 90 and -180 <= lng <= 180:
+            messages.append({"type": "location", "title": title, "address": address, "latitude": lat, "longitude": lng})
+        else:  # no reliable coordinates: a Maps search link still opens the place
+            messages.append({"type": "text", "text": f"📍 {title}\n{maps_link(address)}"})
+    if _https(image_url):
+        messages.append({"type": "image", "originalContentUrl": image_url, "previewImageUrl": image_url})
+    if not messages:
+        raise LineError("nothing to send")
+    return messages[:5]
 
 
 def _quick_reply() -> dict:

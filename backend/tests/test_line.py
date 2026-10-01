@@ -11,7 +11,7 @@ from app.config import get_settings
 from app.core import orchestrator as orch_module
 from app.db import SessionLocal
 from app.integrations import line as line_int
-from app.models import ChatMessage, Device
+from app.models import ChatMessage, Device, User
 from tests.test_orchestrator import FakeClaude, make, message, text, tool_use
 
 SECRET = "test-channel-secret"
@@ -206,3 +206,43 @@ def test_signature_helper():
     assert line_int.valid_signature("s", body, sig)
     assert not line_int.valid_signature("s", body + b"x", sig)
     assert not line_int.valid_signature("", body, sig)
+
+
+def test_info_messages():
+    msgs = line_int.info_messages(
+        "ราคาทองวันนี้ 1 ต.ค. 2569\n- ทองแท่ง ขายออก 52,000 บาท",
+        links=[{"label": "สมาคมค้าทองคำ", "url": "https://www.goldtraders.or.th"}, {"label": "bad", "url": "javascript:alert(1)"}],
+        location={"title": "สยามพารากอน", "address": "ถ.พระราม 1 กรุงเทพฯ", "latitude": 13.7466, "longitude": 100.5347},
+        image_url="https://example.com/gold.jpg",
+    )
+    assert [m["type"] for m in msgs] == ["text", "location", "image"]
+    assert msgs[0]["text"].endswith("สมาคมค้าทองคำ: https://www.goldtraders.or.th") and "javascript" not in msgs[0]["text"]
+    assert (msgs[1]["latitude"], msgs[1]["longitude"]) == (13.7466, 100.5347)
+    assert msgs[2] == {"type": "image", "originalContentUrl": "https://example.com/gold.jpg", "previewImageUrl": "https://example.com/gold.jpg"}
+    # Unknown coordinates: a Maps search link instead of a wrong pin; non-https images are dropped.
+    msgs = line_int.info_messages("", location={"title": "ร้านป้าแดง", "address": "ร้านป้าแดง สีลม", "latitude": None, "longitude": None}, image_url="http://x/y.jpg")
+    assert msgs == [{"type": "text", "text": "📍 ร้านป้าแดง\nhttps://www.google.com/maps/search/?api=1&query=%E0%B8%A3%E0%B9%89%E0%B8%B2%E0%B8%99%E0%B8%9B%E0%B9%89%E0%B8%B2%E0%B9%81%E0%B8%94%E0%B8%87%20%E0%B8%AA%E0%B8%B5%E0%B8%A5%E0%B8%A1"}]
+
+
+def test_send_to_line_tool(client, owner_headers, line, monkeypatch):
+    from app.core.tools import ToolContext, run_tool
+
+    pushed = []
+
+    class Pusher:
+        def push(self, to, messages):
+            pushed.append((to, messages))
+
+    monkeypatch.setattr(line_int, "get_line_client", lambda: Pusher())
+    args = {"text": "ข่าวเด่นวันนี้", "links": None, "location": None, "image_url": None}
+    with SessionLocal() as db:
+        owner = db.scalar(select(User).where(User.username == "owner"))
+        out, is_error = run_tool(ToolContext(db=db, tuya=None, user=owner, channel="voice"), "send_to_line", args)
+        assert is_error and "ยังไม่ได้เชื่อม LINE" in out
+
+    link(client, owner_headers, line)
+    with SessionLocal() as db:
+        owner = db.scalar(select(User).where(User.username == "owner"))
+        out, is_error = run_tool(ToolContext(db=db, tuya=None, user=owner, channel="voice"), "send_to_line", args)
+    assert not is_error and json.loads(out) == {"sent": ["text"]}
+    assert pushed == [("Uowner", [{"type": "text", "text": "ข่าวเด่นวันนี้"}])]

@@ -16,6 +16,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.integrations import line as line_api
 from app.integrations.flowaccount import FlowAccountError
 from app.integrations.tuya import TuyaError, pulsar
 from app.models import Device, User
@@ -149,6 +150,19 @@ def list_documents(ctx: ToolContext, limit: int) -> Any:
     ]
 
 
+def send_to_line(ctx: ToolContext, text: str, links: list[dict] | None, location: dict | None, image_url: str | None) -> Any:
+    if not line_api.line_configured():
+        raise ToolError("ยังไม่ได้ตั้งค่า LINE OA")
+    if not ctx.user.line_user_id:
+        raise ToolError("บัญชีนี้ยังไม่ได้เชื่อม LINE ให้กดปุ่ม LINE บน Dashboard เพื่อเชื่อมก่อน")
+    messages = line_api.info_messages(text, links, location, image_url)
+    try:
+        line_api.get_line_client().push(ctx.user.line_user_id, messages)
+    except line_api.LineError as e:
+        raise ToolError(f"ส่งเข้า LINE ไม่สำเร็จ: {e}") from None
+    return {"sent": [m["type"] for m in messages]}
+
+
 _NULLABLE_STR = {"type": ["string", "null"]}
 
 _VALUE_SCHEMA = {"anyOf": [{"type": "boolean"}, {"type": "number"}, {"type": "string"}]}
@@ -250,6 +264,56 @@ TOOLS: list[dict] = [
         },
     },
     {
+        "name": "send_to_line",
+        "description": (
+            "Push information to the user's own LINE chat (their linked account), e.g. when they say "
+            "\"ส่งเข้าไลน์\". text: the content to keep (news summary, gold prices...) with sources' dates. "
+            "links: source pages. location: a place to show as a map pin; give latitude/longitude only when you "
+            "are sure of them (else null and a Google Maps link is sent). image_url: a direct https link to a "
+            "JPEG/PNG file (not a web page), or null. Pushes count toward the LINE OA's monthly message quota."
+        ),
+        "strict": True,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string"},
+                "links": {
+                    "anyOf": [
+                        {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {"label": {"type": "string"}, "url": {"type": "string"}},
+                                "required": ["label", "url"],
+                                "additionalProperties": False,
+                            },
+                        },
+                        {"type": "null"},
+                    ]
+                },
+                "location": {
+                    "anyOf": [
+                        {
+                            "type": "object",
+                            "properties": {
+                                "title": {"type": "string"},
+                                "address": {"type": "string"},
+                                "latitude": {"type": ["number", "null"]},
+                                "longitude": {"type": ["number", "null"]},
+                            },
+                            "required": ["title", "address", "latitude", "longitude"],
+                            "additionalProperties": False,
+                        },
+                        {"type": "null"},
+                    ]
+                },
+                "image_url": _NULLABLE_STR,
+            },
+            "required": ["text", "links", "location", "image_url"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "find_customers",
         "description": "Search customers remembered from earlier documents by name or tax id, to reuse their details.",
         "strict": True,
@@ -346,6 +410,7 @@ _HANDLERS: dict[str, Callable[..., Any]] = {
     "control_air_conditioner": control_air_conditioner,
     "list_scenes": list_scenes,
     "set_scene": set_scene,
+    "send_to_line": send_to_line,
     "find_customers": find_customers,
     "prepare_document": prepare_document,
     "issue_document": issue_document,
@@ -368,6 +433,8 @@ def run_tool(ctx: ToolContext, name: str, tool_input: dict) -> tuple[str, bool]:
         return str(e), True
     except FlowAccountError as e:
         return str(e), True
+    except line_api.LineError as e:
+        return f"ส่งเข้า LINE ไม่สำเร็จ: {e}", True
     except (TypeError, ValueError) as e:
         return f"Invalid input for {name}: {e}", True
     return json.dumps(result, ensure_ascii=False), False
