@@ -287,3 +287,17 @@ def test_rejected_web_search_falls_back_to_home_tools(home):
     orch = Orchestrator(fake, model="claude-opus-5-5", effort="low", max_tool_rounds=4, timezone="Asia/Bangkok", web_search={"type": "web_search_20260209", "name": "web_search"})
     assert ask(orch, db, tuya, user, "เปิดปลั๊ก 1").text == "เปิดให้แล้วค่ะ"
     assert fake.requests[-1]["tools"] == TOOLS
+
+
+def test_strict_tools_stay_under_the_union_limit():
+    """The API rejects every request when strict tools have more than 16 nullable/union parameters in total."""
+
+    def unions(schema) -> int:
+        if isinstance(schema, list):
+            return sum(unions(s) for s in schema)
+        if not isinstance(schema, dict):
+            return 0
+        own = 1 if isinstance(schema.get("type"), list) or "anyOf" in schema else 0
+        return own + sum(unions(v) for v in schema.values())
+
+    assert sum(unions(t["input_schema"]) for t in TOOLS if t.get("strict")) <= 16

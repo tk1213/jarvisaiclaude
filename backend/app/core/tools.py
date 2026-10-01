@@ -276,7 +276,8 @@ TOOLS: list[dict] = [
             "are sure of them (else null and a Google Maps link is sent). image_url: a direct https link to a "
             "JPEG/PNG file (not a web page), or null. Pushes count toward the LINE OA's monthly message quota."
         ),
-        "strict": True,
+        # Not strict: the API allows at most 16 nullable/union parameters across strict tools, and
+        # services.documents / integrations.line validate this input themselves.
         "input_schema": {
             "type": "object",
             "properties": {
@@ -337,7 +338,8 @@ TOOLS: list[dict] = [
             "receipt (ใบเสร็จรับเงิน). vat: add 7% VAT; vat_inclusive: the prices already include VAT. "
             "credit_days: payment term / validity in days (0 = cash)."
         ),
-        "strict": True,
+        # Not strict: the API allows at most 16 nullable/union parameters across strict tools, and
+        # services.documents / integrations.line validate this input themselves.
         "input_schema": {
             "type": "object",
             "properties": {
