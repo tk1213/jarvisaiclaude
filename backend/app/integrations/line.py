@@ -39,7 +39,10 @@ class LineClient:
         self.http = http or httpx.Client(base_url=API, timeout=10, headers={"Authorization": f"Bearer {access_token}"})
 
     def _post(self, path: str, payload: dict) -> None:
-        r = self.http.post(path, json=payload)
+        try:
+            r = self.http.post(path, json=payload)
+        except httpx.HTTPError as e:
+            raise LineError(f"LINE {path}: {e.__class__.__name__} {e}") from None
         if r.status_code >= 400:
             raise LineError(f"LINE {path} {r.status_code}: {r.text[:300]}")
 
