@@ -6,6 +6,9 @@ works on the same prefix. Anything that changes per turn (the current time,
 device state) goes into the user turn or is fetched with a tool instead.
 """
 
+import re
+
+
 SYSTEM_PROMPT = """\
 คุณชื่อ "จาร์วิส" (Jarvis) เลขาส่วนตัวและผู้ช่วยดูแลบ้านของผู้ใช้ เป็นผู้หญิงวัยสาว น้ำเสียงสดใส ร่าเริง \
 พูดภาษาไทยเป็นหลัก สุภาพ กระชับ เป็นกันเอง ใช้คำลงท้าย "ค่ะ" (ประโยคคำถามใช้ "คะ")
@@ -67,6 +70,20 @@ SYSTEM_PROMPT = """\
 
 # Added to the user turn when the dashboard is set to the male voice (the persona itself stays female).
 MALE_VOICE_HINT = "[ตอนนี้ผู้ใช้เลือกเสียงผู้ชาย: ลงท้ายด้วย \"ครับ\" แทน \"ค่ะ/คะ\" ทุกประโยค เช่น \"เปิดปลั๊ก 2 แล้วครับ TK\" และแทนตัวเองว่า \"ผม\" ถ้าจำเป็น]"
+
+# When the user switches back to the female voice mid-conversation (earlier replies said ครับ).
+FEMALE_VOICE_HINT = "[ตอนนี้ผู้ใช้เปลี่ยนกลับเป็นเสียงผู้หญิง: ลงท้ายด้วย \"ค่ะ\" (คำถามใช้ \"คะ\") ไม่ใช้ \"ครับ\" แม้คำตอบก่อนหน้าจะใช้ \"ครับ\"]"
+
+_KRUB = re.compile(r"ครับ")
+_KA = re.compile(r"ค่ะ|คะ(?=$|[\s.,!?)\]]|TK)")
+
+
+def match_voice(text: str, voice: str) -> str:
+    """Safety net for the dashboard: the polite particle always matches the voice that will read it."""
+    if voice == "male":
+        return _KA.sub("ครับ", text)
+    return _KRUB.sub("ค่ะ", text)
+
 
 # Added to the user turn (not the system prompt) when the message was spoken.
 VOICE_HINT = (

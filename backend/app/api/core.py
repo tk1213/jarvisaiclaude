@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.messages import Channel, InboundMessage
 from app.core.orchestrator import CoreNotConfigured, get_orchestrator
+from app.core.prompts import match_voice
 from app.db import get_db
 from app.deps import get_current_user, get_tuya
 from app.models import User
@@ -65,6 +66,6 @@ def chat(body: ChatRequest, db: Session = Depends(get_db), tuya=Depends(get_tuya
 
     return ChatResponse(
         session_id=reply.session_id,
-        reply=reply.text,
+        reply=match_voice(reply.text, body.voice),
         tool_calls=[ToolCallOut(name=c.name, input=c.input, ok=c.ok) for c in reply.tool_calls],
     )
