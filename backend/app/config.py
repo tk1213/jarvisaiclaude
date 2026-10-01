@@ -79,6 +79,10 @@ class Settings(BaseSettings):
     # Products and product sets live in their own file, easy to open with DB Browser for SQLite.
     catalog_database_url: str = "sqlite:///./data/flowaccount/catalog.db"
 
+    # Daily backup (backup.bat / app.scripts.backup): one folder per day, the newest BACKUP_KEEP_DAYS are kept.
+    backup_dir: str = r"D:\JarvisClaudeBackup"
+    backup_keep_days: int = 15
+
     # Rate limits (spec §6), per user for device control, per username+IP for login.
     rate_limit_control_per_minute: int = 30
     rate_limit_login_per_minute: int = 5

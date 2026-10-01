@@ -32,6 +32,7 @@ backend/
     core/prompts.py          บุคลิก/System prompt ของ JARVIS
     scripts/chat.py          คุยกับ JARVIS จาก command line
     scripts/tuya_check.py    ทดสอบคุม Tuya ตรงๆ จาก command line
+    scripts/backup.py        สำรองโค้ด + .env + ฐานข้อมูล (backup.bat / backup-schedule.bat)
   tests/
 ```
 
@@ -360,6 +361,27 @@ python -m app.scripts.tuya_check scenes
 - log ต้องขึ้น `connected to Tuya Pulsar` และแท็บ Subscription Management (Production) ต้องเห็น Consumers = 1
 - กดอุปกรณ์จากแอปแล้ว log ต้องขึ้น `Tuya event received: {...}`
 - ถ้าหลุด ระบบจะต่อใหม่เองโดยรอนานขึ้นเรื่อยๆ สูงสุด 60 วินาที
+
+## สำรองข้อมูลและย้ายเครื่อง
+
+สิ่งที่สร้างใหม่ไม่ได้มี 4 อย่าง: โค้ด (อยู่บน GitHub), `backend\.env` (คีย์ลับ), `backend\jarvis.db`
+(ผู้ใช้ การเชื่อม LINE อุปกรณ์ ลูกค้า เอกสาร แชท) และ `backend\data\flowaccount\catalog.db` (ชุดสินค้า)
+
+- **ตั้งสำรองอัตโนมัติ (ทำครั้งเดียว):** ดับเบิลคลิก `backup-schedule.bat` แล้วกด **Yes** ตอน Windows ขอสิทธิ์ admin
+  ระบบจะตั้งงาน "JARVIS Backup" ใน Task Scheduler ให้สำรองวันละครั้งตอนเครื่องเปิดอยู่
+  (เที่ยงวัน หรือ 10 นาทีหลังเข้า Windows ถ้าตอนเที่ยงเครื่องปิดอยู่จะสำรองทันทีที่เปิดเครื่อง) และสำรองครั้งแรกให้ทันที
+  ยกเลิกได้ด้วย `backup-schedule.bat remove`
+- **สำรองเองตอนไหนก็ได้:** ดับเบิลคลิก `backup.bat` (เปิด `start.bat` ค้างไว้ได้ ไม่ต้องปิด)
+- เก็บที่ `D:\JarvisClaudeBackup\<วันที่>` วันละ 1 โฟลเดอร์ เก็บ 15 วันล่าสุด เก่ากว่านั้นลบเอง
+  (เปลี่ยนได้ด้วย `BACKUP_DIR` และ `BACKUP_KEEP_DAYS` ใน `.env`) แต่ละโฟลเดอร์มี
+  `jarvis-code.bundle` (โค้ดล่าสุดจาก GitHub พร้อมประวัติ), `.env`, `jarvis.db`, `catalog.db`
+  และ `อ่านก่อน.txt` วิธีกู้คืนทีละขั้น
+- ผลการสำรองแต่ละครั้งอยู่ใน `D:\JarvisClaudeBackup\backup.log` (OK = ครบ, INCOMPLETE/FAILED = มีปัญหา)
+- โฟลเดอร์สำรองมีคีย์ลับ (`.env`) ห้ามแชร์ และควรก๊อปไปเก็บใน USB หรือ Google Drive ส่วนตัวเป็นระยะ
+  เพราะถ้าฮาร์ดดิสก์เครื่องนี้เสีย ของที่สำรองไว้ในเครื่องเดียวกันจะหายไปด้วย
+- **ย้ายเครื่อง/กู้คืน:** ทำตาม `อ่านก่อน.txt` ในโฟลเดอร์สำรองล่าสุด (ลงโปรแกรม, clone โค้ดจาก bundle,
+  วาง 3 ไฟล์กลับ, ย้าย Cloudflare tunnel ด้วย `cloudflared.exe service uninstall` ที่เครื่องเก่าและ
+  `service install <token>` ที่เครื่องใหม่) อย่าเปิด `start.bat` สองเครื่องพร้อมกัน
 
 ## ความปลอดภัย
 

@@ -55,6 +55,10 @@
 - [ ] ดึงยอดขายผ่าน FlowAccount ก่อน (`market_get_sales_summary`, `market_get_order_detail`)
 - [ ] พิจารณา Open Platform API โดยตรง
 
+## ดูแลระบบ
+
+- [x] สำรองข้อมูลอัตโนมัติวันละครั้ง (โค้ด, `.env`, `jarvis.db`, `catalog.db`) ที่ `D:\JarvisClaudeBackup` เก็บ 15 วัน + วิธีกู้คืน/ย้ายเครื่อง
+
 ## สิ่งที่ต้องตัดสินใจ (ข้อ 9)
 
 - แพ็กเกจ FlowAccount ที่ใช้รองรับ Open API หรือไม่

@@ -80,6 +80,9 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
   text (max 4, 10 min, `_pending_images` in `app/api/line.py`); the dashboard's 📎 button sends up to 4 with the message.
   `app/core/images.py` (Pillow) re-encodes them as JPEG ≤1024 px. Images go to Claude in that turn only: `_persist` stores
   a text placeholder instead, so they're never re-sent with later turns.
+- Backups: `backup.bat` / the daily "JARVIS Backup" task (`backup-schedule.bat` → `backup-schedule.ps1`, 12:00 + at logon,
+  StartWhenAvailable) run `app.scripts.backup` (`--auto` skips once today's is done) into `D:\JarvisClaudeBackup\<date>`:
+  git bundle (after `git fetch`), `.env`, both SQLite files via the backup API, Thai restore notes; keeps 15 days.
 - New devices are added only by the "อัปเดตอุปกรณ์" button, never automatically.
 - The IR air conditioner (Air PANASONIC via the Temp Smart Jarvis hub) can't report changes made in the
   Tuya app or with its physical remote; the dashboard/JARVIS side is the source of truth.
