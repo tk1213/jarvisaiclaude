@@ -48,13 +48,14 @@ def chat(body: ChatRequest, db: Session = Depends(get_db), tuya=Depends(get_tuya
     try:
         reply = orchestrator.handle(db, tuya, user, msg)
     except anthropic.AuthenticationError:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Claude API key was rejected; check ANTHROPIC_API_KEY") from None
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Claude API key was rejected; check ANTHROPIC_API_KEY") from None
     except anthropic.RateLimitError:
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Claude API rate limit reached, try again shortly") from None
     except anthropic.APIStatusError as e:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Claude API error {e.status_code}: {e.message}") from None
+        # 500, not 502: Cloudflare replaces an origin's 502 body with its own page, hiding this message.
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Claude API error {e.status_code}: {e.message}") from None
     except anthropic.APIConnectionError:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Could not reach the Claude API") from None
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Could not reach the Claude API") from None
     except Exception as e:
         # Say what broke instead of a bare 500 (the full traceback is in the start.bat window).
         log.exception("chat failed")
