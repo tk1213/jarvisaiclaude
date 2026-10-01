@@ -6,6 +6,7 @@ limits apply exactly as they do on the REST API.
 """
 
 import json
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -23,6 +24,9 @@ from app.models import Device, User
 from app.ratelimit import limiter
 from app.services import devices as svc
 from app.services import documents as docs
+
+
+log = logging.getLogger(__name__)
 
 
 class ToolError(Exception):
@@ -437,4 +441,8 @@ def run_tool(ctx: ToolContext, name: str, tool_input: dict) -> tuple[str, bool]:
         return f"ส่งเข้า LINE ไม่สำเร็จ: {e}", True
     except (TypeError, ValueError) as e:
         return f"Invalid input for {name}: {e}", True
+    except Exception as e:
+        # One broken tool shouldn't fail the whole reply: Claude sees the error and can tell the user.
+        log.exception("tool %s failed", name)
+        return f"{name} ขัดข้อง: {e.__class__.__name__}: {e}", True
     return json.dumps(result, ensure_ascii=False), False

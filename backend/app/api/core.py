@@ -1,3 +1,5 @@
+import logging
+
 import anthropic
 from typing import Literal
 
@@ -11,6 +13,7 @@ from app.db import get_db
 from app.deps import get_current_user, get_tuya
 from app.models import User
 
+log = logging.getLogger(__name__)
 router = APIRouter(tags=["core"])
 
 
@@ -52,6 +55,10 @@ def chat(body: ChatRequest, db: Session = Depends(get_db), tuya=Depends(get_tuya
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Claude API error {e.status_code}: {e.message}") from None
     except anthropic.APIConnectionError:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Could not reach the Claude API") from None
+    except Exception as e:
+        # Say what broke instead of a bare 500 (the full traceback is in the start.bat window).
+        log.exception("chat failed")
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"JARVIS error: {e.__class__.__name__}: {e}") from None
 
     return ChatResponse(
         session_id=reply.session_id,

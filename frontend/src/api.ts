@@ -87,10 +87,11 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     window.dispatchEvent(new Event('jarvis:logout'))
   }
   if (!res.ok) {
-    let detail = res.statusText
+    // statusText is empty over HTTP/2 (e.g. through Cloudflare), so always keep the status code.
+    let detail = res.statusText || `HTTP ${res.status}`
     try {
       const data = await res.json()
-      detail = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)
+      if (data.detail) detail = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)
     } catch {
       // non-JSON error body
     }

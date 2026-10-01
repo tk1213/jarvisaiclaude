@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 
+import httpx
 import pytest
 from sqlalchemy import select
 
@@ -246,3 +247,31 @@ def test_send_to_line_tool(client, owner_headers, line, monkeypatch):
         out, is_error = run_tool(ToolContext(db=db, tuya=None, user=owner, channel="voice"), "send_to_line", args)
     assert not is_error and json.loads(out) == {"sent": ["text"]}
     assert pushed == [("Uowner", [{"type": "text", "text": "ข่าวเด่นวันนี้"}])]
+
+
+def test_tool_crash_and_line_network_errors_are_contained(monkeypatch):
+    from app.core import tools
+
+    def boom(ctx, **kwargs):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setitem(tools._HANDLERS, "list_scenes", boom)
+    out, is_error = tools.run_tool(tools.ToolContext(db=None, tuya=None, user=None), "list_scenes", {})
+    assert is_error and "RuntimeError: disk full" in out
+
+    def offline(request):
+        raise httpx.ConnectError("no route")
+
+    client = line_int.LineClient("t", http=httpx.Client(base_url=line_int.API, transport=httpx.MockTransport(offline)))
+    with pytest.raises(line_int.LineError, match="ConnectError"):
+        client.push("U1", [{"type": "text", "text": "x"}])
+
+
+def test_unexpected_chat_error_says_what_broke(client, owner_headers, monkeypatch):
+    class Broken:
+        def handle(self, *a, **k):
+            raise KeyError("blocks")
+
+    monkeypatch.setattr(orch_module, "_orchestrator", Broken())
+    r = client.post("/core/chat", json={"text": "hi"}, headers=owner_headers)
+    assert r.status_code == 500 and r.json()["detail"] == "JARVIS error: KeyError: 'blocks'"
