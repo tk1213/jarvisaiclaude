@@ -31,6 +31,7 @@ class ProductSetOut(BaseModel):
     id: int
     name: str
     customer: str | None
+    remarks: str | None
     items: list[SetItemOut]
 
 

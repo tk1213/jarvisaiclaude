@@ -102,3 +102,21 @@ def test_live_product_listing_pages():
 
     client = fa.FlowAccountClient("https://x/v1", "a", "b", "s", http=httpx.Client(transport=httpx.MockTransport(handler)))
     assert [p["name"] for p in client.list_products()] == ["A", "B"]
+
+
+def test_set_remarks(db):
+    catalog.save_set(db, "ชุด A", [{"product": "โช๊คประตู GUTE ขนาด 1 เมตร", "quantity": 2}], remarks="รับประกัน 1 ปี")
+    catalog.save_set(db, "ชุด C", [{"product": "ค่าบริการติดตั้ง", "quantity": 1}], remarks="  ")
+    assert catalog.expand_set(db, "ชุด A")["remarks"] == "รับประกัน 1 ปี"
+    assert catalog.expand_set(db, "ชุด C")["remarks"] is None
+
+    owner = User(username="owner", password_hash="x")
+    db.add(owner)
+    db.commit()
+    ctx = ToolContext(db=db, tuya=None, user=owner)
+    out, err = run_tool(ctx, "set_product_set_remarks", {"name": "ชุด C", "remarks": "ราคานี้รวมค่าติดตั้งในกรุงเทพฯ"})
+    assert not err and json.loads(out) == {"set": "ชุด C", "remarks": "ราคานี้รวมค่าติดตั้งในกรุงเทพฯ"}
+    # Changing the remarks leaves the items alone; clearing works too.
+    assert catalog.expand_set(db, "ชุด C")["items"][0]["name"] == "ค่าบริการติดตั้ง"
+    run_tool(ctx, "set_product_set_remarks", {"name": "ชุด A", "remarks": ""})
+    assert [s["remarks"] for s in catalog.list_sets(db)] == [None, "ราคานี้รวมค่าติดตั้งในกรุงเทพฯ"]

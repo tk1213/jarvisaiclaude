@@ -147,6 +147,7 @@ export interface ProductSetRow {
   id: number
   name: string
   customer: string | null
+  remarks: string | null
   items: { product: string; quantity: number; unit: string | null; unit_price: number | null }[]
 }
 

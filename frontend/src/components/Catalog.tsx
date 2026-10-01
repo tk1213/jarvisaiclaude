@@ -93,6 +93,7 @@ export function Catalog({ refreshKey }: { refreshKey: number }) {
                       </li>
                     ))}
                   </ul>
+                  {s.remarks && <p className="mt-1 text-xs whitespace-pre-wrap text-slate-500">หมายเหตุ: {s.remarks}</p>}
                 </li>
               ))}
             </ul>
