@@ -184,3 +184,12 @@ def test_live_client_errors():
     bad = fa.FlowAccountClient("https://x/v1", "a", "b", "s", http=httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(401, json={"error": "invalid_client"}))))
     with pytest.raises(fa.FlowAccountError, match="invalid_client"):
         bad.create_document("receipt", {})
+
+
+def test_live_client_network_error():
+    def offline(request):
+        raise httpx.ConnectError("no route")
+
+    client = fa.FlowAccountClient("https://x/v1", "a", "b", "s", http=httpx.Client(transport=httpx.MockTransport(offline)))
+    with pytest.raises(fa.FlowAccountError, match="ติดต่อ FlowAccount ไม่ได้ \\(ConnectError"):
+        client.create_document("quotation", {})

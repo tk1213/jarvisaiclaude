@@ -294,8 +294,14 @@ JARVIS ค้นเว็บเองได้ (web search ของ Anthropic) 
    FLOWACCOUNT_CLIENT_ID=...
    FLOWACCOUNT_CLIENT_SECRET=...
    ```
-3. ปิด-เปิด `start.bat` ใหม่ แล้วลองออกใบเสนอราคา ตรวจว่าเอกสารขึ้นใน FlowAccount ถูกต้อง
-4. ใช้จริง: เปลี่ยน `FLOWACCOUNT_BASE_URL=https://openapi.flowaccount.com/v1` และใช้ Client ID/Secret ของบัญชีจริง
+3. ตรวจการเชื่อมต่อก่อน (ไม่ต้องผ่านจาร์วิส)
+   ```
+   cd backend
+   .venv\Scripts\python -m app.scripts.flowaccount_check             # ขอ token ได้ไหม
+   .venv\Scripts\python -m app.scripts.flowaccount_check quotation   # ลองสร้างใบเสนอราคาทดสอบ 100 บาท (ใช้กับ sandbox)
+   ```
+4. ปิด-เปิด `start.bat` ใหม่ แล้วลองสั่งจาร์วิสออกใบเสนอราคา ตรวจว่าเอกสารขึ้นใน FlowAccount ถูกต้อง
+5. ใช้จริง: เปลี่ยน `FLOWACCOUNT_BASE_URL=https://openapi.flowaccount.com/v1` และใช้ Client ID/Secret ของบัญชีจริง
 
 ## ต่อ Tuya จริง
 

@@ -73,13 +73,19 @@ class FlowAccountClient:
         self.http = http or httpx.Client(timeout=30)
         self._token: tuple[str, float] | None = None
 
+    def _send(self, url: str, **kwargs) -> httpx.Response:
+        try:
+            return self.http.post(url, **kwargs)
+        except httpx.HTTPError as e:
+            raise FlowAccountError(f"ติดต่อ FlowAccount ไม่ได้ ({e.__class__.__name__}: {e})") from None
+
     def _access_token(self, refresh: bool = False) -> str:
         if not refresh:
             if self._token is None and self.token_store:
                 self._token = self.token_store.load()
             if self._token and self._token[1] - 60 > time.time():
                 return self._token[0]
-        r = self.http.post(
+        r = self._send(
             f"{self.base_url}/token",
             data={"grant_type": "client_credentials", "scope": self.scope, "client_id": self.client_id, "client_secret": self.client_secret},
             headers={"Content-Type": "application/x-www-form-urlencoded"},
@@ -94,10 +100,10 @@ class FlowAccountClient:
 
     def create_document(self, doc_type: str, payload: dict) -> IssuedDocument:
         path = DOC_PATHS[doc_type]
-        r = self.http.post(f"{self.base_url}{path}", json=payload, headers={"Authorization": f"Bearer {self._access_token()}"})
+        r = self._send(f"{self.base_url}{path}", json=payload, headers={"Authorization": f"Bearer {self._access_token()}"})
         if r.status_code == 401:
             # Expired early or revoked (the stored copy too): one fresh token, one retry.
-            r = self.http.post(f"{self.base_url}{path}", json=payload, headers={"Authorization": f"Bearer {self._access_token(refresh=True)}"})
+            r = self._send(f"{self.base_url}{path}", json=payload, headers={"Authorization": f"Bearer {self._access_token(refresh=True)}"})
         body = _json(r)
         if r.status_code >= 400 or body.get("status") is False:
             raise FlowAccountError(f"FlowAccount ไม่รับเอกสาร ({r.status_code}): {body.get('message') or r.text[:300]}")
