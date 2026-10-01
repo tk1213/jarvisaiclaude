@@ -218,3 +218,12 @@ def test_male_voice_is_used_only_when_chosen(client, owner_headers, monkeypatch)
     assert client.get("/voice/tts", params={"text": "ทดสอบ", "token": token, "voice": "male"}).status_code == 200
     assert {voice for _, voice, _, _ in FakeCommunicate.calls} == {"th-TH-NiwatNeural"}
     assert client.post("/voice/tts", json={"text": "x", "voice": "robot"}, headers=owner_headers).status_code == 422
+
+
+def test_numbers_close_to_speech_rate_are_not_split(client, owner_headers, monkeypatch):
+    """Split pieces have silence around them; when numbers are barely slower, one piece sounds better."""
+    monkeypatch.setattr(edge_voice.edge_tts, "Communicate", FakeCommunicate)
+    monkeypatch.setattr(get_settings(), "tts_number_rate", "-10%")  # speech is -8%
+    FakeCommunicate.calls.clear()
+    assert client.post("/voice/tts", json={"text": "กำลังไฟ 1,250 วัตต์"}, headers=owner_headers).status_code == 200
+    assert [(text, rate) for text, _, rate, _ in FakeCommunicate.calls] == [("กำลังไฟ 1,250 วัตต์", "-8%")]

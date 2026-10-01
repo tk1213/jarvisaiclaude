@@ -55,7 +55,9 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
   (never spelled J-A-R-V-I-S); speech also rewrites "JARVIS" to จาร์วิส. She calls the owner "TK" and
   ends every reply with "ค่ะ TK" ("เปิดปลั๊ก 2 แล้วค่ะ TK"). After a device command she only says it's on/off
   (no temperature/mode details unless asked); a question about one room answers for that room only.
-- Replies write numbers as digits (24.6 °C, 72%); the voice reads numbers a little slower (`TTS_NUMBER_RATE`, -20%).
+- Replies write numbers as digits (24.6 °C, 72%); the voice reads numbers a little slower (`TTS_NUMBER_RATE`, -20%; the owner uses -10%).
+  Edge only splits numbers into separate pieces (which adds a gap before/after each) when that rate is ≥10 points
+  away from the voice rate; Google uses SSML in one request, so it never has gaps.
 - Voice: Google Cloud TTS (`th-TH-Neural2-C`) first when `GOOGLE_TTS_API_KEY` is set, then Edge
   Premwadee, then text only. **Never fall back to a male voice** (Windows Pattara and Edge Niwat are male).
   The owner can pick "🔊 เสียงผู้ชาย" in the chat header (remembered per browser): Edge Niwat only, no fallback
