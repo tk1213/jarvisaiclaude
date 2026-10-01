@@ -227,3 +227,16 @@ def test_numbers_close_to_speech_rate_are_not_split(client, owner_headers, monke
     FakeCommunicate.calls.clear()
     assert client.post("/voice/tts", json={"text": "กำลังไฟ 1,250 วัตต์"}, headers=owner_headers).status_code == 200
     assert [(text, rate) for text, _, rate, _ in FakeCommunicate.calls] == [("กำลังไฟ 1,250 วัตต์", "-8%")]
+
+
+def test_money_is_read_like_a_cheque():
+    assert voice_api.for_speech("ยอดรวม 5,000.00 บาท ค่ะ") == "ยอดรวม ห้าพันบาทถ้วน ค่ะ"
+    assert voice_api.for_speech("ยอดรวม 5,000.30 บาท") == "ยอดรวม ห้าพันบาทสามสิบสตางค์"
+    assert voice_api.for_speech("12,840.05 บาท") == "หนึ่งหมื่นสองพันแปดร้อยสี่สิบบาทห้าสตางค์"
+    assert voice_api.for_speech("ทอง 52,000 บาท") == "ทอง ห้าหมื่นสองพันบาท"
+    assert voice_api.for_speech("ค่าส่ง 0.50 บาท") == "ค่าส่ง ห้าสิบสตางค์"
+    assert voice_api.for_speech("21บาท 101 บาท 1,000,001 บาท") == "ยี่สิบเอ็ดบาท หนึ่งร้อยเอ็ดบาท หนึ่งล้านเอ็ดบาท"
+    assert voice_api.thai_number(1_250_000_000) == "หนึ่งพันสองร้อยห้าสิบล้าน"
+    assert voice_api.thai_number(11) == "สิบเอ็ด" and voice_api.thai_number(1) == "หนึ่ง"
+    # Numbers that aren't money are left for the voice to read as before.
+    assert voice_api.for_speech("ความชื้น 72%") == "ความชื้น 72 เปอร์เซ็นต์"

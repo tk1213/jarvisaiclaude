@@ -74,7 +74,45 @@ def _clock(m: re.Match) -> str:
     return f"{hour} นาฬิกา {minute} นาที" if minute else f"{hour} นาฬิกาตรง"
 
 
+_DIGITS = ["ศูนย์", "หนึ่ง", "สอง", "สาม", "สี่", "ห้า", "หก", "เจ็ด", "แปด", "เก้า"]
+_PLACES = ["", "สิบ", "ร้อย", "พัน", "หมื่น", "แสน"]
+# Money the way Thai cheques and receipts read it: "5,000.00 บาท" -> ห้าพันบาทถ้วน, "5,000.30 บาท" -> ห้าพันบาทสามสิบสตางค์.
+_BAHT = re.compile(r"(?<![\d.,])(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?(?!\d)\s*บาท")
+
+
+def thai_number(n: int) -> str:
+    """An integer in Thai words: 21 -> ยี่สิบเอ็ด, 101 -> หนึ่งร้อยเอ็ด, 1,000,001 -> หนึ่งล้านเอ็ด."""
+    if n == 0:
+        return _DIGITS[0]
+
+    def below_million(n: int, has_higher: bool) -> str:
+        out = []
+        for place, digit in reversed(list(enumerate(int(d) for d in reversed(str(n))))):
+            if digit == 0:
+                continue
+            if place == 1:
+                out.append({1: "สิบ", 2: "ยี่สิบ"}.get(digit, _DIGITS[digit] + "สิบ"))
+            elif place == 0 and digit == 1 and (n >= 10 or has_higher):
+                out.append("เอ็ด")
+            else:
+                out.append(_DIGITS[digit] + _PLACES[place])
+        return "".join(out)
+
+    millions, rest = divmod(n, 1_000_000)
+    words = thai_number(millions) + "ล้าน" if millions else ""
+    return words + (below_million(rest, millions > 0) if rest else "")
+
+
+def _baht(m: re.Match) -> str:
+    baht = int(m[1].replace(",", ""))
+    satang = int((m[2] or "").ljust(2, "0")) if m[2] is not None else None
+    if satang:
+        return (f"{thai_number(baht)}บาท" if baht else "") + f"{thai_number(satang)}สตางค์"
+    return f"{thai_number(baht)}บาท" + ("ถ้วน" if satang == 0 else "")
+
+
 def for_speech(text: str) -> str:
+    text = _BAHT.sub(_baht, text)
     text = _CLOCK.sub(_clock, text)
     for pattern, spoken in PRONUNCIATIONS:
         text = pattern.sub(spoken, text)
