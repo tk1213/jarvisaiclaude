@@ -23,6 +23,7 @@ from app.integrations.tuya import TuyaError, pulsar
 from app.models import Device, User
 from app.ratelimit import limiter
 from app.services import devices as svc
+from app.services import catalog
 from app.services import documents as docs
 
 
@@ -165,6 +166,37 @@ def send_to_line(ctx: ToolContext, text: str, links: list[dict] | None, location
     except line_api.LineError as e:
         raise ToolError(f"ส่งเข้า LINE ไม่สำเร็จ: {e}") from None
     return {"sent": [m["type"] for m in messages]}
+
+
+def find_products(ctx: ToolContext, query: str) -> Any:
+    found = catalog.find_products(ctx.db, query)
+    if not found:
+        return {"products": [], "note": "ไม่พบในรายการสินค้า (กด 'อัปเดตสินค้า' บน Dashboard ถ้าเพิ่งเพิ่มใน FlowAccount)"}
+    return {"products": [catalog.product_summary(p) for p in found]}
+
+
+def save_product_set(ctx: ToolContext, name: str, items: list[dict], customer: str | None = None) -> Any:
+    product_set = catalog.save_set(ctx.db, name, items, customer)
+    saved = next(s for s in catalog.list_sets(ctx.db) if s["id"] == product_set.id)
+    unknown = [i["product"] for i in saved["items"] if not catalog.find_products(ctx.db, i["product"])]
+    return {**saved, "not_in_product_list": unknown}
+
+
+def get_product_set(ctx: ToolContext, name: str, times: float) -> Any:
+    return catalog.expand_set(ctx.db, name, times or 1)
+
+
+def list_product_sets(ctx: ToolContext) -> Any:
+    return catalog.list_sets(ctx.db)
+
+
+def delete_product_set(ctx: ToolContext, name: str) -> Any:
+    catalog.delete_set(ctx.db, name)
+    return {"deleted": name}
+
+
+def last_order(ctx: ToolContext, customer: str) -> Any:
+    return catalog.last_order(ctx.db, customer)
 
 
 _NULLABLE_STR = {"type": ["string", "null"]}
@@ -319,6 +351,92 @@ TOOLS: list[dict] = [
         },
     },
     {
+        "name": "find_products",
+        "description": (
+            "Search the product list copied from FlowAccount by name or code (tone marks and spaces don't matter). "
+            "Use it to get the exact product name, unit and price before preparing a document."
+        ),
+        "strict": True,
+        "input_schema": {
+            "type": "object",
+            "properties": {"query": {"type": "string", "description": "e.g. 'โช๊ค GUTE 1.5'"}},
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "save_product_set",
+        "description": (
+            "Create or replace a named product set (e.g. 'ชุด A') that a customer orders repeatedly. items: product "
+            "(use the exact name from find_products when it's in the list), quantity, optional unit_price only for a "
+            "special price that should override the list price, optional unit. customer: optional, who the set is for."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "customer": {"type": "string"},
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "product": {"type": "string"},
+                            "quantity": {"type": "number"},
+                            "unit_price": {"type": "number"},
+                            "unit": {"type": "string"},
+                        },
+                        "required": ["product", "quantity"],
+                    },
+                },
+            },
+            "required": ["name", "items"],
+        },
+    },
+    {
+        "name": "get_product_set",
+        "description": (
+            "A saved product set's items with current prices, multiplied by times (how many sets were ordered). "
+            "Pass the items to prepare_document; if an item has no price, ask the user for it."
+        ),
+        "strict": True,
+        "input_schema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}, "times": {"type": "number", "description": "number of sets, usually 1"}},
+            "required": ["name", "times"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_product_sets",
+        "description": "All saved product sets and what's in them.",
+        "strict": True,
+        "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+    },
+    {
+        "name": "delete_product_set",
+        "description": "Delete a saved product set by name (only when the user asks).",
+        "strict": True,
+        "input_schema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "last_order",
+        "description": "The items, VAT and credit terms of the newest document for a customer, for 'เหมือนครั้งก่อน'.",
+        "strict": True,
+        "input_schema": {
+            "type": "object",
+            "properties": {"customer": {"type": "string"}},
+            "required": ["customer"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "find_customers",
         "description": "Search customers remembered from earlier documents by name or tax id, to reuse their details.",
         "strict": True,
@@ -418,6 +536,12 @@ _HANDLERS: dict[str, Callable[..., Any]] = {
     "set_scene": set_scene,
     "send_to_line": send_to_line,
     "find_customers": find_customers,
+    "find_products": find_products,
+    "save_product_set": save_product_set,
+    "get_product_set": get_product_set,
+    "list_product_sets": list_product_sets,
+    "delete_product_set": delete_product_set,
+    "last_order": last_order,
     "prepare_document": prepare_document,
     "issue_document": issue_document,
     "list_documents": list_documents,
@@ -435,7 +559,7 @@ def run_tool(ctx: ToolContext, name: str, tool_input: dict) -> tuple[str, bool]:
         return str(e), True
     except TuyaError as e:
         return f"Tuya ตอบกลับ error: {e.msg} (code {e.code})", True
-    except docs.DocumentError as e:
+    except (docs.DocumentError, catalog.CatalogError) as e:
         return str(e), True
     except FlowAccountError as e:
         return str(e), True

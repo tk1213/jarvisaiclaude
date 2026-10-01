@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, getToken, setToken, type User } from './api'
+import { Catalog } from './components/Catalog'
 import { ChatPanel } from './components/ChatPanel'
 import { DeviceCard } from './components/DeviceCard'
 import { Documents } from './components/Documents'
@@ -153,6 +154,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
 
           <Scenes canControl={canControl} />
           <Documents refreshKey={documentsVersion} />
+          <Catalog refreshKey={documentsVersion} />
         </main>
 
         <aside className="lg:sticky lg:top-5 lg:h-[calc(100vh-7rem)]">

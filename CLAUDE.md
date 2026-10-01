@@ -82,6 +82,9 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
 Phase 2: FlowAccount is built and runs in `FLOWACCOUNT_MODE=mock`; next is testing with the owner's real
 account (sandbox `https://openapi.flowaccount.com/test` first). Documents are two-step: `prepare_document`
 saves a draft, `issue_document` is refused unless the draft came from an earlier message (user confirmed).
+Products are copied from FlowAccount (`app/services/catalog.py`, "อัปเดตสินค้า" button); named sets ("ชุด A", tables
+`product_sets`/`product_set_items`, items by product name, list price unless a special price is fixed) and
+`last_order` ("เหมือนครั้งก่อน") feed `prepare_document`. The sandbox connection and test quotation work.
 Phase 1 is done. LINE OA's webhook is `https://jarvis.jarvisthai.com/line/webhook`
 through a named Cloudflare tunnel (Windows service, path `^/line/webhook$` → `127.0.0.1:8765`;
 `start.bat` runs uvicorn on port 8765, so the dashboard is http://localhost:8765); `tunnel.bat` (quick tunnel) is the fallback. A LINE account is answered only after linking with the dashboard's 6-digit code. Remind the owner to renew the Anthropic API key

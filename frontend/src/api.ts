@@ -135,6 +135,21 @@ export interface DocumentRow {
   created_at: string
 }
 
+export interface ProductRow {
+  name: string
+  code: string
+  unit: string
+  price: number
+  price_includes_vat: boolean
+}
+
+export interface ProductSetRow {
+  id: number
+  name: string
+  customer: string | null
+  items: { product: string; quantity: number; unit: string | null; unit_price: number | null }[]
+}
+
 export interface LineStatus {
   configured: boolean
   linked: boolean
@@ -159,6 +174,10 @@ export const api = {
   chat: (text: string, sessionId: string | null, channel: 'dashboard' | 'voice' = 'dashboard', voice: 'female' | 'male' = 'female') =>
     request<ChatResponse>('POST', '/core/chat', { text, session_id: sessionId, channel, voice }),
   documents: () => request<DocumentRow[]>('GET', '/documents?limit=10'),
+  products: () => request<ProductRow[]>('GET', '/products'),
+  syncProducts: () => request<ProductRow[]>('POST', '/products/sync'),
+  productSets: () => request<ProductSetRow[]>('GET', '/product-sets'),
+  deleteProductSet: (id: number) => request<void>('DELETE', `/product-sets/${id}`),
   lineStatus: () => request<LineStatus>('GET', '/line/status'),
   lineLinkCode: () => request<{ code: string; expires_in: number }>('POST', '/line/link-code'),
   lineUnlink: () => request<void>('DELETE', '/line/link'),
