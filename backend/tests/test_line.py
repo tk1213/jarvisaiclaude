@@ -189,6 +189,19 @@ def test_ok_cancel_buttons_only_under_a_document_draft(client, owner_headers, li
     assert "quickReply" not in line.sent[-1][2][0]
 
 
+def test_quotation_with_vat_also_offers_no_vat():
+    from app.core.orchestrator import ToolCallRecord
+
+    def call(doc_type, vat, ok=True):
+        return ToolCallRecord("prepare_document", {"doc_type": doc_type, "vat": vat}, ok)
+
+    assert line_int.confirm_choices([call("quotation", True)]) == ["OK", "Cancel", "ไม่เอาแวท"]
+    assert line_int.confirm_choices([call("quotation", False)]) == ["OK", "Cancel"]
+    assert line_int.confirm_choices([call("billing_note", True)]) == ["OK", "Cancel"]  # follows its quotation's VAT
+    assert line_int.confirm_choices([call("quotation", True, ok=False)]) is None
+    assert line_int.confirm_choices([]) is None
+
+
 def test_reset_starts_a_new_conversation(client, owner_headers, line, monkeypatch):
     link(client, owner_headers, line)
     fake = FakeClaude([message([text("หนึ่งค่ะ")], "end_turn"), message([text("สองค่ะ")], "end_turn")])

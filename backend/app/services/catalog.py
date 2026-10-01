@@ -164,7 +164,7 @@ def delete_set(db: Session, name: str) -> None:
 def last_order(db: Session, customer: str) -> dict:
     """The items of the newest document for a customer (name matched loosely), for "เหมือนครั้งก่อน"."""
     target = _norm(customer)
-    for doc in db.scalars(select(DocumentLog).order_by(DocumentLog.id.desc()).limit(500)):
+    for doc in db.scalars(select(DocumentLog).where(DocumentLog.status != "cancelled").order_by(DocumentLog.id.desc()).limit(500)):
         name = (doc.payload.get("customer") or {}).get("name") or ""
         if target and (target in _norm(name) or _norm(name) in target):
             p = doc.payload["flowaccount"]

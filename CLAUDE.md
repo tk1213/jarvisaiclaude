@@ -77,9 +77,13 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
   alternative transcripts for the wake word, recycles an idle session every 45 s and restarts itself if it stops.
 - Document replies are one sentence on every channel: draft "ร่าง<ประเภท>ของ<ลูกค้า> ยืนยันไหมคะ TK", issued
   "ออก<ประเภท>ของ<ลูกค้า>เรียบร้อยแล้วค่ะ TK"; no address, items, amounts or document number unless the owner asks.
+- VAT: quotations have 7% VAT on top by default (FlowAccount product prices exclude VAT; vat_inclusive only when the owner
+  says a price includes it). Billing notes, tax invoices and receipts follow the customer's latest document (`last_order`,
+  which skips cancelled drafts); a new customer gets VAT. A quotation draft with VAT adds a third button "ไม่เอาแวท"
+  (`confirm_choices`), which re-drafts with vat=false; a new draft cancels open drafts of the same type for that customer.
 - LINE quick replies: none on ordinary answers; only "OK" / "Cancel" under a reply whose turn made a document draft
   (`prepare_document`). OK = confirm (`issue_document`), Cancel = `cancel_document` (status "cancelled", can't be issued).
-  The dashboard chat shows the same two buttons under its latest reply when that reply made a draft (`CONFIRM_CHOICES` in ChatPanel).
+  The dashboard chat shows the same buttons under its latest reply when that reply made a draft (`confirmChoices` in ChatPanel).
 - Locations JARVIS sends to LINE are always a Google Maps link (not a LINE location pin).
 - Pictures (customer name cards/addresses for documents): LINE keeps an image message silently for the user's next
   text (max 4, 10 min, `_pending_images` in `app/api/line.py`); the dashboard's 📎 button sends up to 4 with the message.

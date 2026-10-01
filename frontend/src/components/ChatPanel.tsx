@@ -65,8 +65,15 @@ const TOOL_LABELS: Record<string, string> = {
   list_documents: 'ดูเอกสาร',
 }
 
-// The answers offered under a document draft (the same buttons as on LINE).
+// The answers offered under a document draft (the same buttons as on LINE); a quotation with VAT can also drop it.
 const CONFIRM_CHOICES = ['OK', 'Cancel']
+const NO_VAT = 'ไม่เอาแวท'
+
+function confirmChoices(toolCalls: ToolCall[] | undefined): string[] {
+  const draft = toolCalls?.filter((t) => t.ok && t.name === 'prepare_document').at(-1)
+  if (!draft) return []
+  return draft.input.doc_type === 'quotation' && draft.input.vat === true ? [...CONFIRM_CHOICES, NO_VAT] : CONFIRM_CHOICES
+}
 
 const GREETING = { female: 'ค่ะ TK มีอะไรให้ช่วยไหมคะ', male: 'ครับ TK มีอะไรให้ช่วยไหมครับ' }
 
@@ -208,9 +215,9 @@ export function ChatPanel({ onDocuments, page = 'home' }: { onDocuments?: () => 
           ? 'โหมดปลุก: ฟังอยู่ พูดคำสั่งได้เลย ("Stop Jarvis" เพื่อพัก)'
           : 'ไมค์รอคำว่า "Hey Jarvis" / "เฮ้ จาร์วิส"'
   const listeningLive = wake.awake && !busy && !speaking
-  // OK / Cancel only under the latest reply, and only when that reply made a document draft.
+  // OK / Cancel (/ ไม่เอาแวท) only under the latest reply, and only when that reply made a document draft.
   const last = messages[messages.length - 1]
-  const awaitingConfirm = !busy && last?.role === 'jarvis' && !!last.toolCalls?.some((t) => t.ok && t.name === 'prepare_document')
+  const choices = !busy && last?.role === 'jarvis' ? confirmChoices(last.toolCalls) : []
 
   function quiet() {
     stopSpeaking()
@@ -365,9 +372,9 @@ export function ChatPanel({ onDocuments, page = 'home' }: { onDocuments?: () => 
           ),
         )}
 
-        {awaitingConfirm && (
-          <div className="flex gap-2">
-            {CONFIRM_CHOICES.map((choice) => (
+        {choices.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {choices.map((choice) => (
               <button
                 key={choice}
                 onClick={() => void send(choice)}
