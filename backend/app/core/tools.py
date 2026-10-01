@@ -148,6 +148,10 @@ def issue_document(ctx: ToolContext, draft_id: int) -> Any:
     return docs.summary(docs.issue(ctx.db, ctx.user, draft_id, ctx.turn_started))
 
 
+def cancel_document(ctx: ToolContext, draft_id: int) -> Any:
+    return docs.summary(docs.cancel(ctx.db, ctx.user, draft_id)) | {"status": "cancelled"}
+
+
 def list_documents(ctx: ToolContext, limit: int) -> Any:
     return [
         {"draft_id": d.id, "document": docs.DOC_NAMES.get(d.doc_type, d.doc_type), "status": d.status, "serial": d.document_serial,
@@ -529,8 +533,22 @@ TOOLS: list[dict] = [
         "name": "issue_document",
         "description": (
             "Step 2: send a prepared draft to FlowAccount and get its document number. Only call this after the "
-            "user has explicitly confirmed the summary in a new message (e.g. \"ยืนยัน\", \"ออกได้เลย\"); "
+            "user has explicitly confirmed the summary in a new message (e.g. \"OK\", \"ยืนยัน\", \"ออกได้เลย\"); "
             "it is refused in the same message that prepared the draft."
+        ),
+        "strict": True,
+        "input_schema": {
+            "type": "object",
+            "properties": {"draft_id": {"type": "integer"}},
+            "required": ["draft_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "cancel_document",
+        "description": (
+            "Cancel a prepared draft when the user declines it (e.g. \"Cancel\", \"ยกเลิก\"): it can no longer be issued. "
+            "Nothing is sent to FlowAccount."
         ),
         "strict": True,
         "input_schema": {
@@ -571,6 +589,7 @@ _HANDLERS: dict[str, Callable[..., Any]] = {
     "last_order": last_order,
     "prepare_document": prepare_document,
     "issue_document": issue_document,
+    "cancel_document": cancel_document,
     "list_documents": list_documents,
 }
 

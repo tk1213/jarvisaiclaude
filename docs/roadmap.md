@@ -24,7 +24,7 @@
   - แก้ชื่อ/ห้องบนการ์ด, ปุ่มอัปเดตอุปกรณ์พร้อมสรุป, ป้ายเตือนสิทธิ์ Read
   - คุมแอร์ผ่านรีโมท IR (Dashboard + tool `control_air_conditioner`), อ่านอุณหภูมิ/ความชื้นจากตัวรีโมท IR
 - [x] LINE OA (Messaging API webhook + Flex Message)
-  - `POST /line/webhook` ตรวจลายเซ็น, ตอบผ่าน reply API (push เมื่อ token หมดอายุ), การ์ด Flex บอกสถานะอุปกรณ์ที่สั่ง + ปุ่มลัด
+  - `POST /line/webhook` ตรวจลายเซ็น, ตอบผ่าน reply API (push เมื่อ token หมดอายุ), การ์ด Flex บอกสถานะอุปกรณ์ที่สั่ง, ปุ่ม OK / Cancel ใต้สรุปร่างเอกสารเท่านั้น
   - ตอบเฉพาะบัญชี LINE ที่เชื่อมด้วยรหัส 6 หลักจาก Dashboard, คุยต่อเนื่องจนเงียบ 30 นาที
   - URL สาธารณะผ่าน Cloudflare Tunnel (`tunnel.bat`)
   - tool `send_to_line`: สั่งด้วยเสียง/แชทให้ส่งข่าว ราคาทอง แผนที่ (ลิงก์ Google Maps) หรือรูปเข้า LINE ของตัวเอง
@@ -37,7 +37,7 @@
 - [x] FlowAccount Open API (OAuth2 client-credentials) พร้อมโหมด mock, token เก็บเข้ารหัสในตาราง `tokens`
   - [ ] ทดสอบกับบัญชี FlowAccount จริง (sandbox ก่อน แล้ว production)
 - [x] Tools `flowaccount.*` (ใบเสนอราคา/ใบวางบิล/ใบกำกับภาษี/ใบเสร็จ) + confirmation flow
-  - `prepare_document` สร้างร่าง + สรุป, `issue_document` ออกจริงได้เฉพาะเมื่อผู้ใช้ยืนยันในข้อความถัดไป (ระบบบังคับ ไม่ใช่แค่ prompt)
+  - `prepare_document` สร้างร่าง + สรุป, `issue_document` ออกจริงได้เฉพาะเมื่อผู้ใช้ยืนยันในข้อความถัดไป (ระบบบังคับ ไม่ใช่แค่ prompt), `cancel_document` ยกเลิกร่าง
   - บันทึกทุกเอกสารใน `documents_log` (ใคร/ช่องทางไหน) และแสดง "เอกสารล่าสุด" บน Dashboard
 - [x] Persona / System Prompt แบบเลขา (ขั้นตอนสรุป-ยืนยัน, ห้ามเดาข้อมูลลูกค้า/ราคา)
 - [x] Long-term memory เบื้องต้น (จำลูกค้าประจำใน `contacts`, ค้นด้วย `find_customers`)

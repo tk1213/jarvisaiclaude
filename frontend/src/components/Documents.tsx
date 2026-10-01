@@ -30,10 +30,14 @@ export function Documents({ refreshKey }: { refreshKey: number }) {
           <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5">
             <span
               className={`rounded-full px-2 py-0.5 text-xs ${
-                d.status === 'issued' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200'
+                d.status === 'issued'
+                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200'
+                  : d.status === 'cancelled'
+                    ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                    : 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200'
               }`}
             >
-              {d.status === 'issued' ? 'ออกแล้ว' : 'ร่าง รอยืนยัน'}
+              {d.status === 'issued' ? 'ออกแล้ว' : d.status === 'cancelled' ? 'ยกเลิก' : 'ร่าง รอยืนยัน'}
             </span>
             <span className="font-medium">{d.document}</span>
             {d.serial && <span className="font-mono text-xs text-slate-500">{d.serial}</span>}

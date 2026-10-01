@@ -193,3 +193,36 @@ def test_live_client_network_error():
     client = fa.FlowAccountClient("https://x/v1", "a", "b", "s", http=httpx.Client(transport=httpx.MockTransport(offline)))
     with pytest.raises(fa.FlowAccountError, match="ติดต่อ FlowAccount ไม่ได้ \\(ConnectError"):
         client.create_document("quotation", {})
+
+
+def test_cancel_stops_a_draft_from_being_issued(db, owner):
+    tuya = get_tuya_client()
+    prepare_input = {"doc_type": "quotation", "customer": CUSTOMER, "items": ITEMS, "vat": False, "vat_inclusive": False, "credit_days": 0, "remarks": None}
+    fake = FakeClaude(
+        [
+            message([tool_use("t1", "prepare_document", prepare_input)], "tool_use"),
+            message([text("ยืนยันออกเอกสารไหมคะ TK")], "end_turn"),
+            # The user tapped Cancel.
+            message([tool_use("t2", "cancel_document", {"draft_id": 1})], "tool_use"),
+            message([text("ยกเลิกร่างแล้วค่ะ TK")], "end_turn"),
+            # Later an OK arrives anyway: the cancelled draft is refused.
+            message([tool_use("t3", "issue_document", {"draft_id": 1})], "tool_use"),
+            message([text("ร่างนี้ยกเลิกไปแล้วค่ะ TK")], "end_turn"),
+        ]
+    )
+    orch = make(fake)
+    first = orch.handle(db, tuya, owner, InboundMessage(user_id=owner.id, channel=Channel.line, text="ใบเสนอราคา"))
+    second = orch.handle(db, tuya, owner, InboundMessage(user_id=owner.id, channel=Channel.line, session_id=first.session_id, text="Cancel"))
+    assert [(c.name, c.ok) for c in second.tool_calls] == [("cancel_document", True)]
+    assert db.get(DocumentLog, 1).status == "cancelled"
+    third = orch.handle(db, tuya, owner, InboundMessage(user_id=owner.id, channel=Channel.line, session_id=first.session_id, text="OK"))
+    assert [(c.name, c.ok) for c in third.tool_calls] == [("issue_document", False)]
+    assert db.get(DocumentLog, 1).status == "cancelled"
+
+
+def test_issued_document_cannot_be_cancelled(db, owner):
+    doc = DocumentLog(user_id=owner.id, channel="line", doc_type="quotation", status="issued", document_serial="QT-1", payload={})
+    db.add(doc)
+    db.commit()
+    with pytest.raises(docs.DocumentError, match="ออกไปแล้ว"):
+        docs.cancel(db, owner, doc.id)

@@ -20,8 +20,8 @@ API = "https://api.line.me/v2/bot"
 DATA_API = "https://api-data.line.me/v2/bot"
 # LINE rejects text over 5,000 characters; Flex text is shown in full, so keep replies well under it.
 MAX_TEXT = 4000
-# Quick replies under every answer, for the commands used most from a phone.
-QUICK_REPLIES = ["สถานะบ้าน", "ปิดทุกอย่าง", "อุณหภูมิตอนนี้"]
+# The only quick-reply buttons: under a document summary that waits for the owner's answer.
+CONFIRM_CHOICES = ["OK", "Cancel"]
 
 
 class LineError(RuntimeError):
@@ -128,12 +128,16 @@ def info_messages(text: str, links: list[dict] | None = None, location: dict | N
     return messages[:5]
 
 
-def _quick_reply() -> dict:
-    return {"items": [{"type": "action", "action": {"type": "message", "label": t, "text": t}} for t in QUICK_REPLIES]}
+def _quick_reply(choices: list[str]) -> dict:
+    return {"items": [{"type": "action", "action": {"type": "message", "label": t, "text": t}} for t in choices]}
 
 
-def text_message(text: str) -> dict:
-    return {"type": "text", "text": text[:MAX_TEXT], "quickReply": _quick_reply()}
+def text_message(text: str, choices: list[str] | None = None) -> dict:
+    """A text bubble; `choices` become tap-to-send buttons under it (otherwise there are none)."""
+    message = {"type": "text", "text": text[:MAX_TEXT]}
+    if choices:
+        message["quickReply"] = _quick_reply(choices)
+    return message
 
 
 def power_state(device: Device) -> str:
@@ -151,10 +155,10 @@ def power_state(device: Device) -> str:
     return "เปิด" if value in (True, 1, "1", "true") else "ปิด"
 
 
-def reply_message(text: str, devices: list[Device]) -> dict:
+def reply_message(text: str, devices: list[Device], choices: list[str] | None = None) -> dict:
     """Plain text for a plain answer; a Flex bubble listing the devices when JARVIS just changed some."""
     if not devices:
-        return text_message(text)
+        return text_message(text, choices)
     rows = []
     for d in devices:
         state = power_state(d) or ("ออนไลน์" if d.online else "ออฟไลน์")
@@ -191,4 +195,7 @@ def reply_message(text: str, devices: list[Device]) -> dict:
             ],
         },
     }
-    return {"type": "flex", "altText": text[:400], "contents": bubble, "quickReply": _quick_reply()}
+    message = {"type": "flex", "altText": text[:400], "contents": bubble}
+    if choices:
+        message["quickReply"] = _quick_reply(choices)
+    return message
