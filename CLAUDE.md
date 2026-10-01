@@ -3,6 +3,9 @@
 ## Working with the owner
 
 - **Reply in Thai.** The owner reads Thai; keep code, commits and identifiers in English.
+- **Ask before changing anything.** When the owner asks whether something can be done ("ทำได้ไหม"), first answer
+  yes or no and why. Before making any change (code, files, PRs, settings), summarize what will change and wait
+  for the owner to confirm; don't start until they do.
 - The owner runs everything on **Windows** (PowerShell, Python 3.14, Chrome) from `D:\Claude\jarvisclaude`
   (a clone of this repo). Give Windows commands, and after each change say exactly what to run there:
   - server-only changes: `git pull`, then close and reopen `start.bat`
@@ -82,7 +85,9 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
 Phase 2: FlowAccount is built and runs in `FLOWACCOUNT_MODE=mock`; next is testing with the owner's real
 account (sandbox `https://openapi.flowaccount.com/test` first). Documents are two-step: `prepare_document`
 saves a draft, `issue_document` is refused unless the draft came from an earlier message (user confirmed).
-Products are copied from FlowAccount (`app/services/catalog.py`, "อัปเดตสินค้า" button); named sets ("ชุด A", tables
+Products are copied from FlowAccount (`app/services/catalog.py`, "อัปเดตสินค้า" button) into a separate SQLite
+file, `backend/data/flowaccount/catalog.db` (`CATALOG_DATABASE_URL`, `app/catalog_models.py`, `CatalogSession`), which
+the owner opens with DB Browser for SQLite; named sets ("ชุด A", tables
 `product_sets`/`product_set_items`, items by product name, list price unless a special price is fixed, optional
 per-set `remarks` that become the document's หมายเหตุ) and
 `last_order` ("เหมือนครั้งก่อน") feed `prepare_document`. The sandbox connection and test quotation work.

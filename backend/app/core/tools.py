@@ -23,6 +23,7 @@ from app.integrations.tuya import TuyaError, pulsar
 from app.models import Device, User
 from app.ratelimit import limiter
 from app.services import devices as svc
+from app.db import CatalogSession
 from app.services import catalog
 from app.services import documents as docs
 
@@ -169,34 +170,40 @@ def send_to_line(ctx: ToolContext, text: str, links: list[dict] | None, location
 
 
 def find_products(ctx: ToolContext, query: str) -> Any:
-    found = catalog.find_products(ctx.db, query)
-    if not found:
-        return {"products": [], "note": "ไม่พบในรายการสินค้า (กด 'อัปเดตสินค้า' บน Dashboard ถ้าเพิ่งเพิ่มใน FlowAccount)"}
-    return {"products": [catalog.product_summary(p) for p in found]}
+    with CatalogSession() as cdb:
+        found = catalog.find_products(cdb, query)
+        if not found:
+            return {"products": [], "note": "ไม่พบในรายการสินค้า (กด 'อัปเดตสินค้า' บน Dashboard ถ้าเพิ่งเพิ่มใน FlowAccount)"}
+        return {"products": [catalog.product_summary(p) for p in found]}
 
 
 def save_product_set(ctx: ToolContext, name: str, items: list[dict], customer: str | None = None, remarks: str | None = None) -> Any:
-    product_set = catalog.save_set(ctx.db, name, items, customer, remarks)
-    saved = next(s for s in catalog.list_sets(ctx.db) if s["id"] == product_set.id)
-    unknown = [i["product"] for i in saved["items"] if not catalog.find_products(ctx.db, i["product"])]
+    with CatalogSession() as cdb:
+        product_set = catalog.save_set(cdb, name, items, customer, remarks)
+        saved = next(s for s in catalog.list_sets(cdb) if s["id"] == product_set.id)
+        unknown = [i["product"] for i in saved["items"] if not catalog.find_products(cdb, i["product"])]
     return {**saved, "not_in_product_list": unknown}
 
 
 def set_product_set_remarks(ctx: ToolContext, name: str, remarks: str) -> Any:
-    product_set = catalog.set_remarks(ctx.db, name, remarks)
-    return {"set": product_set.name, "remarks": product_set.remarks}
+    with CatalogSession() as cdb:
+        product_set = catalog.set_remarks(cdb, name, remarks)
+        return {"set": product_set.name, "remarks": product_set.remarks}
 
 
 def get_product_set(ctx: ToolContext, name: str, times: float) -> Any:
-    return catalog.expand_set(ctx.db, name, times or 1)
+    with CatalogSession() as cdb:
+        return catalog.expand_set(cdb, name, times or 1)
 
 
 def list_product_sets(ctx: ToolContext) -> Any:
-    return catalog.list_sets(ctx.db)
+    with CatalogSession() as cdb:
+        return catalog.list_sets(cdb)
 
 
 def delete_product_set(ctx: ToolContext, name: str) -> Any:
-    catalog.delete_set(ctx.db, name)
+    with CatalogSession() as cdb:
+        catalog.delete_set(cdb, name)
     return {"deleted": name}
 
 

@@ -3,10 +3,11 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.catalog_models import Product, ProductSet
+from app.db import get_catalog_db
 from app.deps import get_current_user
 from app.integrations.flowaccount import FlowAccountError
-from app.models import Product, ProductSet, User
+from app.models import User
 from app.services import catalog
 
 router = APIRouter(tags=["catalog"])
@@ -40,12 +41,12 @@ def _products(db: Session) -> list[ProductOut]:
 
 
 @router.get("/products", response_model=list[ProductOut])
-def list_products(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def list_products(db: Session = Depends(get_catalog_db), _: User = Depends(get_current_user)):
     return _products(db)
 
 
 @router.post("/products/sync", response_model=list[ProductOut])
-def sync_products(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def sync_products(db: Session = Depends(get_catalog_db), _: User = Depends(get_current_user)):
     """Copy the product list from FlowAccount (the "อัปเดตสินค้า" button)."""
     try:
         catalog.sync_products(db)
@@ -55,12 +56,12 @@ def sync_products(db: Session = Depends(get_db), _: User = Depends(get_current_u
 
 
 @router.get("/product-sets", response_model=list[ProductSetOut])
-def list_sets(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def list_sets(db: Session = Depends(get_catalog_db), _: User = Depends(get_current_user)):
     return catalog.list_sets(db)
 
 
 @router.delete("/product-sets/{set_id}", status_code=204)
-def delete_set(set_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def delete_set(set_id: int, db: Session = Depends(get_catalog_db), _: User = Depends(get_current_user)):
     product_set = db.get(ProductSet, set_id)
     if product_set is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Set not found")

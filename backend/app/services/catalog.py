@@ -1,4 +1,8 @@
-"""Products from FlowAccount, named product sets ("ชุด A") and repeat orders, for quick quotations."""
+"""Products from FlowAccount, named product sets ("ชุด A") and repeat orders, for quick quotations.
+
+Products and sets are in the catalog database (app.db.CatalogSession); last_order reads documents
+from the main database, so it takes that session instead.
+"""
 
 import re
 
@@ -6,7 +10,8 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.integrations.flowaccount import get_flowaccount_client
-from app.models import DocumentLog, Product, ProductSet, ProductSetItem
+from app.catalog_models import Product, ProductSet, ProductSetItem
+from app.models import DocumentLog
 
 
 class CatalogError(ValueError):

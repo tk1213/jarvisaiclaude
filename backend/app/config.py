@@ -76,6 +76,8 @@ class Settings(BaseSettings):
     flowaccount_client_id: str = ""
     flowaccount_client_secret: str = ""
     flowaccount_scope: str = "flowaccount-api"
+    # Products and product sets live in their own file, easy to open with DB Browser for SQLite.
+    catalog_database_url: str = "sqlite:///./data/flowaccount/catalog.db"
 
     # Rate limits (spec §6), per user for device control, per username+IP for login.
     rate_limit_control_per_minute: int = 30
