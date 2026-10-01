@@ -11,11 +11,20 @@ export function Documents({ refreshKey }: { refreshKey: number }) {
     api.documents().then(setRows, () => setRows([]))
   }, [refreshKey])
 
-  if (!rows || rows.length === 0) return null
+  if (!rows) return null
+  if (rows.length === 0)
+    return (
+      <section className="space-y-2">
+        <h2 className="text-sm font-medium text-slate-500">เอกสารล่าสุด</h2>
+        <p className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700">
+          ยังไม่มีเอกสาร ลองสั่งจาร์วิส เช่น "ออกใบเสนอราคา บริษัท เอ ชุด A"
+        </p>
+      </section>
+    )
 
   return (
     <section className="space-y-2">
-      <h2 className="text-sm font-medium text-slate-500">เอกสารล่าสุด (FlowAccount)</h2>
+      <h2 className="text-sm font-medium text-slate-500">เอกสารล่าสุด</h2>
       <ul className="divide-y divide-slate-200 rounded-2xl border border-slate-200 bg-white text-sm dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900">
         {rows.map((d) => (
           <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5">

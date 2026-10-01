@@ -1,4 +1,8 @@
-"""Products from FlowAccount, named product sets ("ชุด A") and repeat orders, for quick quotations."""
+"""Products from FlowAccount, named product sets ("ชุด A") and repeat orders, for quick quotations.
+
+Products and sets are in the catalog database (app.db.CatalogSession); last_order reads documents
+from the main database, so it takes that session instead.
+"""
 
 import re
 
@@ -6,7 +10,8 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.integrations.flowaccount import get_flowaccount_client
-from app.models import DocumentLog, Product, ProductSet, ProductSetItem
+from app.catalog_models import Product, ProductSet, ProductSetItem
+from app.models import DocumentLog
 
 
 class CatalogError(ValueError):
@@ -75,7 +80,7 @@ def _exact(db: Session, name: str) -> Product | None:
     return None
 
 
-def save_set(db: Session, name: str, items: list[dict], customer: str | None = None) -> ProductSet:
+def save_set(db: Session, name: str, items: list[dict], customer: str | None = None, remarks: str | None = None) -> ProductSet:
     name = name.strip()
     if not name:
         raise CatalogError("ต้องตั้งชื่อชุด")
@@ -92,6 +97,7 @@ def save_set(db: Session, name: str, items: list[dict], customer: str | None = N
         clean.append((match.name if match else product, quantity, float(price) if price is not None else None, i.get("unit") or (match.unit if match else None)))
     product_set = db.scalar(select(ProductSet).where(func.lower(ProductSet.name) == name.lower())) or ProductSet(name=name)
     product_set.customer = (customer or "").strip() or None
+    product_set.remarks = (remarks or "").strip() or None
     db.add(product_set)
     db.flush()
     db.execute(delete(ProductSetItem).where(ProductSetItem.set_id == product_set.id))
@@ -130,14 +136,22 @@ def expand_set(db: Session, name: str, times: float = 1) -> dict:
                 "price_includes_vat": bool(product and product.price_includes_vat),
             }
         )
-    return {"set": product_set.name, "customer": product_set.customer, "times": times, "items": items}
+    return {"set": product_set.name, "customer": product_set.customer, "remarks": product_set.remarks, "times": times, "items": items}
 
 
 def list_sets(db: Session) -> list[dict]:
     return [
-        {"id": s.id, "name": s.name, "customer": s.customer, "items": [{"product": i.product, "quantity": i.quantity, "unit": i.unit, "unit_price": i.unit_price} for i in set_items(db, s)]}
+        {"id": s.id, "name": s.name, "customer": s.customer, "remarks": s.remarks, "items": [{"product": i.product, "quantity": i.quantity, "unit": i.unit, "unit_price": i.unit_price} for i in set_items(db, s)]}
         for s in db.scalars(select(ProductSet).order_by(ProductSet.name))
     ]
+
+
+def set_remarks(db: Session, name: str, remarks: str) -> ProductSet:
+    """Change only a set's หมายเหตุ ("" clears it)."""
+    product_set = _get_set(db, name)
+    product_set.remarks = remarks.strip() or None
+    db.commit()
+    return product_set
 
 
 def delete_set(db: Session, name: str) -> None:
