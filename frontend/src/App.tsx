@@ -204,7 +204,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         )}
 
         <aside className="lg:sticky lg:top-5 lg:h-[calc(100vh-7rem)]">
-          <ChatPanel onDocuments={() => setDocumentsVersion((v) => v + 1)} />
+          <ChatPanel page={page} onDocuments={() => setDocumentsVersion((v) => v + 1)} />
         </aside>
       </div>
     </div>

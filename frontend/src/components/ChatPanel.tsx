@@ -1,7 +1,18 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { api, type ToolCall } from '../api'
 import { chime, useWakeWord } from '../wake'
-import { getVoiceGender, setVoiceEngine, setVoiceGender, speak, stopSpeaking, sttSupported, useMissingThaiVoice, useSpeechRecognition, usesServerVoice, type VoiceGender } from '../voice'
+import {
+  getVoiceGender,
+  setVoiceEngine,
+  setVoiceGender,
+  speak,
+  stopSpeaking,
+  sttSupported,
+  useMissingThaiVoice,
+  useSpeechRecognition,
+  usesServerVoice,
+  type VoiceGender,
+} from '../voice'
 
 interface Message {
   // 'note': a local status line (JARVIS woke up / went to sleep), never sent anywhere.
@@ -34,12 +45,18 @@ const TOOL_LABELS: Record<string, string> = {
 const GREETING = { female: 'ค่ะ TK มีอะไรให้ช่วยไหมคะ', male: 'ครับ TK มีอะไรให้ช่วยไหมครับ' }
 
 const SUGGESTIONS = ['มีอุปกรณ์อะไรบ้าง', 'ปลั๊ก 1 ใช้ไฟกี่วัตต์', 'ปิดทุกอย่างให้หน่อย']
+// The FlowAccount page's starters fill the box instead of sending: the customer's name still has to be added.
+const SET_SUGGESTIONS = ['A', 'B', 'C', 'D'].map((s) => `ออกใบเสนอราคา ชุด ${s} ให้ `)
 
-/** onDocuments: JARVIS just drafted or issued a document (the dashboard's list refreshes). */
-export function ChatPanel({ onDocuments }: { onDocuments?: () => void }) {
+/**
+ * onDocuments: JARVIS just drafted or issued a document (the dashboard's list refreshes).
+ * page: which dashboard page is showing, for the example commands.
+ */
+export function ChatPanel({ onDocuments, page = 'home' }: { onDocuments?: () => void; page?: 'home' | 'flowaccount' }) {
   const [messages, setMessages] = useState<Message[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [text, setText] = useState('')
+  const input = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [speaking, setSpeaking] = useState(false)
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null)
@@ -222,18 +239,36 @@ export function ChatPanel({ onDocuments }: { onDocuments?: () => void }) {
       <div className="flex-1 space-y-3 overflow-y-auto p-4">
         {messages.length === 0 && (
           <div className="space-y-3 text-sm text-slate-500">
-            <p>{sttSupported ? 'พิมพ์ หรือกดไมค์แล้วพูดสั่งงานบ้านได้เลย เช่น' : 'สั่งงานบ้านได้ด้วยภาษาพูด เช่น'}</p>
-            {sttSupported && !wake.micOn && <p>อยากเรียกด้วยเสียง "Hey Jarvis" กดปุ่ม 🎙 เปิดไมค์รอเรียก ด้านบนก่อน</p>}
+            {page === 'flowaccount' ? (
+              <p>เลือกชุดสินค้า แล้วพิมพ์ชื่อลูกค้าต่อท้ายก่อนกดส่ง</p>
+            ) : (
+              <p>{sttSupported ? 'พิมพ์ หรือกดไมค์แล้วพูดสั่งงานบ้านได้เลย เช่น' : 'สั่งงานบ้านได้ด้วยภาษาพูด เช่น'}</p>
+            )}
+            {page === 'home' && sttSupported && !wake.micOn && <p>อยากเรียกด้วยเสียง "Hey Jarvis" กดปุ่ม 🎙 เปิดไมค์รอเรียก ด้านบนก่อน</p>}
             <div className="flex flex-wrap gap-2">
-              {SUGGESTIONS.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => void send(s)}
-                  className="rounded-full border border-slate-300 px-3 py-1 hover:border-sky-500 hover:text-sky-700 dark:border-slate-700 dark:hover:text-sky-300"
-                >
-                  {s}
-                </button>
-              ))}
+              {page === 'flowaccount' &&
+                SET_SUGGESTIONS.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => {
+                      setText(s)
+                      input.current?.focus()
+                    }}
+                    className="rounded-full border border-slate-300 px-3 py-1 hover:border-sky-500 hover:text-sky-700 dark:border-slate-700 dark:hover:text-sky-300"
+                  >
+                    {s.replace('ออกใบเสนอราคา ', 'ใบเสนอราคา ').replace(' ให้ ', '')}
+                  </button>
+                ))}
+              {page === 'home' &&
+                SUGGESTIONS.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => void send(s)}
+                    className="rounded-full border border-slate-300 px-3 py-1 hover:border-sky-500 hover:text-sky-700 dark:border-slate-700 dark:hover:text-sky-300"
+                  >
+                    {s}
+                  </button>
+                ))}
             </div>
           </div>
         )}
@@ -292,7 +327,9 @@ export function ChatPanel({ onDocuments }: { onDocuments?: () => void }) {
 
       {voiceNotice && (
         <div role="status" className="flex items-start gap-2 border-t border-slate-200 px-4 py-2 text-xs text-amber-800 dark:border-slate-800 dark:text-amber-300">
-          <p className="flex-1">เสียง{voiceGender === 'female' ? 'ผู้หญิง' : 'ผู้ชาย'}จาก server ใช้ไม่ได้ ({voiceNotice}) คำตอบจึงแสดงเป็นข้อความอย่างเดียว ลองปิดแล้วเปิด start.bat ใหม่</p>
+          <p className="flex-1">
+            เสียง{voiceGender === 'female' ? 'ผู้หญิง' : 'ผู้ชาย'}จาก server ใช้ไม่ได้ ({voiceNotice}) คำตอบจึงแสดงเป็นข้อความอย่างเดียว ลองปิดแล้วเปิด start.bat ใหม่
+          </p>
           <button onClick={() => setVoiceNotice(null)} aria-label="ปิดข้อความ" className="shrink-0 hover:text-amber-950 dark:hover:text-amber-100">
             ✕
           </button>
@@ -319,10 +356,11 @@ export function ChatPanel({ onDocuments }: { onDocuments?: () => void }) {
 
       <form onSubmit={submit} className="flex gap-2 border-t border-slate-200 p-3 dark:border-slate-800">
         <input
+          ref={input}
           value={mic.listening ? mic.interim : text}
           onChange={(e) => setText(e.target.value)}
           readOnly={mic.listening}
-          placeholder={mic.listening ? 'กำลังฟัง… พูดได้เลย' : 'พิมพ์คำสั่ง เช่น เปิดปลั๊ก 2'}
+          placeholder={mic.listening ? 'กำลังฟัง… พูดได้เลย' : page === 'flowaccount' ? 'พิมพ์คำสั่ง เช่น ออกใบเสนอราคา ชุด A ให้บริษัท เอ' : 'พิมพ์คำสั่ง เช่น เปิดปลั๊ก 2'}
           className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-transparent px-3 py-2 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/30 dark:border-slate-700"
         />
         <button
