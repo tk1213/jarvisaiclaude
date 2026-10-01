@@ -18,6 +18,7 @@ const TOOL_LABELS: Record<string, string> = {
   list_scenes: 'ดู scene',
   set_scene: 'สั่ง scene',
   web_search: 'ค้นเว็บ',
+  send_to_line: 'ส่งเข้า LINE',
   find_customers: 'ค้นลูกค้า',
   prepare_document: 'ร่างเอกสาร',
   issue_document: 'ออกเอกสาร',
