@@ -39,7 +39,7 @@ export function Catalog({ refreshKey }: { refreshKey: number }) {
   return (
     <section className="space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-medium text-slate-500">สินค้าและชุดสินค้า (FlowAccount)</h2>
+        <h2 className="text-sm font-medium text-slate-500">สินค้าและชุดสินค้า</h2>
         <button
           onClick={() => void sync()}
           disabled={syncing}
