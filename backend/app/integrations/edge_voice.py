@@ -17,6 +17,9 @@ MAX_CHARS = 1500
 # Numbers ("28.6", "1,250", "-3") are spoken separately at a slower rate so they're easy to catch.
 NUMBER = re.compile(r"[-+]?\d[\d,]*(?:\.\d+)?")
 MAX_NUMBER_PARTS = 8
+# Each separately synthesized piece carries its own lead-in and trailing silence, so splitting puts an
+# audible gap before and after every number. Only worth it when numbers are clearly slower than speech.
+MIN_SPLIT_DIFFERENCE = 10  # percentage points between TTS_NUMBER_RATE and the voice's rate
 # The service only speaks between half and double speed; outside that it silently returns no audio.
 RATE_RANGE = (-50, 100)
 
@@ -60,6 +63,11 @@ async def _stream(text: str, voice: str, rate: str, pitch: str) -> bytes:
     return bytes(audio)
 
 
+def _percent(rate: str) -> int:
+    m = re.fullmatch(r"\s*([+-]?)(\d+)\s*%\s*", rate)
+    return int(m[2]) * (-1 if m[1] == "-" else 1) if m else 0
+
+
 def split_numbers(text: str) -> list[tuple[str, bool]]:
     """[(segment, is_number), ...] with blank or punctuation-only pieces dropped."""
     parts: list[tuple[str, bool]] = []
@@ -78,8 +86,9 @@ async def speak_parts(text: str, *, voice: str, rate: str, pitch: str, number_ra
     MP3 frames from the same voice concatenate into one playable stream."""
     text = text[:MAX_CHARS]
     parts = split_numbers(text)
-    if not any(is_num for _, is_num in parts) or len(parts) > 2 * MAX_NUMBER_PARTS + 1:
-        parts = [(text, False)]
+    worth_it = abs(_percent(number_rate) - _percent(rate)) >= MIN_SPLIT_DIFFERENCE
+    if not worth_it or not any(is_num for _, is_num in parts) or len(parts) > 2 * MAX_NUMBER_PARTS + 1:
+        parts = [(text, False)]  # one piece: no gaps around numbers
     tasks = [
         asyncio.create_task(synthesize(p, voice=voice, rate=number_rate if is_num else rate, pitch=pitch))
         for p, is_num in parts
