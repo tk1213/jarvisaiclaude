@@ -175,6 +175,8 @@ def issue(db: Session, user: User, draft_id: int, turn_started: datetime) -> Doc
     doc = db.get(DocumentLog, draft_id)
     if doc is None or doc.user_id != user.id:
         raise DocumentError(f"ไม่พบร่างเอกสารหมายเลข {draft_id}")
+    if doc.status == "cancelled":
+        raise DocumentError("ร่างนี้ถูกยกเลิกแล้ว ถ้าต้องการให้เตรียมเอกสารใหม่")
     if doc.status != "draft":
         raise DocumentError(f"เอกสารนี้ออกไปแล้ว (เลขที่ {doc.document_serial})")
     created = _aware(doc.created_at)
@@ -188,6 +190,18 @@ def issue(db: Session, user: User, draft_id: int, turn_started: datetime) -> Doc
     doc.document_serial = issued.serial or None
     doc.flowaccount_document_id = issued.record_id or None
     doc.contact_id = remember_contact(db, doc.payload["customer"]).id
+    db.commit()
+    return doc
+
+
+def cancel(db: Session, user: User, draft_id: int) -> DocumentLog:
+    """The owner said no: the draft can't be issued any more (it stays in the log as cancelled)."""
+    doc = db.get(DocumentLog, draft_id)
+    if doc is None or doc.user_id != user.id:
+        raise DocumentError(f"ไม่พบร่างเอกสารหมายเลข {draft_id}")
+    if doc.status == "issued":
+        raise DocumentError(f"เอกสารนี้ออกไปแล้ว (เลขที่ {doc.document_serial}) ยกเลิกร่างไม่ได้ ต้องยกเลิกใน FlowAccount")
+    doc.status = "cancelled"
     db.commit()
     return doc
 

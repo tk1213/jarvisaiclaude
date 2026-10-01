@@ -26,6 +26,7 @@ from app.db import SessionLocal, get_db
 from app.deps import get_current_user
 from app.integrations import line as line_integration
 from app.integrations.line import (
+    CONFIRM_CHOICES,
     LineClient,
     LineError,
     reply_message,
@@ -280,4 +281,6 @@ def _ask_jarvis(db: Session, user: User, text: str, images: list[str] | None = N
         return text_message("ขออภัยค่ะ เกิดข้อผิดพลาด ลองใหม่อีกครั้งนะคะ")
     ids = {c.input.get("device_id") for c in reply.tool_calls if c.ok and c.name in DEVICE_TOOLS}
     devices = [d for d in (db.get(Device, i) for i in sorted(i for i in ids if isinstance(i, int))) if d]
-    return reply_message(reply.text, devices)
+    # A fresh document draft waits for the owner's answer: offer OK / Cancel buttons (and only then).
+    drafted = any(c.ok and c.name == "prepare_document" for c in reply.tool_calls)
+    return reply_message(reply.text, devices, CONFIRM_CHOICES if drafted else None)

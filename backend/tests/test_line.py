@@ -154,6 +154,41 @@ def test_linked_user_talks_to_jarvis_and_gets_a_flex_card(client, owner_headers,
         assert {r.channel for r in rows} == {"line"} and len({r.session_id for r in rows}) == 1
 
 
+def test_ok_cancel_buttons_only_under_a_document_draft(client, owner_headers, line, monkeypatch):
+    link(client, owner_headers, line)
+    prepare_input = {
+        "doc_type": "quotation",
+        "customer": {"name": "บริษัท เอ จำกัด", "tax_id": None, "address": None, "branch": None, "email": None, "phone": None},
+        "items": [{"name": "โช๊คประตู", "quantity": 2, "unit_price": 2190, "unit": "กล่อง"}],
+        "vat": False,
+        "vat_inclusive": False,
+        "credit_days": 30,
+        "remarks": None,
+    }
+    fake = FakeClaude(
+        [
+            message([text("สวัสดีค่ะ TK")], "end_turn"),
+            message([tool_use("t1", "prepare_document", prepare_input)], "tool_use"),
+            message([text("ยืนยันออกเอกสารไหมคะ TK")], "end_turn"),
+            message([tool_use("t2", "issue_document", {"draft_id": 1})], "tool_use"),
+            message([text("ออกใบเสนอราคาแล้วค่ะ TK")], "end_turn"),
+        ]
+    )
+    monkeypatch.setattr(orch_module, "_orchestrator", make(fake))
+
+    post_event(client, text_event("สวัสดี"))
+    assert "quickReply" not in line.sent[-1][2][0]  # an ordinary answer has no buttons
+
+    post_event(client, text_event("ทำใบเสนอราคาให้บริษัท เอ"))
+    answer = line.sent[-1][2][0]
+    labels = [i["action"]["label"] for i in answer["quickReply"]["items"]]
+    assert labels == ["OK", "Cancel"] and [i["action"]["text"] for i in answer["quickReply"]["items"]] == ["OK", "Cancel"]
+
+    post_event(client, text_event("OK"))
+    assert line.sent[-1][2][0] == line_int.text_message("ออกใบเสนอราคาแล้วค่ะ TK")
+    assert "quickReply" not in line.sent[-1][2][0]
+
+
 def test_reset_starts_a_new_conversation(client, owner_headers, line, monkeypatch):
     link(client, owner_headers, line)
     fake = FakeClaude([message([text("หนึ่งค่ะ")], "end_turn"), message([text("สองค่ะ")], "end_turn")])
