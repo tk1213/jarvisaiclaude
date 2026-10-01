@@ -481,7 +481,7 @@ TOOLS: list[dict] = [
         "name": "prepare_document",
         "description": (
             "Step 1 of issuing a FlowAccount document: validates it, computes totals/VAT and saves a DRAFT. "
-            "Nothing is sent to FlowAccount. Read the returned summary back to the user and ask them to confirm. "
+            "Nothing is sent to FlowAccount. Then ask the user to confirm in one short sentence (document type + customer only). "
             "doc_type: quotation (ใบเสนอราคา), billing_note (ใบวางบิล), tax_invoice (ใบกำกับภาษี/ใบแจ้งหนี้), "
             "receipt (ใบเสร็จรับเงิน). vat: add 7% VAT; vat_inclusive: the prices already include VAT. "
             "credit_days: payment term / validity in days (0 = cash)."
