@@ -204,3 +204,17 @@ def test_clock_times_are_spoken_as_times():
     assert voice_api.for_speech("ตอนนี้ 24.6 °C ค่ะ") == "ตอนนี้ 24.6 องศาเซลเซียส ค่ะ"
     assert voice_api.for_speech("ใช้ไป 14.40 หน่วย") == "ใช้ไป 14.40 หน่วย"
     assert voice_api.for_speech("อัตราส่วน 25:75") == "อัตราส่วน 25:75"
+
+
+def test_male_voice_is_used_only_when_chosen(client, owner_headers, monkeypatch):
+    monkeypatch.setattr(get_settings(), "google_tts_api_key", "key")  # Google is skipped for the male voice
+    monkeypatch.setattr(edge_voice.edge_tts, "Communicate", FakeCommunicate)
+    FakeCommunicate.calls.clear()
+    r = client.post("/voice/tts", json={"text": "สวัสดีครับ", "voice": "male"}, headers=owner_headers)
+    assert r.status_code == 200 and r.content == b"mp3"
+    assert {(voice, pitch) for _, voice, _, pitch in FakeCommunicate.calls} == {("th-TH-NiwatNeural", "+0Hz")}
+    token = owner_headers["Authorization"].split()[1]
+    FakeCommunicate.calls.clear()
+    assert client.get("/voice/tts", params={"text": "ทดสอบ", "token": token, "voice": "male"}).status_code == 200
+    assert {voice for _, voice, _, _ in FakeCommunicate.calls} == {"th-TH-NiwatNeural"}
+    assert client.post("/voice/tts", json={"text": "x", "voice": "robot"}, headers=owner_headers).status_code == 422

@@ -3,6 +3,8 @@ import logging
 import re
 import time
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 
@@ -25,8 +27,12 @@ class VoiceConfig(BaseModel):
     voice: str | None
 
 
+Gender = Literal["female", "male"]
+
+
 class TtsRequest(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
+    voice: Gender = "female"
 
 
 @router.get("/config", response_model=VoiceConfig)
@@ -75,14 +81,14 @@ def for_speech(text: str) -> str:
     return text
 
 
-async def _audio_for(text: str) -> bytes:
+async def _audio_for(text: str, gender: Gender = "female") -> bytes:
     """The MP3 for text, synthesized once: browsers may request the same <audio> URL more than once,
     and every extra synthesis is another call to the voice service (which then tends to fail)."""
     text = for_speech(text)
     s = get_settings()
     if s.tts_engine != "edge" and not s.google_tts_api_key:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "server voice is off (TTS_ENGINE=browser)")
-    key = (text, s.google_tts_api_key != "", s.google_tts_voice, s.google_tts_pitch, s.tts_voice, s.tts_rate, s.tts_pitch, s.tts_number_rate)
+    key = (text, gender, s.google_tts_api_key != "", s.google_tts_voice, s.google_tts_pitch, s.tts_voice, s.tts_rate, s.tts_pitch, s.tts_number_rate)
     now = time.monotonic()
     for k in [k for k, (at, _) in _cache.items() if now - at > _CACHE_SECONDS]:
         del _cache[k]
@@ -95,7 +101,7 @@ async def _audio_for(text: str) -> bytes:
     _inflight[key] = future
     try:
         started = time.perf_counter()
-        audio = await _synthesize(text)
+        audio = await _synthesize(text, gender)
         log.info("voice ready in %.1fs", time.perf_counter() - started)
     except Exception as e:
         future.set_exception(e)
@@ -108,8 +114,13 @@ async def _audio_for(text: str) -> bytes:
     return audio
 
 
-async def _synthesize(text: str) -> bytes:
+async def _synthesize(text: str, gender: Gender = "female") -> bytes:
     s = get_settings()
+    if gender == "male":
+        # Chosen explicitly on the dashboard; never used as a fallback for the female voice.
+        log.info("speaking with Edge %s (male)", s.tts_voice_male)
+        parts = edge_voice.speak_parts(text, voice=s.tts_voice_male, rate=s.tts_rate, pitch=s.tts_pitch_male, number_rate=s.tts_number_rate)
+        return b"".join([chunk async for chunk in parts])
     google_error = None
     if s.google_tts_api_key:
         log.info("speaking with Google %s rate=%s pitch=%sst", s.google_tts_voice, s.tts_rate, s.google_tts_pitch)
@@ -152,14 +163,14 @@ def last_error(_: User = Depends(get_current_user)):
 async def tts(body: TtsRequest, _: User = Depends(get_current_user)):
     """Speak text with the configured voice (the whole MP3 at once)."""
     try:
-        audio = await _audio_for(body.text)
+        audio = await _audio_for(body.text, body.voice)
     except edge_voice.TtsError as e:
         raise _failed(e) from None
     return Response(content=audio, media_type="audio/mpeg")
 
 
 @router.get("/tts", responses={200: {"content": {"audio/mpeg": {}}}})
-async def tts_stream(text: str = Query(min_length=1, max_length=1500), token: str = ""):
+async def tts_stream(text: str = Query(min_length=1, max_length=1500), token: str = "", voice: Gender = "female"):
     """Same audio for an <audio> element (numbers slowed, parts synthesized in parallel).
 
     <audio src> can't send headers, so the JWT comes as ?token= (like the WebSocket).
@@ -172,7 +183,7 @@ async def tts_stream(text: str = Query(min_length=1, max_length=1500), token: st
         if db.get(User, user_id) is None:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid token")
     try:
-        audio = await _audio_for(text)
+        audio = await _audio_for(text, voice)
     except edge_voice.TtsError as e:
         raise _failed(e) from None
     # A complete body with a known length: the <audio> element plays it without re-requesting.

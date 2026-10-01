@@ -99,17 +99,42 @@ export function useSpeechRecognition(onFinal: (text: string) => void) {
 const PREFERRED_VOICES = [/premwadee/i, /achara/i, /google/i]
 // Windows' Pattara and Edge's Niwat are male.
 const MALE_VOICES = /niwat|pattara/i
-// A slightly higher, quicker delivery for a bright, youthful sound.
+// A slightly higher, quicker delivery for a bright, youthful sound (female voice only).
 const PITCH = 1.15
 const RATE = 1.05
 
+export type VoiceGender = 'female' | 'male'
+const GENDER_KEY = 'jarvis.voice'
+let gender: VoiceGender = (() => {
+  try {
+    return localStorage.getItem(GENDER_KEY) === 'male' ? 'male' : 'female'
+  } catch {
+    return 'female'
+  }
+})()
+
+/** The voice chosen on the dashboard (female by default); remembered in this browser. */
+export function getVoiceGender(): VoiceGender {
+  return gender
+}
+
+export function setVoiceGender(value: VoiceGender) {
+  gender = value
+  try {
+    localStorage.setItem(GENDER_KEY, value)
+  } catch {
+    // not remembered across reloads; fine
+  }
+}
+
 function thaiVoice(): SpeechSynthesisVoice | null {
   const voices = speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith('th'))
+  // Only the chosen gender: silence (with a notice) is better than the wrong voice.
+  if (gender === 'male') return voices.find((v) => MALE_VOICES.test(v.name)) ?? null
   for (const name of PREFERRED_VOICES) {
     const match = voices.find((v) => name.test(v.name))
     if (match) return match
   }
-  // Never fall back to a male voice: silence (with a notice) is better than the wrong voice.
   return voices.find((v) => !MALE_VOICES.test(v.name)) ?? null
 }
 
@@ -287,7 +312,7 @@ export function speak(text: string, whenDone?: () => void, onFallback?: (reason:
     speakWithBrowser(text, onEnd)
   }
   // Streamed: playback starts while the server is still synthesizing the rest of the reply.
-  const url = `/voice/tts?text=${encodeURIComponent(clean)}&token=${encodeURIComponent(getToken() ?? '')}`
+  const url = `/voice/tts?text=${encodeURIComponent(clean)}&token=${encodeURIComponent(getToken() ?? '')}&voice=${gender}`
   play(url, id, onEnd, () => {
     // The stream failed before any sound; ask why (the server already retried, so don't synthesize again).
     api
@@ -329,7 +354,7 @@ function speakWithBrowser(text: string, onEnd?: () => void) {
   parts.forEach((part, i) => {
     const u = new SpeechSynthesisUtterance(part)
     u.lang = LANG
-    u.pitch = PITCH
+    u.pitch = gender === 'male' ? 1 : PITCH
     u.rate = RATE
     u.voice = voice
     if (i === parts.length - 1) {
