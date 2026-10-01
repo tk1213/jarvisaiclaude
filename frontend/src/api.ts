@@ -172,8 +172,8 @@ export const api = {
   voiceConfig: () => request<VoiceConfig>('GET', '/voice/config'),
   tts: (text: string) => requestBlob('/voice/tts', { text }),
   voiceLastError: () => request<{ error: string | null }>('GET', '/voice/last-error'),
-  chat: (text: string, sessionId: string | null, channel: 'dashboard' | 'voice' = 'dashboard', voice: 'female' | 'male' = 'female') =>
-    request<ChatResponse>('POST', '/core/chat', { text, session_id: sessionId, channel, voice }),
+  chat: (text: string, sessionId: string | null, channel: 'dashboard' | 'voice' = 'dashboard', voice: 'female' | 'male' = 'female', images: string[] = []) =>
+    request<ChatResponse>('POST', '/core/chat', { text, session_id: sessionId, channel, voice, images }),
   documents: () => request<DocumentRow[]>('GET', '/documents?limit=10'),
   products: () => request<ProductRow[]>('GET', '/products'),
   syncProducts: () => request<ProductRow[]>('POST', '/products/sync'),

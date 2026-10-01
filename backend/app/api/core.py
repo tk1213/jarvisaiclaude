@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.core import images as image_utils
 from app.core.messages import Channel, InboundMessage
 from app.core.orchestrator import CoreNotConfigured, get_orchestrator
 from app.core.prompts import match_voice
@@ -25,6 +26,8 @@ class ChatRequest(BaseModel):
     channel: Literal["dashboard", "voice"] = "dashboard"
     # The voice chosen on the dashboard; a male voice answers with ครับ.
     voice: Literal["female", "male"] = "female"
+    # Pictures attached to this message (base64 or data: URLs, e.g. a customer's name card for a quotation).
+    images: list[str] = Field(default_factory=list, max_length=image_utils.MAX_IMAGES)
 
 
 class ToolCallOut(BaseModel):
@@ -47,7 +50,11 @@ def chat(body: ChatRequest, db: Session = Depends(get_db), tuya=Depends(get_tuya
     except CoreNotConfigured as e:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(e)) from None
 
-    msg = InboundMessage(user_id=user.id, channel=Channel(body.channel), session_id=body.session_id, text=body.text, voice=body.voice)
+    try:
+        jpegs = [image_utils.from_base64(i) for i in body.images]
+    except image_utils.ImageError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from None
+    msg = InboundMessage(user_id=user.id, channel=Channel(body.channel), session_id=body.session_id, text=body.text, voice=body.voice, images=jpegs)
     try:
         reply = orchestrator.handle(db, tuya, user, msg)
     except anthropic.AuthenticationError:

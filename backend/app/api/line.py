@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.core import images as image_utils
 from app.core.messages import Channel, InboundMessage
 from app.core.orchestrator import CoreNotConfigured, get_orchestrator
 from app.db import SessionLocal, get_db
@@ -47,6 +48,10 @@ _lock = threading.Lock()
 _codes: dict[str, tuple[int, float]] = {}  # code -> (user id, expires at)
 _fresh: set[int] = set()  # users who asked for a new conversation
 _seen: OrderedDict[str, None] = OrderedDict()  # webhook event ids already handled (LINE may redeliver)
+# Pictures sent without text wait here (silently) for the user's next text message, e.g. a customer's
+# name card first and then "ทำใบเสนอราคาชุด A ให้ลูกค้าในรูป".
+PENDING_IMAGE_SECONDS = 600
+_pending_images: dict[str, list[tuple[str, float]]] = {}  # LINE user id -> [(base64 JPEG, received at)]
 
 
 def _configured() -> bool:
@@ -165,17 +170,50 @@ def _answer(db: Session, client: LineClient, event: dict, line_user_id: str, use
     if kind != "message":
         return None
     message = event.get("message") or {}
+    if message.get("type") == "image":
+        if user is None:
+            return text_message(_how_to_link())
+        return _keep_image(client, line_user_id, message)
     if message.get("type") != "text":
-        return text_message("ตอนนี้จาร์วิสอ่านได้แค่ข้อความตัวอักษรค่ะ")
+        return text_message("ตอนนี้จาร์วิสอ่านได้แค่ข้อความตัวอักษรกับรูปภาพค่ะ")
     text = (message.get("text") or "").strip()
     if user is None:
         return text_message(_link(db, line_user_id, text))
     if text.lower() in RESET_WORDS:
         with _lock:
             _fresh.add(user.id)
+            _pending_images.pop(line_user_id, None)
         return text_message("เริ่มบทสนทนาใหม่แล้วค่ะ มีอะไรให้ช่วยไหมคะ")
     client.show_loading(line_user_id)
-    return _ask_jarvis(db, user, text)
+    return _ask_jarvis(db, user, text, _take_images(line_user_id))
+
+
+def _keep_image(client: LineClient, line_user_id: str, message: dict) -> dict | None:
+    """Store a picture for the next text message and stay silent (the owner sends pictures, then says what to do)."""
+    try:
+        jpeg = image_utils.to_jpeg(client.get_content(message.get("id", "")))
+    except image_utils.ImageError:
+        return text_message("เปิดรูปนี้ไม่ได้ค่ะ ลองส่งใหม่อีกครั้งนะคะ")
+    except LineError as e:
+        log.warning("could not download a LINE picture: %s", e)
+        return text_message("โหลดรูปจาก LINE ไม่ได้ค่ะ ลองส่งใหม่อีกครั้งนะคะ")
+    now = time.monotonic()
+    with _lock:
+        kept = [p for p in _pending_images.get(line_user_id, []) if now - p[1] < PENDING_IMAGE_SECONDS]
+        kept.append((jpeg, now))
+        if len(kept) > image_utils.MAX_IMAGES:
+            kept = kept[-image_utils.MAX_IMAGES :]
+            _pending_images[line_user_id] = kept
+            return text_message(f"รับรูปได้ครั้งละ {image_utils.MAX_IMAGES} รูปค่ะ จาร์วิสจะใช้ {image_utils.MAX_IMAGES} รูปล่าสุดนะคะ")
+        _pending_images[line_user_id] = kept
+    return None
+
+
+def _take_images(line_user_id: str) -> list[str]:
+    now = time.monotonic()
+    with _lock:
+        pending = _pending_images.pop(line_user_id, [])
+    return [jpeg for jpeg, at in pending if now - at < PENDING_IMAGE_SECONDS]
 
 
 def _how_to_link() -> str:
@@ -223,12 +261,12 @@ def _session_id(db: Session, user: User) -> str | None:
     return last.session_id
 
 
-def _ask_jarvis(db: Session, user: User, text: str) -> dict:
+def _ask_jarvis(db: Session, user: User, text: str, images: list[str] | None = None) -> dict:
     try:
         orchestrator = get_orchestrator()
     except CoreNotConfigured:
         return text_message("จาร์วิสยังไม่ได้ตั้งค่า ANTHROPIC_API_KEY ค่ะ")
-    msg = InboundMessage(user_id=user.id, channel=Channel.line, session_id=_session_id(db, user), text=text[:4000])
+    msg = InboundMessage(user_id=user.id, channel=Channel.line, session_id=_session_id(db, user), text=text[:4000], images=images or [])
     try:
         reply = orchestrator.handle(db, get_tuya_client(), user, msg)
     except anthropic.APIStatusError as e:

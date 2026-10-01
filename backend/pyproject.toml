@@ -16,6 +16,7 @@ dependencies = [
     "anthropic>=1.9",
     "edge-tts>=7.0",
     "tzdata",
+    "pillow>=10",
 ]
 
 [project.optional-dependencies]

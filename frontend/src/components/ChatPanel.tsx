@@ -19,6 +19,27 @@ interface Message {
   role: 'user' | 'jarvis' | 'error' | 'note'
   text: string
   toolCalls?: ToolCall[]
+  // Pictures sent with a user message (small JPEG data URLs), shown in its bubble.
+  pictures?: string[]
+}
+
+const MAX_PICTURES = 4
+const PICTURE_SIDE = 1024
+
+/** A picture file as a JPEG data URL no larger than PICTURE_SIDE: a phone photo becomes ~100-200 KB to upload. */
+async function shrinkPicture(file: File): Promise<string> {
+  const bitmap = await createImageBitmap(file)
+  const scale = Math.min(1, PICTURE_SIDE / Math.max(bitmap.width, bitmap.height))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.round(bitmap.width * scale)
+  canvas.height = Math.round(bitmap.height * scale)
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('เบราว์เซอร์นี้ย่อรูปไม่ได้')
+  ctx.fillStyle = '#fff' // transparent PNGs: white, not black, behind the text
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+  bitmap.close()
+  return canvas.toDataURL('image/jpeg', 0.85)
 }
 
 const TOOL_LABELS: Record<string, string> = {
@@ -58,6 +79,10 @@ export function ChatPanel({ onDocuments, page = 'home' }: { onDocuments?: () => 
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [text, setText] = useState('')
   const input = useRef<HTMLInputElement>(null)
+  // Pictures waiting to go with the next message.
+  const [pictures, setPictures] = useState<string[]>([])
+  const picker = useRef<HTMLInputElement>(null)
+  const [pictureError, setPictureError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [speaking, setSpeaking] = useState(false)
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null)
@@ -99,11 +124,14 @@ export function ChatPanel({ onDocuments, page = 'home' }: { onDocuments?: () => 
   async function send(message: string, channel: 'dashboard' | 'voice' = 'dashboard') {
     const trimmed = message.trim()
     if (!trimmed || busy) return
+    const attached = pictures
     setText('')
-    setMessages((m) => [...m, { role: 'user', text: trimmed }])
+    setPictures([])
+    setPictureError(null)
+    setMessages((m) => [...m, { role: 'user', text: trimmed, pictures: attached.length ? attached : undefined }])
     setBusy(true)
     try {
-      const res = await api.chat(trimmed, sessionId, channel, getVoiceGender())
+      const res = await api.chat(trimmed, sessionId, channel, getVoiceGender(), attached)
       setSessionId(res.session_id)
       setMessages((m) => [...m, { role: 'jarvis', text: res.reply, toolCalls: res.tool_calls }])
       if (res.tool_calls.some((t) => t.name.endsWith('_document') || t.name.includes('product_set'))) onDocuments?.()
@@ -121,6 +149,19 @@ export function ChatPanel({ onDocuments, page = 'home' }: { onDocuments?: () => 
     } finally {
       setBusy(false)
     }
+  }
+
+  async function addPictures(files: FileList | null) {
+    setPictureError(null)
+    const chosen = Array.from(files ?? []).filter((f) => f.type.startsWith('image/'))
+    if (pictures.length + chosen.length > MAX_PICTURES) setPictureError(`แนบได้ครั้งละ ${MAX_PICTURES} รูป`)
+    try {
+      const shrunk = await Promise.all(chosen.slice(0, MAX_PICTURES - pictures.length).map(shrinkPicture))
+      setPictures((current) => [...current, ...shrunk].slice(0, MAX_PICTURES))
+    } catch {
+      setPictureError('เปิดรูปไม่ได้ ลองเลือกรูปอื่น')
+    }
+    if (picker.current) picker.current.value = ''
   }
 
   /** A reply JARVIS gives locally (no Claude call), shown and spoken like any other. */
@@ -290,6 +331,13 @@ export function ChatPanel({ onDocuments, page = 'home' }: { onDocuments?: () => 
                       : 'bg-slate-100 dark:bg-slate-800'
                 }`}
               >
+                {m.pictures && (
+                  <div className="mb-1.5 flex flex-wrap justify-end gap-1">
+                    {m.pictures.map((src, j) => (
+                      <img key={j} src={src} alt={`รูปที่ ${j + 1}`} className="size-16 rounded-lg object-cover" />
+                    ))}
+                  </div>
+                )}
                 {m.toolCalls && m.toolCalls.length > 0 && (
                   <div className="mb-1.5 flex flex-wrap gap-1">
                     {m.toolCalls.map((t, j) => (
@@ -355,7 +403,38 @@ export function ChatPanel({ onDocuments, page = 'home' }: { onDocuments?: () => 
         </p>
       )}
 
+      {(pictures.length > 0 || pictureError) && (
+        <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 px-3 pt-3 dark:border-slate-800">
+          {pictures.map((src, i) => (
+            <div key={i} className="relative">
+              <img src={src} alt={`รูปที่แนบ ${i + 1}`} className="size-14 rounded-lg border border-slate-300 object-cover dark:border-slate-700" />
+              <button
+                type="button"
+                onClick={() => setPictures(pictures.filter((_, j) => j !== i))}
+                aria-label={`เอารูปที่ ${i + 1} ออก`}
+                className="absolute -top-1.5 -right-1.5 grid size-5 place-items-center rounded-full bg-slate-700 text-xs text-white hover:bg-red-600"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+          {pictures.length > 0 && <span className="text-xs text-slate-500">พิมพ์คำสั่งแล้วกดส่ง รูปจะส่งไปพร้อมข้อความ</span>}
+          {pictureError && <span className="text-xs text-amber-700 dark:text-amber-300">{pictureError}</span>}
+        </div>
+      )}
+
       <form onSubmit={submit} className="flex gap-2 border-t border-slate-200 p-3 dark:border-slate-800">
+        <input ref={picker} type="file" accept="image/*" multiple hidden onChange={(e) => void addPictures(e.target.files)} />
+        <button
+          type="button"
+          onClick={() => picker.current?.click()}
+          disabled={busy || pictures.length >= MAX_PICTURES}
+          aria-label="แนบรูป"
+          title={`แนบรูป (สูงสุด ${MAX_PICTURES} รูป) เช่น นามบัตรหรือที่อยู่ลูกค้า`}
+          className="grid size-10 shrink-0 place-items-center rounded-lg border border-slate-300 text-lg text-slate-600 transition-colors hover:border-sky-500 hover:text-sky-700 disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:text-sky-300"
+        >
+          📎
+        </button>
         <input
           ref={input}
           value={mic.listening ? mic.interim : text}

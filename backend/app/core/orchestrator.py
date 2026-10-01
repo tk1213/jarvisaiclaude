@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.core.messages import Channel, InboundMessage
+from app.core.images import block as image_block
 from app.core.prompts import FEMALE_VOICE_HINT, MALE_VOICE_HINT, SYSTEM_PROMPT, VOICE_HINT
 from app.core.tools import TOOLS, ToolContext, run_tool
 from app.models import ChatMessage, Device, User
@@ -39,6 +40,9 @@ BETAS = [
 ]
 
 _THINKING = {"type": "adaptive", "block_binding": {"prefix_mismatch_behavior": "drop_block"}}
+
+
+IMAGE_PLACEHOLDER = {"type": "text", "text": "[รูปภาพที่ผู้ใช้ส่งมาในข้อความนี้ ไม่ได้เก็บไว้ในประวัติ]"}
 
 
 class CoreNotConfigured(RuntimeError):
@@ -98,7 +102,9 @@ class Orchestrator:
         )
         return [{"role": r.role, "content": r.content["blocks"]} for r in rows]
 
-    def _user_turn(self, text: str, channel: Channel, devices: str = "", male_voice: bool = False, back_to_female: bool = False) -> dict:
+    def _user_turn(
+        self, text: str, channel: Channel, devices: str = "", male_voice: bool = False, back_to_female: bool = False, images: list[str] | None = None
+    ) -> dict:
         # The current time (and channel hints) live in the user turn, not the system prompt, so the prefix stays stable.
         now = datetime.now(self.tz).strftime("%Y-%m-%d %H:%M (%A)")
         header = f"[เวลาปัจจุบัน: {now}]"
@@ -110,7 +116,10 @@ class Orchestrator:
             header += f"\n{MALE_VOICE_HINT}"
         elif back_to_female:
             header += f"\n{FEMALE_VOICE_HINT}"
-        return {"role": "user", "content": [{"type": "text", "text": f"{header}\n{text}"}]}
+        if images:
+            header += f"\n[ผู้ใช้แนบรูป {len(images)} รูปมากับข้อความนี้]"
+        pictures = [image_block(i) for i in images or []]
+        return {"role": "user", "content": [*pictures, {"type": "text", "text": f"{header}\n{text}"}]}
 
     def _call(self, messages: list[dict]):
         try:
@@ -148,7 +157,7 @@ class Orchestrator:
             for block in m["content"]
             if isinstance(block, dict)
         )
-        new_messages = [self._user_turn(msg.text, msg.channel, device_snapshot(db), msg.voice == "male", back_to_female)]
+        new_messages = [self._user_turn(msg.text, msg.channel, device_snapshot(db), msg.voice == "male", back_to_female, msg.images)]
         ctx = ToolContext(db=db, tuya=tuya, user=user, channel=msg.channel.value, turn_started=datetime.now(timezone.utc))
         calls: list[ToolCallRecord] = []
 
@@ -193,6 +202,14 @@ class Orchestrator:
         return CoreReply(session_id, text, calls)
 
     def _persist(self, db: Session, user: User, msg: InboundMessage, session_id: str, new_messages: list[dict]):
+        # Pictures are used for this turn only: storing them would re-send them (and their tokens) on every
+        # later turn. What JARVIS read from them is in its reply and tool calls; drop_block covers the changed prefix.
+        new_messages = [
+            {**m, "content": [IMAGE_PLACEHOLDER if isinstance(b, dict) and b.get("type") == "image" else b for b in m["content"]]}
+            if m["role"] == "user" and isinstance(m["content"], list)
+            else m
+            for m in new_messages
+        ]
         for m in new_messages:
             db.add(
                 ChatMessage(
