@@ -2,9 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, getToken } from './api'
 
 // Browser speech APIs: recognition (STT) is prefixed in Chrome/Edge and missing from lib.dom.
-interface RecognitionResult {
+interface RecognitionResult extends ArrayLike<{ transcript: string }> {
   isFinal: boolean
-  0: { transcript: string }
 }
 interface RecognitionEvent {
   resultIndex: number
@@ -14,6 +13,8 @@ export interface Recognition {
   lang: string
   interimResults: boolean
   continuous: boolean
+  maxAlternatives?: number
+  onstart?: (() => void) | null
   onresult: ((e: RecognitionEvent) => void) | null
   onerror: ((e: { error: string }) => void) | null
   onend: (() => void) | null

@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.core.messages import Channel, InboundMessage
-from app.core.prompts import SYSTEM_PROMPT, VOICE_HINT
+from app.core.prompts import MALE_VOICE_HINT, SYSTEM_PROMPT, VOICE_HINT
 from app.core.tools import TOOLS, ToolContext, run_tool
 from app.models import ChatMessage, Device, User
 
@@ -98,7 +98,7 @@ class Orchestrator:
         )
         return [{"role": r.role, "content": r.content["blocks"]} for r in rows]
 
-    def _user_turn(self, text: str, channel: Channel, devices: str = "") -> dict:
+    def _user_turn(self, text: str, channel: Channel, devices: str = "", male_voice: bool = False) -> dict:
         # The current time (and channel hints) live in the user turn, not the system prompt, so the prefix stays stable.
         now = datetime.now(self.tz).strftime("%Y-%m-%d %H:%M (%A)")
         header = f"[เวลาปัจจุบัน: {now}]"
@@ -106,6 +106,8 @@ class Orchestrator:
             header += f"\n[อุปกรณ์ในบ้านตอนนี้]\n{devices}"
         if channel == Channel.voice:
             header += f"\n{VOICE_HINT}"
+        if male_voice:
+            header += f"\n{MALE_VOICE_HINT}"
         return {"role": "user", "content": [{"type": "text", "text": f"{header}\n{text}"}]}
 
     def _call(self, messages: list[dict]):
@@ -136,7 +138,7 @@ class Orchestrator:
         session_id = msg.session_id or uuid.uuid4().hex
         history = self._history(db, user, session_id)
         # Attaching the device list saves Claude a get_devices round trip on most commands.
-        new_messages = [self._user_turn(msg.text, msg.channel, device_snapshot(db))]
+        new_messages = [self._user_turn(msg.text, msg.channel, device_snapshot(db), msg.voice == "male")]
         ctx = ToolContext(db=db, tuya=tuya, user=user, channel=msg.channel.value, turn_started=datetime.now(timezone.utc))
         calls: list[ToolCallRecord] = []
 

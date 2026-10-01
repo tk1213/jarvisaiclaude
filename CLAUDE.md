@@ -59,13 +59,15 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
 - Voice: Google Cloud TTS (`th-TH-Neural2-C`) first when `GOOGLE_TTS_API_KEY` is set, then Edge
   Premwadee, then text only. **Never fall back to a male voice** (Windows Pattara and Edge Niwat are male).
   The owner can pick "🔊 เสียงผู้ชาย" in the chat header (remembered per browser): Edge Niwat only, no fallback
-  to the other gender. Reply text still ends with ค่ะ.
+  to the other gender, a notch slower (`TTS_RATE_MALE`). With the male voice the dashboard sends `voice: "male"`
+  and the user turn asks for ครับ instead of ค่ะ (greeting "ครับ TK มีอะไรให้ช่วยไหมครับ"); LINE stays ค่ะ.
 - Hands-free: the 🎙 button keeps the mic waiting for "Hey Jarvis"/"เฮ้ จาร์วิส" only (the bare name doesn't
   wake it; sound-alikes "Hey David", "เฮ้ เดวิด/เดวิก/จาวิก", "เฮ้ยจาร์วิส", "hang/hen javis", "hen heavy" also wake it); JARVIS greets "ค่ะ TK มีอะไรให้ช่วยไหมคะ";
   waking turns on the "โหมดปลุก" switch for a continuous conversation; "Stop Jarvis" /
   "จาร์วิส หยุดการทำงาน" / "จบการทำงาน" goes back to waiting (mic stays on); 60 s of silence also sleeps. The wake phrase wakes it at once
   (first transcript that has it); a command is sent after 3.5 s without speech (`SETTLE_MS`), so pausing mid-sentence doesn't cut it short. One dashboard tab
-  listens at a time and JARVIS's own replies are ignored as commands.
+  listens at a time and JARVIS's own replies are ignored as commands. The listener also checks the recognizer's
+  alternative transcripts for the wake word, recycles an idle session every 45 s and restarts itself if it stops.
 - Locations JARVIS sends to LINE are always a Google Maps link (not a LINE location pin).
 - New devices are added only by the "อัปเดตอุปกรณ์" button, never automatically.
 - The IR air conditioner (Air PANASONIC via the Temp Smart Jarvis hub) can't report changes made in the

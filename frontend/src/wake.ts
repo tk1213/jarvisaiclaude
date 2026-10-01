@@ -15,6 +15,11 @@ export const IDLE_SLEEP_MS = 60_000
 // Act on what was said once the words stop for this long, so a pause mid-sentence doesn't cut a command short.
 const SETTLE_MS = 3_500
 const FATAL_ERRORS = new Set(['not-allowed', 'service-not-allowed', 'audio-capture'])
+// Chrome's recognition gets less accurate (and sometimes silently deaf) the longer one session runs,
+// so an idle session is replaced with a fresh one this often.
+const RECYCLE_MS = 45_000
+// Other spellings the recognizer considered: "Hey Jarvis" is often only its 2nd or 3rd guess in Thai.
+const ALTERNATIVES = 5
 
 /** The command in a sentence that contains the wake word ("เฮ้ จาร์วิส เปิดไฟ" → "เปิดไฟ"), or null without it. */
 export function findWakeWord(text: string): { command: string } | null {
@@ -59,6 +64,8 @@ class WakeListener {
   private greet = false
   private running = false
   private restartDelay = 100
+  private startedAt = 0
+  private watchdog: number | undefined
   private on: Handlers = { onCommand: () => {}, onAwake: () => {}, onGreet: () => {}, onHeard: () => {}, onFinal: () => {}, onTrouble: () => {}, onFatal: () => {} }
 
   /** Updated by the component on every render so commands go to the current conversation. */
@@ -70,9 +77,20 @@ class WakeListener {
     this.running = true
     if (this.awake) this.touch() // the idle clock counts from when JARVIS finished talking
     this.listen()
+    window.clearInterval(this.watchdog)
+    this.watchdog = window.setInterval(() => this.checkHealth(), 5_000)
+  }
+
+  /** Restart listening if it silently stopped, and recycle a long-running idle session. */
+  private checkHealth() {
+    if (!this.running) return
+    if (!this.rec) return this.listen()
+    const idle = !this.pending && !this.interim && !this.greet
+    if (idle && Date.now() - this.startedAt > RECYCLE_MS) this.dropSession()
   }
 
   pause() {
+    window.clearInterval(this.watchdog)
     window.clearTimeout(this.settle)
     this.greet = false
     this.pending = ''
@@ -104,6 +122,12 @@ class WakeListener {
     r.lang = LANG
     r.continuous = true
     r.interimResults = true
+    r.maxAlternatives = ALTERNATIVES
+    r.onstart = () => {
+      // Working again: the next hiccup retries quickly instead of after a long backoff.
+      this.restartDelay = 100
+      this.on.onTrouble(null)
+    }
     r.onresult = (e) => {
       if (this.rec !== r) return // a session dropped by flush()
       window.clearTimeout(this.settle)
@@ -117,7 +141,7 @@ class WakeListener {
       }
       this.interim = interim
       const said = `${this.pending} ${interim}`.trim()
-      const wake = this.awake ? null : findWakeWord(said)
+      const wake = this.awake ? null : (findWakeWord(said) ?? this.wakeInAlternatives(e))
       if (wake && !isEcho(said)) {
         // Wake at once, on the first transcript that has the wake word: Chrome's final version of the
         // same words is often spelled differently ("เฮ จ๋าวิด") and would no longer match.
@@ -163,6 +187,7 @@ class WakeListener {
       if (this.running) window.setTimeout(() => this.listen(), this.restartDelay)
     }
     this.rec = r
+    this.startedAt = Date.now()
     try {
       r.start()
     } catch (err) {
@@ -172,6 +197,18 @@ class WakeListener {
       this.restartDelay = Math.min(this.restartDelay * 2, 10_000)
       if (this.running) window.setTimeout(() => this.listen(), this.restartDelay)
     }
+  }
+
+  /** The wake word in the recognizer's other guesses for the newest result, when its best guess missed it. */
+  private wakeInAlternatives(e: { resultIndex: number; results: ArrayLike<ArrayLike<{ transcript: string }>> }): { command: string } | null {
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const res = e.results[i]
+      for (let a = 1; a < res.length; a++) {
+        const found = findWakeWord(res[a].transcript)
+        if (found) return found
+      }
+    }
+    return null
   }
 
   /** Speech worth acting on before Chrome finalizes it: anything while awake, the wake word, or a stop phrase. */

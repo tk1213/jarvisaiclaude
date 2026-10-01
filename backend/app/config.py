@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     # The dashboard can switch to a male voice (Edge only; Google has no Thai male neural voice set up here).
     tts_voice_male: str = "th-TH-NiwatNeural"
     tts_pitch_male: str = "+0Hz"
+    tts_rate_male: str = "-18%"  # a notch slower than the female voice
     tts_number_rate: str = "-30%"  # numbers are read at this (slower) speed so they're easy to catch
     # Google Cloud Text-to-Speech, used first when a key is set (Edge stays as the fallback).
     # TTS_RATE and TTS_NUMBER_RATE apply to it too; pitch is in semitones (-20..20).

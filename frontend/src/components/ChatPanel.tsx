@@ -25,7 +25,7 @@ const TOOL_LABELS: Record<string, string> = {
   list_documents: 'ดูเอกสาร',
 }
 
-const GREETING = 'ค่ะ TK มีอะไรให้ช่วยไหมคะ'
+const GREETING = { female: 'ค่ะ TK มีอะไรให้ช่วยไหมคะ', male: 'ครับ TK มีอะไรให้ช่วยไหมครับ' }
 
 const SUGGESTIONS = ['มีอุปกรณ์อะไรบ้าง', 'ปลั๊ก 1 ใช้ไฟกี่วัตต์', 'ปิดทุกอย่างให้หน่อย']
 
@@ -54,7 +54,7 @@ export function ChatPanel({ onDocuments }: { onDocuments?: () => void }) {
       setMessages((m) => [...m, { role: 'note', text }])
     },
     // Answer a bare "Hey Jarvis" locally, without a round trip to Claude.
-    () => say(GREETING),
+    () => say(GREETING[getVoiceGender()]),
   )
 
   useEffect(() => {
@@ -79,7 +79,7 @@ export function ChatPanel({ onDocuments }: { onDocuments?: () => void }) {
     setMessages((m) => [...m, { role: 'user', text: trimmed }])
     setBusy(true)
     try {
-      const res = await api.chat(trimmed, sessionId, channel)
+      const res = await api.chat(trimmed, sessionId, channel, getVoiceGender())
       setSessionId(res.session_id)
       setMessages((m) => [...m, { role: 'jarvis', text: res.reply, toolCalls: res.tool_calls }])
       if (res.tool_calls.some((t) => t.name.endsWith('_document'))) onDocuments?.()

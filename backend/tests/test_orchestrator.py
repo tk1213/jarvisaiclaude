@@ -301,3 +301,17 @@ def test_strict_tools_stay_under_the_union_limit():
         return own + sum(unions(v) for v in schema.values())
 
     assert sum(unions(t["input_schema"]) for t in TOOLS if t.get("strict")) <= 16
+
+
+def test_male_voice_asks_for_krub(home):
+    from app.core.messages import Channel, InboundMessage
+    from app.core.prompts import MALE_VOICE_HINT
+
+    db, tuya, user, _ = home
+    fake = FakeClaude([message([text("ได้ครับ TK")], "end_turn"), message([text("ได้ค่ะ TK")], "end_turn")])
+    orch = make(fake)
+    orch.handle(db, tuya, user, InboundMessage(user_id=user.id, channel=Channel.voice, text="สวัสดี", voice="male"))
+    orch.handle(db, tuya, user, InboundMessage(user_id=user.id, channel=Channel.voice, text="สวัสดี"))
+    turns = [r["messages"][-1]["content"][0]["text"] for r in fake.requests]
+    assert MALE_VOICE_HINT in turns[0] and MALE_VOICE_HINT not in turns[1]
+    assert fake.requests[0]["system"] == fake.requests[1]["system"] == SYSTEM_PROMPT
