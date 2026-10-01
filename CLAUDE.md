@@ -77,6 +77,7 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
   alternative transcripts for the wake word, recycles an idle session every 45 s and restarts itself if it stops.
 - LINE quick replies: none on ordinary answers; only "OK" / "Cancel" under a reply whose turn made a document draft
   (`prepare_document`). OK = confirm (`issue_document`), Cancel = `cancel_document` (status "cancelled", can't be issued).
+  The dashboard chat shows the same two buttons under its latest reply when that reply made a draft (`CONFIRM_CHOICES` in ChatPanel).
 - Locations JARVIS sends to LINE are always a Google Maps link (not a LINE location pin).
 - Pictures (customer name cards/addresses for documents): LINE keeps an image message silently for the user's next
   text (max 4, 10 min, `_pending_images` in `app/api/line.py`); the dashboard's 📎 button sends up to 4 with the message.

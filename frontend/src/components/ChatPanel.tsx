@@ -61,8 +61,12 @@ const TOOL_LABELS: Record<string, string> = {
   last_order: 'ดูออเดอร์ล่าสุด',
   prepare_document: 'ร่างเอกสาร',
   issue_document: 'ออกเอกสาร',
+  cancel_document: 'ยกเลิกเอกสาร',
   list_documents: 'ดูเอกสาร',
 }
+
+// The answers offered under a document draft (the same buttons as on LINE).
+const CONFIRM_CHOICES = ['OK', 'Cancel']
 
 const GREETING = { female: 'ค่ะ TK มีอะไรให้ช่วยไหมคะ', male: 'ครับ TK มีอะไรให้ช่วยไหมครับ' }
 
@@ -204,6 +208,9 @@ export function ChatPanel({ onDocuments, page = 'home' }: { onDocuments?: () => 
           ? 'โหมดปลุก: ฟังอยู่ พูดคำสั่งได้เลย ("Stop Jarvis" เพื่อพัก)'
           : 'ไมค์รอคำว่า "Hey Jarvis" / "เฮ้ จาร์วิส"'
   const listeningLive = wake.awake && !busy && !speaking
+  // OK / Cancel only under the latest reply, and only when that reply made a document draft.
+  const last = messages[messages.length - 1]
+  const awaitingConfirm = !busy && last?.role === 'jarvis' && !!last.toolCalls?.some((t) => t.ok && t.name === 'prepare_document')
 
   function quiet() {
     stopSpeaking()
@@ -356,6 +363,24 @@ export function ChatPanel({ onDocuments, page = 'home' }: { onDocuments?: () => 
               </div>
             </div>
           ),
+        )}
+
+        {awaitingConfirm && (
+          <div className="flex gap-2">
+            {CONFIRM_CHOICES.map((choice) => (
+              <button
+                key={choice}
+                onClick={() => void send(choice)}
+                className={`rounded-full px-5 py-1.5 text-sm font-medium transition-colors ${
+                  choice === 'OK'
+                    ? 'bg-sky-600 text-white hover:bg-sky-700'
+                    : 'border border-slate-300 text-slate-700 hover:border-red-400 hover:text-red-700 dark:border-slate-700 dark:text-slate-200 dark:hover:text-red-300'
+                }`}
+              >
+                {choice}
+              </button>
+            ))}
+          </div>
         )}
 
         {wake.micOn && wake.speakingToJarvis && !busy && (

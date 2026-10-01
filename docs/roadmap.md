@@ -24,7 +24,7 @@
   - แก้ชื่อ/ห้องบนการ์ด, ปุ่มอัปเดตอุปกรณ์พร้อมสรุป, ป้ายเตือนสิทธิ์ Read
   - คุมแอร์ผ่านรีโมท IR (Dashboard + tool `control_air_conditioner`), อ่านอุณหภูมิ/ความชื้นจากตัวรีโมท IR
 - [x] LINE OA (Messaging API webhook + Flex Message)
-  - `POST /line/webhook` ตรวจลายเซ็น, ตอบผ่าน reply API (push เมื่อ token หมดอายุ), การ์ด Flex บอกสถานะอุปกรณ์ที่สั่ง, ปุ่ม OK / Cancel ใต้สรุปร่างเอกสารเท่านั้น
+  - `POST /line/webhook` ตรวจลายเซ็น, ตอบผ่าน reply API (push เมื่อ token หมดอายุ), การ์ด Flex บอกสถานะอุปกรณ์ที่สั่ง, ปุ่ม OK / Cancel ใต้สรุปร่างเอกสารเท่านั้น (Dashboard ก็มีปุ่มเดียวกัน)
   - ตอบเฉพาะบัญชี LINE ที่เชื่อมด้วยรหัส 6 หลักจาก Dashboard, คุยต่อเนื่องจนเงียบ 30 นาที
   - URL สาธารณะผ่าน Cloudflare Tunnel (`tunnel.bat`)
   - tool `send_to_line`: สั่งด้วยเสียง/แชทให้ส่งข่าว ราคาทอง แผนที่ (ลิงก์ Google Maps) หรือรูปเข้า LINE ของตัวเอง
