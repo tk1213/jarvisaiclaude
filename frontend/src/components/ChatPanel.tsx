@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { api, type ToolCall } from '../api'
 import { chime, useWakeWord } from '../wake'
-import { setVoiceEngine, speak, stopSpeaking, sttSupported, useMissingThaiVoice, usesServerVoice, useSpeechRecognition } from '../voice'
+import { getVoiceGender, setVoiceEngine, setVoiceGender, speak, stopSpeaking, sttSupported, useMissingThaiVoice, useSpeechRecognition, usesServerVoice, type VoiceGender } from '../voice'
 
 interface Message {
   // 'note': a local status line (JARVIS woke up / went to sleep), never sent anywhere.
@@ -37,6 +37,7 @@ export function ChatPanel({ onDocuments }: { onDocuments?: () => void }) {
   const [busy, setBusy] = useState(false)
   const [speaking, setSpeaking] = useState(false)
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null)
+  const [voiceGender, setGender] = useState<VoiceGender>(getVoiceGender)
   const bottom = useRef<HTMLDivElement>(null)
   const mic = useSpeechRecognition((heard) => void send(heard, 'voice'))
   const missingThaiVoice = useMissingThaiVoice()
@@ -188,6 +189,17 @@ export function ChatPanel({ onDocuments }: { onDocuments?: () => void }) {
               </button>
             </>
           )}
+          <button
+            onClick={() => {
+              const next = voiceGender === 'female' ? 'male' : 'female'
+              setVoiceGender(next)
+              setGender(next)
+            }}
+            title="เลือกเสียงที่จาร์วิสใช้ตอบ"
+            className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 hover:text-slate-900 dark:bg-slate-800 dark:text-slate-300 dark:hover:text-white"
+          >
+            {voiceGender === 'female' ? '🔊 เสียงผู้หญิง' : '🔊 เสียงผู้ชาย'}
+          </button>
           {speaking && (
             <button onClick={quiet} className="text-sm text-sky-700 hover:text-sky-900 dark:text-sky-300 dark:hover:text-sky-100">
               หยุดพูด
@@ -274,7 +286,7 @@ export function ChatPanel({ onDocuments }: { onDocuments?: () => void }) {
 
       {voiceNotice && (
         <div role="status" className="flex items-start gap-2 border-t border-slate-200 px-4 py-2 text-xs text-amber-800 dark:border-slate-800 dark:text-amber-300">
-          <p className="flex-1">เสียงผู้หญิงจาก server ใช้ไม่ได้ ({voiceNotice}) คำตอบจึงแสดงเป็นข้อความอย่างเดียว ลองปิดแล้วเปิด start.bat ใหม่</p>
+          <p className="flex-1">เสียง{voiceGender === 'female' ? 'ผู้หญิง' : 'ผู้ชาย'}จาก server ใช้ไม่ได้ ({voiceNotice}) คำตอบจึงแสดงเป็นข้อความอย่างเดียว ลองปิดแล้วเปิด start.bat ใหม่</p>
           <button onClick={() => setVoiceNotice(null)} aria-label="ปิดข้อความ" className="shrink-0 hover:text-amber-950 dark:hover:text-amber-100">
             ✕
           </button>

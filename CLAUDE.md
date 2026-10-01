@@ -58,6 +58,8 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
 - Replies write numbers as digits (24.6 °C, 72%); the voice reads numbers slower (`TTS_NUMBER_RATE`).
 - Voice: Google Cloud TTS (`th-TH-Neural2-C`) first when `GOOGLE_TTS_API_KEY` is set, then Edge
   Premwadee, then text only. **Never fall back to a male voice** (Windows Pattara and Edge Niwat are male).
+  The owner can pick "🔊 เสียงผู้ชาย" in the chat header (remembered per browser): Edge Niwat only, no fallback
+  to the other gender. Reply text still ends with ค่ะ.
 - Hands-free: the 🎙 button keeps the mic waiting for "Hey Jarvis"/"เฮ้ จาร์วิส" only (the bare name doesn't
   wake it; sound-alikes "Hey David", "เฮ้ เดวิด/เดวิก/จาวิก", "เฮ้ยจาร์วิส", "hang/hen javis", "hen heavy" also wake it); JARVIS greets "ค่ะ TK มีอะไรให้ช่วยไหมคะ";
   waking turns on the "โหมดปลุก" switch for a continuous conversation; "Stop Jarvis" /
