@@ -191,7 +191,8 @@ def test_chat_endpoint(client, owner_headers, monkeypatch):
     r = client.post("/core/chat", json={"text": "สวัสดี"}, headers=owner_headers)
     assert r.status_code == 200
     body = r.json()
-    assert body["reply"] == "สวัสดีครับ" and body["session_id"] and body["tool_calls"] == []
+    assert body["reply"] == "สวัสดีค่ะ"  # the female voice never says ครับ
+    assert body["session_id"] and body["tool_calls"] == []
 
 
 def test_voice_channel_asks_for_a_speakable_reply(client, owner_headers, monkeypatch):
@@ -315,3 +316,28 @@ def test_male_voice_asks_for_krub(home):
     turns = [r["messages"][-1]["content"][0]["text"] for r in fake.requests]
     assert MALE_VOICE_HINT in turns[0] and MALE_VOICE_HINT not in turns[1]
     assert fake.requests[0]["system"] == fake.requests[1]["system"] == SYSTEM_PROMPT
+
+
+def test_switching_back_to_female_voice_asks_for_ka(home):
+    from app.core.messages import Channel, InboundMessage
+    from app.core.prompts import FEMALE_VOICE_HINT, MALE_VOICE_HINT
+
+    db, tuya, user, _ = home
+    fake = FakeClaude([message([text(t)], "end_turn") for t in ("ได้ครับ TK", "ได้ค่ะ TK", "ได้ค่ะ TK")])
+    orch = make(fake)
+    first = orch.handle(db, tuya, user, InboundMessage(user_id=user.id, channel=Channel.voice, text="a", voice="male"))
+    sid = first.session_id
+    orch.handle(db, tuya, user, InboundMessage(user_id=user.id, channel=Channel.voice, session_id=sid, text="b"))
+    fresh = orch.handle(db, tuya, user, InboundMessage(user_id=user.id, channel=Channel.voice, text="c"))
+    turns = [r["messages"][-1]["content"][0]["text"] for r in fake.requests]
+    assert MALE_VOICE_HINT in turns[0] and FEMALE_VOICE_HINT in turns[1]
+    assert FEMALE_VOICE_HINT not in turns[2] and fresh.text == "ได้ค่ะ TK"  # a new conversation needs no reminder
+
+
+def test_match_voice():
+    from app.core.prompts import match_voice
+
+    assert match_voice("เปิดปลั๊ก 2 แล้วค่ะ TK มีอะไรอีกไหมคะ", "male") == "เปิดปลั๊ก 2 แล้วครับ TK มีอะไรอีกไหมครับ"
+    assert match_voice("ได้คะแนน 9 คะ", "male") == "ได้คะแนน 9 ครับ"  # คะ inside a word stays
+    assert match_voice("เปิดแล้วครับ TK", "female") == "เปิดแล้วค่ะ TK"
+    assert match_voice("เปิดแล้วค่ะ TK", "female") == "เปิดแล้วค่ะ TK"

@@ -62,7 +62,8 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
   Premwadee, then text only. **Never fall back to a male voice** (Windows Pattara and Edge Niwat are male).
   The owner can pick "🔊 เสียงผู้ชาย" in the chat header (remembered per browser): Edge Niwat only, no fallback
   to the other gender, a notch slower (`TTS_RATE_MALE`). With the male voice the dashboard sends `voice: "male"`
-  and the user turn asks for ครับ instead of ค่ะ (greeting "ครับ TK มีอะไรให้ช่วยไหมครับ"); LINE stays ค่ะ.
+  and the user turn asks for ครับ instead of ค่ะ (greeting "ครับ TK มีอะไรให้ช่วยไหมครับ"); switching back to female adds a
+  reminder to use ค่ะ, and `match_voice()` fixes the particle in dashboard replies either way. LINE stays ค่ะ.
 - Hands-free: the 🎙 button keeps the mic waiting for "Hey Jarvis"/"เฮ้ จาร์วิส" only (the bare name doesn't
   wake it; sound-alikes "Hey David", "เฮ้ เดวิด/เดวิก/จาวิก", "เฮ้ยจาร์วิส", "hang/hen javis", "hen heavy", "เพลงจาร์วิส" also wake it); JARVIS greets "ค่ะ TK มีอะไรให้ช่วยไหมคะ";
   waking turns on the "โหมดปลุก" switch for a continuous conversation; "Stop Jarvis" /
