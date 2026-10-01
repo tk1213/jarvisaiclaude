@@ -98,6 +98,30 @@ class FlowAccountClient:
             self.token_store.save(*self._token)
         return self._token[0]
 
+    def list_products(self) -> list[dict]:
+        """Every product in the FlowAccount account (paged GET /products)."""
+        products: list[dict] = []
+        for page in range(1, 101):
+            r = self._get(f"{self.base_url}/products", params={"currentPage": page, "pageSize": 100})
+            body = _json(r)
+            if r.status_code >= 400 or body.get("status") is False:
+                raise FlowAccountError(f"ดึงรายการสินค้าจาก FlowAccount ไม่ได้ ({r.status_code}): {body.get('message') or r.text[:300]}")
+            data = body.get("data") or {}
+            batch = data.get("list") or []
+            products += batch
+            if not batch or len(products) >= int(data.get("total") or 0):
+                break
+        return products
+
+    def _get(self, url: str, params: dict) -> httpx.Response:
+        try:
+            r = self.http.get(url, params=params, headers={"Authorization": f"Bearer {self._access_token()}"})
+            if r.status_code == 401:
+                r = self.http.get(url, params=params, headers={"Authorization": f"Bearer {self._access_token(refresh=True)}"})
+            return r
+        except httpx.HTTPError as e:
+            raise FlowAccountError(f"ติดต่อ FlowAccount ไม่ได้ ({e.__class__.__name__}: {e})") from None
+
     def create_document(self, doc_type: str, payload: dict) -> IssuedDocument:
         path = DOC_PATHS[doc_type]
         r = self._send(f"{self.base_url}{path}", json=payload, headers={"Authorization": f"Bearer {self._access_token()}"})
@@ -128,6 +152,16 @@ class MockFlowAccountClient:
 
     _counter = itertools.count(1)
     PREFIX = {"quotation": "QT", "billing_note": "BL", "tax_invoice": "IV", "receipt": "RE"}
+
+    def list_products(self) -> list[dict]:
+        return [
+            {"id": "m1", "code": "DC-G100", "name": "โช๊คประตู GUTE ขนาด 1 เมตร", "unitName": "ตัว", "sellPrice": 1200, "sellVatType": 3, "type": 3},
+            {"id": "m2", "code": "DC-G120", "name": "โช๊คประตู GUTE ขนาด 1.2 เมตร", "unitName": "ตัว", "sellPrice": 1400, "sellVatType": 3, "type": 3},
+            {"id": "m3", "code": "DC-G150", "name": "โช๊คประตู GUTE ขนาด 1.5 เมตร", "unitName": "ตัว", "sellPrice": 1650, "sellVatType": 3, "type": 3},
+            {"id": "m4", "code": "DC-T120", "name": "โช๊คประตู Top ขนาด 1.2 เมตร", "unitName": "ตัว", "sellPrice": 1100, "sellVatType": 3, "type": 3},
+            {"id": "m5", "code": "DC-T150", "name": "โช๊คประตู Top ขนาด 1.5 เมตร", "unitName": "ตัว", "sellPrice": 1350, "sellVatType": 3, "type": 3},
+            {"id": "m6", "code": "SV-INST", "name": "ค่าบริการติดตั้ง", "unitName": "งาน", "sellPrice": 500, "sellVatType": 3, "type": 1},
+        ]
 
     def create_document(self, doc_type: str, payload: dict) -> IssuedDocument:
         n = next(self._counter)

@@ -20,6 +20,12 @@ const TOOL_LABELS: Record<string, string> = {
   web_search: 'ค้นเว็บ',
   send_to_line: 'ส่งเข้า LINE',
   find_customers: 'ค้นลูกค้า',
+  find_products: 'ค้นสินค้า',
+  save_product_set: 'บันทึกชุดสินค้า',
+  get_product_set: 'ใช้ชุดสินค้า',
+  list_product_sets: 'ดูชุดสินค้า',
+  delete_product_set: 'ลบชุดสินค้า',
+  last_order: 'ดูออเดอร์ล่าสุด',
   prepare_document: 'ร่างเอกสาร',
   issue_document: 'ออกเอกสาร',
   list_documents: 'ดูเอกสาร',
@@ -82,7 +88,7 @@ export function ChatPanel({ onDocuments }: { onDocuments?: () => void }) {
       const res = await api.chat(trimmed, sessionId, channel, getVoiceGender())
       setSessionId(res.session_id)
       setMessages((m) => [...m, { role: 'jarvis', text: res.reply, toolCalls: res.tool_calls }])
-      if (res.tool_calls.some((t) => t.name.endsWith('_document'))) onDocuments?.()
+      if (res.tool_calls.some((t) => t.name.endsWith('_document') || t.name.endsWith('_product_set'))) onDocuments?.()
       // A spoken question gets a spoken answer.
       if (channel === 'voice') {
         setSpeaking(true)

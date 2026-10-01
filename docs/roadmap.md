@@ -41,6 +41,7 @@
   - บันทึกทุกเอกสารใน `documents_log` (ใคร/ช่องทางไหน) และแสดง "เอกสารล่าสุด" บน Dashboard
 - [x] Persona / System Prompt แบบเลขา (ขั้นตอนสรุป-ยืนยัน, ห้ามเดาข้อมูลลูกค้า/ราคา)
 - [x] Long-term memory เบื้องต้น (จำลูกค้าประจำใน `contacts`, ค้นด้วย `find_customers`)
+- [x] รายการสินค้าจาก FlowAccount (`find_products`), ชุดสินค้าที่ตั้งชื่อได้ (`save/get_product_set`), "เหมือนครั้งก่อน" (`last_order`)
 
 ## เฟส 3: ยกระดับความเป็นธรรมชาติ (2-3 สัปดาห์)
 
