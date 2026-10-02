@@ -398,6 +398,31 @@ python -m app.scripts.tuya_check scenes
   วาง 3 ไฟล์กลับ, ย้าย Cloudflare tunnel ด้วย `cloudflared.exe service uninstall` ที่เครื่องเก่าและ
   `service install <token>` ที่เครื่องใหม่) อย่าเปิด `start.bat` สองเครื่องพร้อมกัน
 
+### ย้ายไปมินิพีซี Ubuntu Desktop 24.04
+
+`install-ubuntu.sh` ติดตั้งทุกอย่างจากโฟลเดอร์สำรอง (ที่มี `jarvis-code.bundle`, `.env`, `jarvis.db`, `catalog.db`)
+
+1. ติดตั้ง Ubuntu Desktop 24.04 LTS (ทำ USB ด้วย Rufus, เลือก Erase disk, Timezone Bangkok)
+2. ก๊อปโฟลเดอร์สำรองล่าสุดและ `install-ubuntu.sh` ใส่ USB เสียบที่มินิพีซี
+3. เปิด Terminal (Ctrl+Alt+T) แล้วสั่ง (แก้ `<USB>` และ `<วันที่>` ตามจริง หรือลากโฟลเดอร์มาวางในหน้าต่าง):
+   ```bash
+   bash "/media/$USER/<USB>/install-ubuntu.sh" "/media/$USER/<USB>/<วันที่>"
+   ```
+4. สคริปต์จะ:
+   - ลง git, Python, Node.js 22, Chrome และ cloudflared
+   - เอาโค้ดจาก bundle และดึงล่าสุดจาก GitHub ถ้าทำได้
+   - วาง 3 ไฟล์ข้อมูล (ไม่เขียนทับของที่มีอยู่) และตั้ง `BACKUP_DIR=~/JarvisClaudeBackup`
+   - build หน้าเว็บ
+   - ตั้ง systemd service `jarvis` ให้เปิดเองทุกครั้งที่เปิดเครื่อง
+   - ตั้ง cron สำรองวันละครั้ง (เที่ยงวัน และ 10 นาทีหลังเปิดเครื่อง)
+   - ปิดการหลับ และให้ Chrome เปิด Dashboard ตอนเข้าเครื่อง
+5. ทำตามที่สคริปต์บอกตอนจบ: ย้าย Cloudflare tunnel (`cloudflared.exe service uninstall` ที่ Windows,
+   `sudo cloudflared service install <token>` ที่ Ubuntu), เปิด Automatic Login, ตั้ง BIOS ให้เปิดเครื่องเองเมื่อไฟกลับมา
+
+รันซ้ำได้ปลอดภัย ขั้นที่ทำแล้วจะข้าม บน Ubuntu ใช้ `journalctl -u jarvis -f` ดู log และหลัง `git pull`
+สั่ง `cd ~/jarvisclaude/frontend && npm run build && sudo systemctl restart jarvis` (แทนการปิดเปิด `start.bat`)
+ถ้าขึ้น error `$'\r': command not found` แปลว่าไฟล์ถูกแปลงเป็นแบบ Windows ให้สั่ง `sed -i 's/\r$//' install-ubuntu.sh` แล้วรันใหม่
+
 ## ความปลอดภัย
 
 - endpoint ที่สั่งอุปกรณ์จำกัด 30 ครั้ง/นาที/ผู้ใช้ และ login จำกัด 5 ครั้ง/นาที ต่อ IP+username (ปรับได้ใน `.env`) เกินแล้วได้ `429`
