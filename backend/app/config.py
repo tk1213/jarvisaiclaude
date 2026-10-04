@@ -78,6 +78,12 @@ class Settings(BaseSettings):
     flowaccount_scope: str = "flowaccount-api"
     # Products and product sets live in their own file, easy to open with DB Browser for SQLite.
     catalog_database_url: str = "sqlite:///./data/flowaccount/catalog.db"
+    # Income/expense records for the Account page, also a file of their own.
+    account_database_url: str = "sqlite:///./data/account/account.db"
+    # Printed at the top of the sales/purchase tax reports (รายงานภาษีขาย/ภาษีซื้อ).
+    company_name: str = ""
+    company_tax_id: str = ""
+    company_branch: str = "สำนักงานใหญ่"
 
     # Daily backup (backup.bat / app.scripts.backup): one folder per day, the newest BACKUP_KEEP_DAYS are kept.
     backup_dir: str = r"D:\JarvisClaudeBackup"

@@ -6,6 +6,7 @@ from cryptography.fernet import Fernet
 _db_dir = tempfile.mkdtemp()
 os.environ["DATABASE_URL"] = f"sqlite:///{_db_dir}/test.db"
 os.environ["CATALOG_DATABASE_URL"] = f"sqlite:///{_db_dir}/catalog/catalog.db"
+os.environ["ACCOUNT_DATABASE_URL"] = f"sqlite:///{_db_dir}/account/account.db"
 os.environ["JWT_SECRET"] = "test-secret-that-is-at-least-32-bytes-long"
 os.environ["ENCRYPTION_KEY"] = Fernet.generate_key().decode()
 os.environ["TUYA_MODE"] = "mock"
@@ -18,8 +19,8 @@ Settings.model_config["env_file"] = None
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app import catalog_models  # noqa: E402,F401  (register catalog tables)
-from app.db import Base, CatalogBase, catalog_engine, engine  # noqa: E402
+from app import account_models, catalog_models  # noqa: E402,F401  (register catalog and account tables)
+from app.db import AccountBase, Base, CatalogBase, account_engine, catalog_engine, engine  # noqa: E402
 from app.integrations.tuya import get_tuya_client  # noqa: E402
 from app.main import app  # noqa: E402
 from app.ratelimit import limiter  # noqa: E402
@@ -31,6 +32,8 @@ def fresh_state():
     Base.metadata.create_all(engine)
     CatalogBase.metadata.drop_all(catalog_engine)
     CatalogBase.metadata.create_all(catalog_engine)
+    AccountBase.metadata.drop_all(account_engine)
+    AccountBase.metadata.create_all(account_engine)
     get_tuya_client.cache_clear()
     limiter.reset()
     yield

@@ -95,6 +95,13 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
 - Ubuntu: `install-ubuntu.sh <backup folder>` sets up a Ubuntu Desktop 24.04 mini PC from a backup (bundle + .env + DBs,
   never overwriting existing data): apt packages, Node 22, Chrome, cloudflared, `jarvis.service` (systemd, port 8765),
   cron backups, no sleep, Chrome autostart. Idempotent. `.gitattributes` keeps `*.sh` LF.
+- Account page (💰, admin only until the user-permission page lands): `app/services/accounting.py`, `app/api/account.py`,
+  `account_models.py` in a separate SQLite file `backend/data/account/account.db` (`ACCOUNT_DATABASE_URL`, `AccountSession`),
+  amounts in satang. Income = FlowAccount `/tax-invoices` + `/cash-invoices`, expenses = `/expenses` (not purchase orders),
+  read daily in live mode or by the button; imported rows keep FlowAccount's amounts (only category/payee type/excluded/claimable
+  change). Monthly summary: ภ.พ.30 with excess input VAT carried forward, ภ.ง.ด.3 (person) / ภ.ง.ด.53 (company), Excel tax reports
+  (openpyxl, `COMPANY_NAME`/`COMPANY_TAX_ID`/`COMPANY_BRANCH`). Claimable input VAT needs the seller's 13-digit tax ID.
+  Next: per-user permissions (admin sets each user's pages; Account access view-only or add-only), then receipt photos and voice.
 - New devices are added only by the "อัปเดตอุปกรณ์" button, never automatically.
 - The IR air conditioner (Air PANASONIC via the Temp Smart Jarvis hub) can't report changes made in the
   Tuya app or with its physical remote; the dashboard/JARVIS side is the source of truth.

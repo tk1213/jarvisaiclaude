@@ -40,7 +40,7 @@ def test_backup_has_everything_needed_to_restore(setup, tmp_path):
         db.commit()
     folder, problems = backup_mod.backup(root, keep=15, today=date(2026, 10, 1))
     assert problems == [] and folder == root / "2026-10-01"
-    assert sorted(p.name for p in folder.iterdir()) == [".env", "backup-ok.txt", "catalog.db", "jarvis-code.bundle", "jarvis.db", "อ่านก่อน.txt"]
+    assert sorted(p.name for p in folder.iterdir()) == [".env", "account.db", "backup-ok.txt", "catalog.db", "jarvis-code.bundle", "jarvis.db", "อ่านก่อน.txt"]
     assert (folder / ".env").read_text() == "ANTHROPIC_API_KEY=x\n"
     assert sqlite3.connect(folder / "jarvis.db").execute("select username from users").fetchall() == [("tk",)]
     readme = (folder / "อ่านก่อน.txt").read_text(encoding="utf-8-sig")

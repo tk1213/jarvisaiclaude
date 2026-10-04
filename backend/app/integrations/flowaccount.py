@@ -19,6 +19,9 @@ DOC_PATHS = {
     "tax_invoice": "/tax-invoices",
     "receipt": "/receipts",
 }
+# Documents read back for the Account page: sales tax invoices (incl. cash sales) and expenses.
+INCOME_PATHS = ("/tax-invoices", "/cash-invoices")
+EXPENSE_PATH = "/expenses"
 
 
 class FlowAccountError(RuntimeError):
@@ -100,18 +103,25 @@ class FlowAccountClient:
 
     def list_products(self) -> list[dict]:
         """Every product in the FlowAccount account (paged GET /products)."""
-        products: list[dict] = []
-        for page in range(1, 101):
-            r = self._get(f"{self.base_url}/products", params={"currentPage": page, "pageSize": 100})
+        return self._list("/products", "รายการสินค้า", page_size=100)
+
+    def list_documents(self, path: str) -> list[dict]:
+        """Every document of one kind, e.g. "/tax-invoices" or "/expenses" (FlowAccount allows 200 per page)."""
+        return self._list(path, f"เอกสาร {path}", page_size=200)
+
+    def _list(self, path: str, what: str, page_size: int) -> list[dict]:
+        rows: list[dict] = []
+        for page in range(1, 201):
+            r = self._get(f"{self.base_url}{path}", params={"currentPage": page, "pageSize": page_size})
             body = _json(r)
             if r.status_code >= 400 or body.get("status") is False:
-                raise FlowAccountError(f"ดึงรายการสินค้าจาก FlowAccount ไม่ได้ ({r.status_code}): {body.get('message') or r.text[:300]}")
+                raise FlowAccountError(f"ดึง{what}จาก FlowAccount ไม่ได้ ({r.status_code}): {body.get('message') or r.text[:300]}")
             data = body.get("data") or {}
             batch = data.get("list") or []
-            products += batch
-            if not batch or len(products) >= int(data.get("total") or 0):
+            rows += batch
+            if not batch or len(rows) >= int(data.get("total") or 0):
                 break
-        return products
+        return rows
 
     def _get(self, url: str, params: dict) -> httpx.Response:
         try:
@@ -162,6 +172,29 @@ class MockFlowAccountClient:
             {"id": "m5", "code": "DC-T150", "name": "โช๊คประตู Top ขนาด 1.5 เมตร", "unitName": "ตัว", "sellPrice": 1350, "sellVatType": 3, "type": 3},
             {"id": "m6", "code": "SV-INST", "name": "ค่าบริการติดตั้ง", "unitName": "งาน", "sellPrice": 500, "sellVatType": 3, "type": 1},
         ]
+
+    def list_documents(self, path: str) -> list[dict]:
+        """A few made-up documents in the current month, so the Account page can be tried without an account."""
+        from datetime import date
+
+        day = date.today().replace(day=1).isoformat()
+        samples = {
+            "/tax-invoices": [
+                {"recordId": 7001, "documentSerial": "IV-MOCK-0001", "publishedOn": day, "contactName": "บริษัท ทดสอบ จำกัด", "contactTaxId": "0105555555555",
+                 "contactBranch": "สำนักงานใหญ่", "contactGroup": 3, "subTotal": 10000, "totalAfterDiscount": 10000, "isVat": True, "vatAmount": 700,
+                 "grandTotal": 10700, "documentWithholdingTaxPercentage": 3, "documentWithholdingTaxAmount": 300, "statusString": "Approved"},
+            ],
+            "/cash-invoices": [
+                {"recordId": 7101, "documentSerial": "CA-MOCK-0001", "publishedOn": day, "contactName": "ร้าน ตัวอย่าง", "contactTaxId": "",
+                 "contactGroup": 1, "subTotal": 2000, "totalAfterDiscount": 2000, "isVat": True, "vatAmount": 140, "grandTotal": 2140, "statusString": "Approved"},
+            ],
+            "/expenses": [
+                {"recordId": 8001, "documentSerial": "EXP-MOCK-0001", "publishedOn": day, "contactName": "บริษัท ผู้ขาย จำกัด", "contactTaxId": "0105666666666",
+                 "contactGroup": 3, "subTotal": 3000, "totalAfterDiscount": 3000, "isVat": True, "vatAmount": 210, "grandTotal": 3210,
+                 "documentWithholdingTaxPercentage": 3, "documentWithholdingTaxAmount": 90, "remarks": "ค่าบริการขนส่ง", "statusString": "Approved"},
+            ],
+        }
+        return samples.get(path, [])
 
     def create_document(self, doc_type: str, payload: dict) -> IssuedDocument:
         n = next(self._counter)
