@@ -2,6 +2,7 @@
 
     python -m app.scripts.flowaccount_check              # settings + get an access token
     python -m app.scripts.flowaccount_check quotation    # also create a small test quotation (use the sandbox!)
+    python -m app.scripts.flowaccount_check account      # read tax invoices and expenses the way the Account page does (read-only)
 """
 
 import json
@@ -10,7 +11,7 @@ from datetime import date
 
 from app.config import get_settings
 from app.db import init_db
-from app.integrations.flowaccount import FlowAccountClient, FlowAccountError, get_flowaccount_client
+from app.integrations.flowaccount import EXPENSE_PATH, INCOME_PATHS, FlowAccountClient, FlowAccountError, get_flowaccount_client
 
 
 def main(argv: list[str]) -> int:
@@ -63,6 +64,28 @@ def main(argv: list[str]) -> int:
             return 1
         print(f"✓ quotation created: {doc.serial or '(no serial)'} recordId={doc.record_id}")
         print(json.dumps(doc.raw, ensure_ascii=False, indent=2)[:1500])
+    if argv[:1] == ["account"]:
+        # Read-only: shows what the Account page would import, and the fields/statuses FlowAccount really sends.
+        from app.services.accounting import _fa_entry, baht
+
+        for kind, path in [("income", p) for p in INCOME_PATHS] + [("expense", EXPENSE_PATH)]:
+            try:
+                docs = client.list_documents(path)
+            except FlowAccountError as e:
+                print(f"✗ {path}: {e}")
+                continue
+            statuses = sorted({str(d.get("statusString") or d.get("status") or "-") for d in docs})
+            print(f"\n✓ {path}: {len(docs)} documents, statuses: {', '.join(statuses) or '-'}")
+            if docs:
+                print("  fields:", ", ".join(sorted(docs[0])))
+            for d in docs[:5]:
+                e = _fa_entry(kind, path, d)
+                if e is None:
+                    print(f"  ? skipped (no date/id): {json.dumps(d, ensure_ascii=False)[:200]}")
+                    continue
+                void = " [ยกเลิก: ไม่นับ]" if e["void"] else ""
+                print(f"  {e['entry_date']} {e['doc_no']:<16} {e['party'][:30]:<30} ก่อน VAT {baht(e['base_satang']):>12,.2f}  VAT {baht(e['vat_satang']):>10,.2f}"
+                      f"  หัก ณ ที่จ่าย {baht(e['wht_satang']):>9,.2f}  สถานะ {e['external_status'] or '-'}{void}")
     return 0
 
 

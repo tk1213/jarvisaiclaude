@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, getToken, setToken, type User } from './api'
+import { Account } from './components/Account'
 import { Catalog } from './components/Catalog'
 import { ChatPanel } from './components/ChatPanel'
 import { DeviceCard } from './components/DeviceCard'
@@ -10,15 +11,17 @@ import { Scenes } from './components/Scenes'
 import { powerCode } from './readings'
 import { useDevices, type LinkState } from './useDevices'
 
-type Page = 'home' | 'flowaccount'
-const PAGES: { id: Page; label: string }[] = [
+type Page = 'home' | 'flowaccount' | 'account'
+const PAGES: { id: Page; label: string; adminOnly?: boolean }[] = [
   { id: 'home', label: '🏠 บ้าน' },
   { id: 'flowaccount', label: '📄 FlowAccount' },
+  { id: 'account', label: '💰 Account', adminOnly: true },
 ]
 
-/** The page from the address (#flowaccount), so a refresh or bookmark lands on the same page. */
+/** The page from the address (#flowaccount, #account), so a refresh or bookmark lands on the same page. */
 function pageFromHash(): Page {
-  return location.hash === '#flowaccount' ? 'flowaccount' : 'home'
+  const page = location.hash.slice(1)
+  return page === 'flowaccount' || page === 'account' ? page : 'home'
 }
 
 const LINK_LABEL: Record<LinkState, { text: string; dot: string }> = {
@@ -63,7 +66,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   }, [])
 
   function go(next: Page) {
-    history.replaceState(null, '', next === 'home' ? location.pathname : '#flowaccount')
+    history.replaceState(null, '', next === 'home' ? location.pathname : `#${next}`)
     setPage(next)
   }
 
@@ -138,7 +141,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       </header>
 
       <nav className="-mt-2 flex gap-1 border-b border-slate-200 dark:border-slate-800">
-        {PAGES.map((p) => (
+        {PAGES.filter((p) => !p.adminOnly || user?.is_admin).map((p) => (
           <button
             key={p.id}
             onClick={() => go(p.id)}
@@ -152,61 +155,71 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         ))}
       </nav>
 
-      <div className="grid flex-1 gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
-        {page === 'flowaccount' ? (
-          <main className="space-y-6">
-            <h2 className="text-lg font-semibold">เอกสารและสินค้า FlowAccount</h2>
-            <Documents refreshKey={documentsVersion} />
-            <Catalog refreshKey={documentsVersion} />
-          </main>
+      {page === 'account' ? (
+        user?.is_admin ? (
+          <Account />
         ) : (
-          <main className="space-y-5">
-            <div className="flex items-baseline justify-between">
-              <h2 className="text-lg font-semibold">อุปกรณ์ในบ้าน</h2>
-              <p className="text-sm text-slate-500">
-                {devices.length} เครื่อง · เปิดอยู่ {onCount}
-              </p>
-            </div>
-
-            {shownError && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-300">{shownError}</p>}
-            {syncNote && (
-              <p role="status" className="flex items-start justify-between gap-3 rounded-lg bg-sky-50 p-3 text-sm text-sky-900 dark:bg-sky-950/50 dark:text-sky-200">
-                {syncNote}
-                <button onClick={() => setSyncNote(null)} aria-label="ปิด" className="text-sky-700 dark:text-sky-300">
-                  ✕
-                </button>
-              </p>
-            )}
-
-            {devices.length === 0 && !shownError ? (
-              <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-500 dark:border-slate-700">
-                ยังไม่มีอุปกรณ์ในระบบ กด "อัปเดตอุปกรณ์" ด้านบน
+          <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
+            {user ? 'หน้านี้สำหรับผู้ดูแลระบบ (admin) เท่านั้น' : 'กำลังโหลด…'}
+          </p>
+        )
+      ) : (
+        <div className="grid flex-1 gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
+          {page === 'flowaccount' ? (
+            <main className="space-y-6">
+              <h2 className="text-lg font-semibold">เอกสารและสินค้า FlowAccount</h2>
+              <Documents refreshKey={documentsVersion} />
+              <Catalog refreshKey={documentsVersion} />
+            </main>
+          ) : (
+            <main className="space-y-5">
+              <div className="flex items-baseline justify-between">
+                <h2 className="text-lg font-semibold">อุปกรณ์ในบ้าน</h2>
+                <p className="text-sm text-slate-500">
+                  {devices.length} เครื่อง · เปิดอยู่ {onCount}
+                </p>
               </div>
-            ) : (
-              <div className="space-y-6">
-                {groups
-                  .filter(([, list]) => list.length > 0)
-                  .map(([room, list]) => (
-                    <section key={room ?? '-'} className="space-y-3">
-                      {rooms.length > 0 && <h3 className="text-sm font-medium text-slate-500">{room ?? 'ยังไม่ระบุห้อง'}</h3>}
-                      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                        {list.map((d) => (
-                          <DeviceCard key={d.id} device={d} canControl={canControl} rooms={rooms} onUpdate={upsert} />
-                        ))}
-                      </div>
-                    </section>
-                  ))}
-              </div>
-            )}
 
-            <Scenes canControl={canControl} />
-          </main>
-        )}
+              {shownError && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-300">{shownError}</p>}
+              {syncNote && (
+                <p role="status" className="flex items-start justify-between gap-3 rounded-lg bg-sky-50 p-3 text-sm text-sky-900 dark:bg-sky-950/50 dark:text-sky-200">
+                  {syncNote}
+                  <button onClick={() => setSyncNote(null)} aria-label="ปิด" className="text-sky-700 dark:text-sky-300">
+                    ✕
+                  </button>
+                </p>
+              )}
 
-        <aside className="lg:sticky lg:top-5 lg:h-[calc(100vh-7rem)]">
-          <ChatPanel page={page} onDocuments={() => setDocumentsVersion((v) => v + 1)} />
-        </aside>
-      </div>
+              {devices.length === 0 && !shownError ? (
+                <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-500 dark:border-slate-700">
+                  ยังไม่มีอุปกรณ์ในระบบ กด "อัปเดตอุปกรณ์" ด้านบน
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {groups
+                    .filter(([, list]) => list.length > 0)
+                    .map(([room, list]) => (
+                      <section key={room ?? '-'} className="space-y-3">
+                        {rooms.length > 0 && <h3 className="text-sm font-medium text-slate-500">{room ?? 'ยังไม่ระบุห้อง'}</h3>}
+                        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                          {list.map((d) => (
+                            <DeviceCard key={d.id} device={d} canControl={canControl} rooms={rooms} onUpdate={upsert} />
+                          ))}
+                        </div>
+                      </section>
+                    ))}
+                </div>
+              )}
+
+              <Scenes canControl={canControl} />
+            </main>
+          )}
+
+          <aside className="lg:sticky lg:top-5 lg:h-[calc(100vh-7rem)]">
+            <ChatPanel page={page} onDocuments={() => setDocumentsVersion((v) => v + 1)} />
+          </aside>
+        </div>
+      )}
     </div>
   )
 }

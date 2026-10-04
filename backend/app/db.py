@@ -29,14 +29,21 @@ class CatalogBase(DeclarativeBase):
     """Tables of the separate FlowAccount catalog database (products, product sets)."""
 
 
-def _catalog_engine(url: str):
+class AccountBase(DeclarativeBase):
+    """Tables of the separate accounting database (income and expense records for tax)."""
+
+
+def _file_engine(url: str):
+    """An engine for a database in its own SQLite file, creating the folder it lives in."""
     if url.startswith("sqlite:///") and not url.startswith("sqlite:///:memory:"):
         Path(url.removeprefix("sqlite:///")).parent.mkdir(parents=True, exist_ok=True)
     return _make_engine(url)
 
 
-catalog_engine = _catalog_engine(get_settings().catalog_database_url)
+catalog_engine = _file_engine(get_settings().catalog_database_url)
 CatalogSession = sessionmaker(bind=catalog_engine, autoflush=False, expire_on_commit=False)
+account_engine = _file_engine(get_settings().account_database_url)
+AccountSession = sessionmaker(bind=account_engine, autoflush=False, expire_on_commit=False)
 
 
 def init_db() -> None:
@@ -45,6 +52,14 @@ def init_db() -> None:
     Base.metadata.create_all(engine)
     _add_missing_columns(Base, engine)
     init_catalog_db()
+    init_account_db()
+
+
+def init_account_db() -> None:
+    from app import account_models  # noqa: F401  (register tables)
+
+    AccountBase.metadata.create_all(account_engine)
+    _add_missing_columns(AccountBase, account_engine)
 
 
 def init_catalog_db() -> None:
@@ -109,6 +124,14 @@ def _add_missing_columns(base: type[DeclarativeBase], bind) -> None:
 
 def get_catalog_db() -> Iterator[Session]:
     db = CatalogSession()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def get_account_db() -> Iterator[Session]:
+    db = AccountSession()
     try:
         yield db
     finally:

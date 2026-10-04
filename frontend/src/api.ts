@@ -100,6 +100,20 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return res.status === 204 ? (undefined as T) : res.json()
 }
 
+/** Download a file the server makes (e.g. an Excel report) with the login token, saved under the server's file name. */
+export async function downloadFile(path: string, fallbackName: string): Promise<void> {
+  const token = getToken()
+  const res = await fetch(path, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+  if (!res.ok) throw new ApiError(res.status, `ดาวน์โหลดไม่สำเร็จ (HTTP ${res.status})`)
+  const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? fallbackName
+  const url = URL.createObjectURL(await res.blob())
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 10_000)
+}
+
 /** POST that returns raw bytes (e.g. audio) instead of JSON. */
 async function requestBlob(path: string, body: unknown): Promise<Blob> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -168,6 +182,62 @@ export interface ProductSetInput {
   items: Omit<ProductSetItem, 'list_price'>[]
 }
 
+export type EntryKind = 'income' | 'expense'
+
+export interface AccountEntry {
+  id: number
+  kind: EntryKind
+  date: string
+  doc_no: string
+  party: string
+  party_tax_id: string
+  party_branch: string
+  party_type: 'company' | 'person'
+  description: string
+  category: string
+  base: number
+  vat: number
+  total: number
+  wht_rate: number
+  wht: number
+  full_tax_invoice: boolean
+  excluded: boolean
+  source: 'manual' | 'flowaccount'
+  external_status: string
+  created_by: string
+}
+
+export type AccountEntryInput = Omit<AccountEntry, 'id' | 'total' | 'source' | 'external_status' | 'created_by' | 'vat' | 'wht'> & {
+  vat: number | null // null = 7% of base
+  wht: number | null // null = base × rate
+}
+
+export interface AccountSummary {
+  month: string
+  sales: number
+  output_vat: number
+  purchases: number
+  input_vat: number
+  unclaimable_vat: number
+  credit_brought_forward: number
+  vat_payable: number
+  credit_carried_forward: number
+  wht_pnd3: number
+  wht_pnd53: number
+  wht_credit: number
+  profit: number
+  income_count: number
+  expense_count: number
+  due: { pp30: string; pp30_efiling: string; pnd: string; pnd_efiling: string }
+}
+
+export interface AccountInfo {
+  flowaccount_mode: 'mock' | 'live'
+  last_sync: string | null
+  categories: string[]
+  company: { name: string; tax_id: string; branch: string }
+}
+
 export interface LineStatus {
   configured: boolean
   linked: boolean
@@ -197,6 +267,13 @@ export const api = {
   productSets: () => request<ProductSetRow[]>('GET', '/product-sets'),
   deleteProductSet: (id: number) => request<void>('DELETE', `/product-sets/${id}`),
   updateProductSet: (id: number, body: ProductSetInput) => request<ProductSetRow>('PUT', `/product-sets/${id}`, body),
+  accountInfo: () => request<AccountInfo>('GET', '/account/info'),
+  accountEntries: (kind: EntryKind, month: string) => request<AccountEntry[]>('GET', `/account/entries?kind=${kind}&month=${month}`),
+  addAccountEntry: (body: AccountEntryInput) => request<AccountEntry>('POST', '/account/entries', body),
+  editAccountEntry: (id: number, body: Partial<AccountEntryInput>) => request<AccountEntry>('PUT', `/account/entries/${id}`, body),
+  deleteAccountEntry: (id: number) => request<void>('DELETE', `/account/entries/${id}`),
+  syncAccount: () => request<{ added: number; updated: number; last_sync: string }>('POST', '/account/sync'),
+  accountSummary: (month: string) => request<AccountSummary>('GET', `/account/summary?month=${month}`),
   lineStatus: () => request<LineStatus>('GET', '/line/status'),
   lineLinkCode: () => request<{ code: string; expires_in: number }>('POST', '/line/link-code'),
   lineUnlink: () => request<void>('DELETE', '/line/link'),

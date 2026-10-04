@@ -84,21 +84,22 @@ else
   warn "ดึงโค้ดล่าสุดจาก GitHub ไม่ได้ (ใช้โค้ดจากไฟล์สำรอง) ภายหลังสั่ง: cd ~/jarvisclaude && git pull"
 fi
 
-restore() { # restore <file in backup> <destination>: never overwrites existing data
-  local from="$SRC/$1" to="$2"
+restore() { # restore <file in backup> <destination> [optional]: never overwrites existing data
+  local from="$SRC/$1" to="$2" optional="${3:-}"
   if [[ -e "$to" ]]; then
     ok "$1: มีอยู่แล้วที่ $to (ไม่เขียนทับ)"
   elif [[ -e "$from" ]]; then
     mkdir -p "$(dirname "$to")"
     cp "$from" "$to"
     ok "$1 -> $to"
-  else
+  elif [[ -z "$optional" ]]; then
     warn "ไม่มี $1 ในโฟลเดอร์สำรอง"
   fi
 }
 restore .env "$BACKEND/.env"
 restore jarvis.db "$BACKEND/jarvis.db"
 restore catalog.db "$BACKEND/data/flowaccount/catalog.db"
+restore account.db "$BACKEND/data/account/account.db" optional # backups made before the Account page have none
 chmod 600 "$BACKEND/.env" 2>/dev/null || true
 
 if [[ -f "$BACKEND/.env" ]]; then

@@ -2,17 +2,20 @@ import asyncio
 import contextlib
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import auth, catalog, core, devices, documents, line, voice, ws
+from app.api import account, auth, catalog, core, devices, documents, line, voice, ws
 from app.config import get_settings
-from app.db import SessionLocal, init_db
+from app.db import AccountSession, SessionLocal, init_db
+from app.integrations.flowaccount import get_flowaccount_client
 from app.integrations.tuya import TuyaError, build_pulsar_consumer, get_tuya_client
 from app.realtime import hub
+from app.services import accounting
 from app.services.devices import refresh_ir_acs
 
 logging.basicConfig(level=logging.INFO)
@@ -35,6 +38,28 @@ async def _poll_ir_acs(interval: int) -> None:
         await asyncio.sleep(interval)
 
 
+ACCOUNT_SYNC_HOURS = 24
+
+
+def _sync_account_if_due() -> None:
+    with AccountSession() as db:
+        synced = accounting.last_sync(db)
+        if synced and (datetime.now(timezone.utc) - synced).total_seconds() < ACCOUNT_SYNC_HOURS * 3600:
+            return
+        counts = accounting.sync_flowaccount(db, get_flowaccount_client())
+        log.info("Account: read FlowAccount documents (%s)", counts)
+
+
+async def _sync_account_daily() -> None:
+    """Keep the Account page's income/expenses current: FlowAccount is read once a day (checked hourly)."""
+    while True:
+        try:
+            await asyncio.to_thread(_sync_account_if_due)
+        except Exception:
+            log.exception("Account: FlowAccount sync failed (will retry in an hour)")
+        await asyncio.sleep(3600)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     s = get_settings()
@@ -54,6 +79,8 @@ async def lifespan(_: FastAPI):
         tasks.append(asyncio.create_task(consumer.run()))
     if s.tuya_mode == "live" and s.ir_ac_poll_seconds > 0:
         tasks.append(asyncio.create_task(_poll_ir_acs(s.ir_ac_poll_seconds)))
+    if s.flowaccount_mode == "live":
+        tasks.append(asyncio.create_task(_sync_account_daily()))
     yield
     hub.bind_loop(None)
     for task in tasks:
@@ -71,6 +98,7 @@ app.include_router(voice.router)
 app.include_router(line.router)
 app.include_router(documents.router)
 app.include_router(catalog.router)
+app.include_router(account.router)
 
 
 @app.exception_handler(TuyaError)

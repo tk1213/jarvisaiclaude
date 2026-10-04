@@ -142,7 +142,7 @@ def test_catalog_lives_in_its_own_file_and_old_sets_are_moved(tmp_path, monkeypa
         c.execute(text("CREATE TABLE product_set_items (id INTEGER PRIMARY KEY, set_id INTEGER, position INTEGER, product VARCHAR(256), quantity FLOAT, unit_price FLOAT, unit VARCHAR(32))"))
         c.execute(text("INSERT INTO product_sets VALUES (7, 'ชุด A', NULL, '2026-10-01 00:00:00')"))
         c.execute(text("INSERT INTO product_set_items VALUES (1, 7, 0, 'โช๊คประตู GUTE ขนาด 1 เมตร', 2, NULL, 'ตัว')"))
-    cat = db_module._catalog_engine(f"sqlite:///{tmp_path}/data/flowaccount/catalog.db")
+    cat = db_module._file_engine(f"sqlite:///{tmp_path}/data/flowaccount/catalog.db")
     monkeypatch.setattr(db_module, "engine", main)
     monkeypatch.setattr(db_module, "catalog_engine", cat)
 

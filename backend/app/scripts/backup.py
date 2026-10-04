@@ -95,7 +95,7 @@ def backup(root: Path, keep: int, auto: bool = False, today: date | None = None)
     else:
         problems.append(f"ไม่พบ {env}")
 
-    for name, url in (("jarvis.db", s.database_url), ("catalog.db", s.catalog_database_url)):
+    for name, url in (("jarvis.db", s.database_url), ("catalog.db", s.catalog_database_url), ("account.db", s.account_database_url)):
         path = sqlite_path(url)
         if path is None:
             notes.append(f"{name}: ฐานข้อมูลไม่ใช่ SQLite ({url.split(':', 1)[0]}) ต้องสำรองด้วยเครื่องมือของฐานข้อมูลนั้นเอง")
@@ -143,6 +143,7 @@ def _readme(day: str, commit: str, places: list[tuple[str, Path]], remarks: list
         "- .env        คีย์ลับทั้งหมด ห้ามส่งให้ใครหรือส่งทาง LINE/อีเมล",
         "- jarvis.db   ข้อมูลหลัก: ผู้ใช้ การเชื่อม LINE อุปกรณ์ ลูกค้า ประวัติเอกสารและแชท",
         "- catalog.db  สินค้าและชุดสินค้า FlowAccount (ชุด A/B/C หมายเหตุ ราคาพิเศษ)",
+        "- account.db  บัญชีรายรับ-รายจ่ายของหน้า Account (สำหรับสรุปภาษี)",
         "",
     ]
     if remarks:
@@ -170,9 +171,9 @@ def _readme(day: str, commit: str, places: list[tuple[str, Path]], remarks: list
         "   cd ..\\frontend",
         "   npm install",
         "   npm run build",
-        "3. ก๊อป .env, jarvis.db, catalog.db ไปไว้ที่เดียวกับข้อ 2 ของ \"กู้คืนแค่ข้อมูล\" ด้านบน",
+        "3. ก๊อป .env, jarvis.db, catalog.db, account.db ไปไว้ที่เดียวกับข้อ 2 ของ \"กู้คืนแค่ข้อมูล\" ด้านบน",
         "   (ถ้าโฟลเดอร์ใหม่ไม่ใช่ D:\\Claude\\jarvisclaude ให้วางในโฟลเดอร์ backend ของที่ใหม่แทน)",
-        "   (catalog.db อยู่ในโฟลเดอร์ backend\\data\\flowaccount ถ้ายังไม่มีโฟลเดอร์นี้ให้สร้างก่อน)",
+        "   (catalog.db อยู่ใน backend\\data\\flowaccount และ account.db อยู่ใน backend\\data\\account ถ้ายังไม่มีโฟลเดอร์ให้สร้างก่อน)",
         "4. ย้าย Cloudflare tunnel: เครื่องเก่ารัน cloudflared.exe service uninstall (Run as Administrator)",
         "   เครื่องใหม่รันคำสั่ง cloudflared.exe service install <token> จากหน้า Tunnels ใน Cloudflare Zero Trust",
         "5. ดับเบิลคลิก start.bat แล้วดับเบิลคลิก backup-schedule.bat เพื่อตั้งสำรองอัตโนมัติบนเครื่องใหม่",
