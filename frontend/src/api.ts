@@ -114,6 +114,14 @@ export async function downloadFile(path: string, fallbackName: string): Promise<
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
 }
 
+/** A file the server keeps (e.g. a slip picture), fetched with the login token for an object URL. */
+export async function fetchBlob(path: string): Promise<Blob> {
+  const token = getToken()
+  const res = await fetch(path, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+  if (!res.ok) throw new ApiError(res.status, `โหลดไม่สำเร็จ (HTTP ${res.status})`)
+  return res.blob()
+}
+
 /** POST that returns raw bytes (e.g. audio) instead of JSON. */
 async function requestBlob(path: string, body: unknown): Promise<Blob> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -231,6 +239,50 @@ export interface AccountSummary {
   due: { pp30: string; pp30_efiling: string; pnd: string; pnd_efiling: string }
 }
 
+export interface BankAccount {
+  id: number
+  bank: string
+  bank_name: string
+  nickname: string
+  account_no: string
+  label: string
+  opening: number
+  opening_date: string
+  is_default: boolean
+  balance: number
+}
+
+export type BankAccountInput = Pick<BankAccount, 'bank' | 'nickname' | 'account_no' | 'opening' | 'opening_date' | 'is_default'>
+
+export type PersonalKind = 'income' | 'expense' | 'transfer'
+
+export interface PersonalEntry {
+  id: number
+  kind: PersonalKind
+  date: string
+  time: string
+  amount: number
+  account_id: number
+  account: string
+  to_account_id: number | null
+  to_account: string
+  counterparty: string
+  note: string
+  ref_no: string
+  source: 'slip' | 'text' | 'manual'
+  has_slip: boolean
+}
+
+export type PersonalEntryInput = Pick<PersonalEntry, 'kind' | 'date' | 'time' | 'amount' | 'account_id' | 'to_account_id' | 'counterparty' | 'note'>
+
+export interface PersonalSummary {
+  month: string
+  accounts: { id: number; label: string; bank: string; bank_name: string; balance: number; month_in: number; month_out: number }[]
+  total: number
+  month_in: number
+  month_out: number
+}
+
 export interface AccountInfo {
   flowaccount_mode: 'mock' | 'live'
   last_sync: string | null
@@ -274,6 +326,17 @@ export const api = {
   deleteAccountEntry: (id: number) => request<void>('DELETE', `/account/entries/${id}`),
   syncAccount: () => request<{ added: number; updated: number; last_sync: string }>('POST', '/account/sync'),
   accountSummary: (month: string) => request<AccountSummary>('GET', `/account/summary?month=${month}`),
+  banks: () => request<{ code: string; name: string }[]>('GET', '/personal/banks'),
+  bankAccounts: () => request<BankAccount[]>('GET', '/personal/accounts'),
+  addBankAccount: (body: BankAccountInput) => request<BankAccount>('POST', '/personal/accounts', body),
+  editBankAccount: (id: number, body: BankAccountInput) => request<BankAccount>('PUT', `/personal/accounts/${id}`, body),
+  deleteBankAccount: (id: number) => request<void>('DELETE', `/personal/accounts/${id}`),
+  personalSummary: (month: string) => request<PersonalSummary>('GET', `/personal/summary?month=${month}`),
+  personalEntries: (kind: 'income' | 'expense', month: string, accountId?: number) =>
+    request<PersonalEntry[]>('GET', `/personal/entries?kind=${kind}&month=${month}${accountId ? `&account_id=${accountId}` : ''}`),
+  addPersonalEntry: (body: PersonalEntryInput) => request<PersonalEntry>('POST', '/personal/entries', body),
+  editPersonalEntry: (id: number, body: PersonalEntryInput) => request<PersonalEntry>('PUT', `/personal/entries/${id}`, body),
+  deletePersonalEntry: (id: number) => request<void>('DELETE', `/personal/entries/${id}`),
   lineStatus: () => request<LineStatus>('GET', '/line/status'),
   lineLinkCode: () => request<{ code: string; expires_in: number }>('POST', '/line/link-code'),
   lineUnlink: () => request<void>('DELETE', '/line/link'),

@@ -33,6 +33,10 @@ class AccountBase(DeclarativeBase):
     """Tables of the separate accounting database (income and expense records for tax)."""
 
 
+class PersonalBase(DeclarativeBase):
+    """Tables of the separate personal-money database (bank accounts, income/expense slips)."""
+
+
 def _file_engine(url: str):
     """An engine for a database in its own SQLite file, creating the folder it lives in."""
     if url.startswith("sqlite:///") and not url.startswith("sqlite:///:memory:"):
@@ -44,6 +48,8 @@ catalog_engine = _file_engine(get_settings().catalog_database_url)
 CatalogSession = sessionmaker(bind=catalog_engine, autoflush=False, expire_on_commit=False)
 account_engine = _file_engine(get_settings().account_database_url)
 AccountSession = sessionmaker(bind=account_engine, autoflush=False, expire_on_commit=False)
+personal_engine = _file_engine(get_settings().personal_database_url)
+PersonalSession = sessionmaker(bind=personal_engine, autoflush=False, expire_on_commit=False)
 
 
 def init_db() -> None:
@@ -53,6 +59,14 @@ def init_db() -> None:
     _add_missing_columns(Base, engine)
     init_catalog_db()
     init_account_db()
+    init_personal_db()
+
+
+def init_personal_db() -> None:
+    from app import personal_models  # noqa: F401  (register tables)
+
+    PersonalBase.metadata.create_all(personal_engine)
+    _add_missing_columns(PersonalBase, personal_engine)
 
 
 def init_account_db() -> None:
@@ -132,6 +146,14 @@ def get_catalog_db() -> Iterator[Session]:
 
 def get_account_db() -> Iterator[Session]:
     db = AccountSession()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def get_personal_db() -> Iterator[Session]:
+    db = PersonalSession()
     try:
         yield db
     finally:

@@ -4,6 +4,7 @@ Only LINE users linked to a JARVIS account are answered: the owner gets a 6-digi
 and sends it to the OA once. Anyone else who adds the OA can't reach the house.
 """
 
+import base64
 import json
 import logging
 import secrets
@@ -22,7 +23,7 @@ from app.config import get_settings
 from app.core import images as image_utils
 from app.core.messages import Channel, InboundMessage
 from app.core.orchestrator import CoreNotConfigured, get_orchestrator
-from app.db import SessionLocal, get_db
+from app.db import PersonalSession, SessionLocal, get_db
 from app.deps import get_current_user
 from app.integrations import line as line_integration
 from app.integrations.line import (
@@ -36,6 +37,8 @@ from app.integrations.line import (
 from app.integrations.tuya import TuyaError, get_tuya_client
 from app.models import ChatMessage, Device, User
 from app.ratelimit import limiter
+from app.services import personal
+from app.services.slip_reader import SlipReadError, read_slip
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["line"])
@@ -53,6 +56,8 @@ _seen: OrderedDict[str, None] = OrderedDict()  # webhook event ids already handl
 # name card first and then "ทำใบเสนอราคาชุด A ให้ลูกค้าในรูป".
 PENDING_IMAGE_SECONDS = 600
 _pending_images: dict[str, list[tuple[str, float]]] = {}  # LINE user id -> [(base64 JPEG, received at)]
+GROUP_NAME_SECONDS = 600
+_group_names: dict[str, tuple[str, float]] = {}  # LINE group id -> (name, read at)
 
 
 def _configured() -> bool:
@@ -145,8 +150,11 @@ def _already_seen(event_id: str | None) -> bool:
 
 def handle_event(event: dict) -> None:
     source = event.get("source") or {}
+    if source.get("type") == "group":
+        handle_group_event(event)
+        return
     if source.get("type") != "user":
-        return  # groups and rooms: JARVIS only works in a one-to-one chat
+        return  # rooms: JARVIS only works in a one-to-one chat and the slip groups
     line_user_id = source.get("userId")
     reply_token = event.get("replyToken")
     if not line_user_id or not reply_token:
@@ -283,3 +291,101 @@ def _ask_jarvis(db: Session, user: User, text: str, images: list[str] | None = N
     devices = [d for d in (db.get(Device, i) for i in sorted(i for i in ids if isinstance(i, int))) if d]
     # A fresh document draft waits for the owner's answer: offer OK / Cancel buttons (and only then).
     return reply_message(reply.text, devices, confirm_choices(reply.tool_calls))
+
+
+# --- Slip groups ("สลิปรายรับ" / "สลิปรายจ่าย") ---------------------------------------------------------
+
+
+def _group_name(client: LineClient, group_id: str) -> str:
+    now = time.monotonic()
+    with _lock:
+        cached = _group_names.get(group_id)
+    if cached and now - cached[1] < GROUP_NAME_SECONDS:
+        return cached[0]
+    name = client.group_name(group_id)
+    with _lock:
+        _group_names[group_id] = (name, now)
+    return name
+
+
+def group_kind(name: str) -> str | None:
+    """Which slip group this is, from its name: "income", "expense" or None (any other group)."""
+    if "รายรับ" in name:
+        return "income"
+    if "รายจ่าย" in name:
+        return "expense"
+    return None
+
+
+GROUP_HELP = (
+    "สวัสดีค่ะ TK กลุ่มนี้จาร์วิสจะบันทึก{word}ให้ในหน้า 💳 การเงินส่วนตัว\n"
+    "- ส่งรูปสลิปมาได้เลย\n"
+    "- หรือพิมพ์เอง เช่น \"{example}\" (ไม่บอกธนาคารจะใช้บัญชีหลัก)\n"
+    "- \"ลบล่าสุด\" ลบรายการล่าสุดของกลุ่มนี้ / \"ยอด\" ดูยอดคงเหลือ"
+)
+
+
+def handle_group_event(event: dict) -> None:
+    """A message in a LINE group. Only the slip groups answer, and only to linked admin accounts."""
+    source = event.get("source") or {}
+    group_id = source.get("groupId")
+    reply_token = event.get("replyToken")
+    if not group_id or not reply_token:
+        return
+    client = get_line_client()
+    try:
+        kind = group_kind(_group_name(client, group_id))
+    except LineError as e:
+        log.warning("could not read a LINE group's name: %s", e)
+        return
+    if event.get("type") == "join":
+        if kind is None:
+            text = "สวัสดีค่ะ จาร์วิสทำงานในกลุ่มชื่อ \"สลิปรายรับ\" หรือ \"สลิปรายจ่าย\" เท่านั้นนะคะ ส่วนเรื่องอื่นคุยกับจาร์วิสในแชทส่วนตัวได้เลยค่ะ"
+        elif kind == "income":
+            text = GROUP_HELP.format(word="รายรับ", example="ค่าจ้าง 5000 กสิกร")
+        else:
+            text = GROUP_HELP.format(word="รายจ่าย", example="ค่าข้าว 120 กสิกร")
+        _send_quietly(client, reply_token, group_id, text)
+        return
+    if kind is None or event.get("type") != "message":
+        return
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.line_user_id == source.get("userId"))) if source.get("userId") else None
+        if user is None or not user.is_admin:
+            return  # other members' chat in the group is not for JARVIS
+    message = event.get("message") or {}
+    if message.get("type") == "image":
+        text = _record_slip(client, group_id, kind, message)
+    elif message.get("type") == "text":
+        with PersonalSession() as db:
+            text = personal.handle_text(db, group_id, kind, message.get("text") or "")
+    else:
+        return
+    if text:
+        _send_quietly(client, reply_token, group_id, text)
+
+
+def _record_slip(client: LineClient, group_id: str, kind: str, message: dict) -> str:
+    try:
+        jpeg = image_utils.to_jpeg(client.get_content(message.get("id", "")))
+    except image_utils.ImageError:
+        return "เปิดรูปนี้ไม่ได้ค่ะ ลองส่งใหม่อีกครั้งนะคะ"
+    except LineError as e:
+        log.warning("could not download a slip from LINE: %s", e)
+        return "โหลดรูปจาก LINE ไม่ได้ค่ะ ลองส่งใหม่อีกครั้งนะคะ"
+    try:
+        slip = read_slip(jpeg)
+    except CoreNotConfigured:
+        return "จาร์วิสยังไม่ได้ตั้งค่า ANTHROPIC_API_KEY ค่ะ"
+    except (anthropic.APIError, SlipReadError) as e:
+        log.warning("could not read a slip: %s", e)
+        return "อ่านสลิปไม่ได้ค่ะ ลองส่งใหม่อีกครั้ง หรือพิมพ์เอง เช่น \"ค่าข้าว 120 กสิกร\""
+    with PersonalSession() as db:
+        return personal.record_slip(db, group_id, kind, slip, base64.b64decode(jpeg))
+
+
+def _send_quietly(client: LineClient, reply_token: str, to: str, text: str) -> None:
+    try:
+        client.send(reply_token, to, [text_message(text)])
+    except LineError:
+        log.exception("could not answer in a LINE group")

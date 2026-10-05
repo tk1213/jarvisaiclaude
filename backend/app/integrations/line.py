@@ -84,6 +84,16 @@ class LineClient:
             raise LineError(f"LINE content {r.status_code}: {r.text[:300]}")
         return r.content
 
+    def group_name(self, group_id: str) -> str:
+        """A LINE group's name (the bot must be in the group)."""
+        try:
+            r = self.http.get(f"/group/{group_id}/summary")
+        except httpx.HTTPError as e:
+            raise LineError(f"LINE group summary: {e.__class__.__name__} {e}") from None
+        if r.status_code >= 400:
+            raise LineError(f"LINE group summary {r.status_code}: {r.text[:300]}")
+        return r.json().get("groupName") or ""
+
     def show_loading(self, chat_id: str, seconds: int = 20) -> None:
         """The "..." typing animation while JARVIS thinks; purely cosmetic, so failures are ignored."""
         try:

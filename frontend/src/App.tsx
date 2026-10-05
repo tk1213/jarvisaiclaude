@@ -7,21 +7,23 @@ import { DeviceCard } from './components/DeviceCard'
 import { Documents } from './components/Documents'
 import { LineLink } from './components/LineLink'
 import { Login } from './components/Login'
+import { Personal } from './components/Personal'
 import { Scenes } from './components/Scenes'
 import { powerCode } from './readings'
 import { useDevices, type LinkState } from './useDevices'
 
-type Page = 'home' | 'flowaccount' | 'account'
+type Page = 'home' | 'flowaccount' | 'account' | 'personal'
 const PAGES: { id: Page; label: string; adminOnly?: boolean }[] = [
   { id: 'home', label: '🏠 บ้าน' },
   { id: 'flowaccount', label: '📄 FlowAccount' },
   { id: 'account', label: '💰 Account', adminOnly: true },
+  { id: 'personal', label: '💳 การเงินส่วนตัว', adminOnly: true },
 ]
 
-/** The page from the address (#flowaccount, #account), so a refresh or bookmark lands on the same page. */
+/** The page from the address (#flowaccount, #account, #personal), so a refresh or bookmark lands on the same page. */
 function pageFromHash(): Page {
   const page = location.hash.slice(1)
-  return page === 'flowaccount' || page === 'account' ? page : 'home'
+  return PAGES.find((p) => p.id === page)?.id ?? 'home'
 }
 
 const LINK_LABEL: Record<LinkState, { text: string; dot: string }> = {
@@ -140,13 +142,13 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         </div>
       </header>
 
-      <nav className="-mt-2 flex gap-1 border-b border-slate-200 dark:border-slate-800">
+      <nav className="-mt-2 flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800">
         {PAGES.filter((p) => !p.adminOnly || user?.is_admin).map((p) => (
           <button
             key={p.id}
             onClick={() => go(p.id)}
             aria-current={page === p.id ? 'page' : undefined}
-            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${
+            className={`-mb-px shrink-0 border-b-2 px-4 py-2 text-sm font-medium whitespace-nowrap ${
               page === p.id ? 'border-sky-600 text-sky-700 dark:text-sky-300' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
             }`}
           >
@@ -155,9 +157,13 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         ))}
       </nav>
 
-      {page === 'account' ? (
+      {page === 'account' || page === 'personal' ? (
         user?.is_admin ? (
-          <Account />
+          page === 'account' ? (
+            <Account />
+          ) : (
+            <Personal />
+          )
         ) : (
           <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
             {user ? 'หน้านี้สำหรับผู้ดูแลระบบ (admin) เท่านั้น' : 'กำลังโหลด…'}
