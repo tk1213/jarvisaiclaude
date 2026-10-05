@@ -142,7 +142,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         </div>
       </header>
 
-      <nav className="-mt-2 flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800">
+      <nav className="-mt-2 flex gap-1 overflow-x-auto [scrollbar-width:none] border-b border-slate-200 dark:border-slate-800">
         {PAGES.filter((p) => !p.adminOnly || user?.is_admin).map((p) => (
           <button
             key={p.id}
