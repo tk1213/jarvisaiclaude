@@ -7,6 +7,7 @@ import pytest
 from app.db import SessionLocal
 from app.models import User
 from app.scripts import backup as backup_mod
+from app.services import personal
 
 
 def git(*args, cwd):
@@ -38,9 +39,14 @@ def test_backup_has_everything_needed_to_restore(setup, tmp_path):
     with SessionLocal() as db:
         db.add(User(username="tk", password_hash="x"))
         db.commit()
+    slip = personal.slip_dir() / "2026-10" / "a.jpg"
+    slip.parent.mkdir(parents=True, exist_ok=True)
+    slip.write_bytes(b"slip")
     folder, problems = backup_mod.backup(root, keep=15, today=date(2026, 10, 1))
     assert problems == [] and folder == root / "2026-10-01"
-    assert sorted(p.name for p in folder.iterdir()) == [".env", "account.db", "backup-ok.txt", "catalog.db", "jarvis-code.bundle", "jarvis.db", "อ่านก่อน.txt"]
+    names = [".env", "account.db", "backup-ok.txt", "catalog.db", "jarvis-code.bundle", "jarvis.db", "personal-slips", "personal.db", "อ่านก่อน.txt"]
+    assert sorted(p.name for p in folder.iterdir()) == names
+    assert (folder / "personal-slips" / "2026-10" / "a.jpg").read_bytes() == b"slip"
     assert (folder / ".env").read_text() == "ANTHROPIC_API_KEY=x\n"
     assert sqlite3.connect(folder / "jarvis.db").execute("select username from users").fetchall() == [("tk",)]
     readme = (folder / "อ่านก่อน.txt").read_text(encoding="utf-8-sig")

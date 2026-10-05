@@ -24,6 +24,16 @@ class FakeLine:
     def __init__(self):
         self.sent: list[tuple[str, str, list[dict]]] = []
         self.loading: list[str] = []
+        self.groups: dict[str, str] = {}  # group id -> name
+        self.contents: dict[str, bytes] = {}  # message id -> picture
+
+    def group_name(self, group_id):
+        return self.groups.get(group_id, "ครอบครัว")
+
+    def get_content(self, message_id):
+        if message_id not in self.contents:
+            raise line_int.LineError("gone")
+        return self.contents[message_id]
 
     def send(self, reply_token, to, messages):
         self.sent.append((reply_token, to, messages))
@@ -42,6 +52,7 @@ def line(monkeypatch):
     line_api._codes.clear()
     line_api._fresh.clear()
     line_api._seen.clear()
+    line_api._group_names.clear()
     yield fake
     get_settings.cache_clear()
 

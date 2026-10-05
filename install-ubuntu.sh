@@ -90,7 +90,7 @@ restore() { # restore <file in backup> <destination> [optional]: never overwrite
     ok "$1: มีอยู่แล้วที่ $to (ไม่เขียนทับ)"
   elif [[ -e "$from" ]]; then
     mkdir -p "$(dirname "$to")"
-    cp "$from" "$to"
+    cp -r "$from" "$to"
     ok "$1 -> $to"
   elif [[ -z "$optional" ]]; then
     warn "ไม่มี $1 ในโฟลเดอร์สำรอง"
@@ -100,6 +100,8 @@ restore .env "$BACKEND/.env"
 restore jarvis.db "$BACKEND/jarvis.db"
 restore catalog.db "$BACKEND/data/flowaccount/catalog.db"
 restore account.db "$BACKEND/data/account/account.db" optional # backups made before the Account page have none
+restore personal.db "$BACKEND/data/personal/personal.db" optional
+restore personal-slips "$BACKEND/data/personal/slips" optional
 chmod 600 "$BACKEND/.env" 2>/dev/null || true
 
 if [[ -f "$BACKEND/.env" ]]; then

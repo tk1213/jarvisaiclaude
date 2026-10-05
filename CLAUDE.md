@@ -102,6 +102,12 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
   change). Monthly summary: ภ.พ.30 with excess input VAT carried forward, ภ.ง.ด.3 (person) / ภ.ง.ด.53 (company), Excel tax reports
   (openpyxl, `COMPANY_NAME`/`COMPANY_TAX_ID`/`COMPANY_BRANCH`). Claimable input VAT needs the seller's 13-digit tax ID.
   Next: per-user permissions (admin sets each user's pages; Account access view-only or add-only), then receipt photos and voice.
+- Personal money (💳 `#personal`, admin only): `app/services/personal.py`, `app/api/personal.py`, `personal_models.py` in
+  `backend/data/personal/personal.db` (`PERSONAL_DATABASE_URL`, `PersonalSession`), slip pictures in `PERSONAL_SLIP_DIR`; both are
+  in the backup. Balance = opening balance + entries on/after its date. LINE groups whose name has "รายรับ"/"รายจ่าย" record slips
+  (`app/services/slip_reader.py`, Claude JSON-schema output) and typed lines ("ค่าข้าว 120 กสิกร", no bank = default account); only
+  linked admins are answered, other group chat is ignored. Income matches the receiver side, expense the sender side; both sides
+  the owner's = transfer; duplicate reference = refused; unclear = numbered question. No expense categories yet.
 - New devices are added only by the "อัปเดตอุปกรณ์" button, never automatically.
 - The IR air conditioner (Air PANASONIC via the Temp Smart Jarvis hub) can't report changes made in the
   Tuya app or with its physical remote; the dashboard/JARVIS side is the source of truth.

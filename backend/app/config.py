@@ -80,6 +80,9 @@ class Settings(BaseSettings):
     catalog_database_url: str = "sqlite:///./data/flowaccount/catalog.db"
     # Income/expense records for the Account page, also a file of their own.
     account_database_url: str = "sqlite:///./data/account/account.db"
+    # Personal money (💳): bank accounts, income/expense from LINE slips, and the slip pictures.
+    personal_database_url: str = "sqlite:///./data/personal/personal.db"
+    personal_slip_dir: str = "./data/personal/slips"
     # Printed at the top of the sales/purchase tax reports (รายงานภาษีขาย/ภาษีซื้อ).
     company_name: str = ""
     company_tax_id: str = ""

@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import account, auth, catalog, core, devices, documents, line, voice, ws
+from app.api import account, auth, catalog, core, devices, documents, line, personal, voice, ws
 from app.config import get_settings
 from app.db import AccountSession, SessionLocal, init_db
 from app.integrations.flowaccount import get_flowaccount_client
@@ -99,6 +99,7 @@ app.include_router(line.router)
 app.include_router(documents.router)
 app.include_router(catalog.router)
 app.include_router(account.router)
+app.include_router(personal.router)
 
 
 @app.exception_handler(TuyaError)

@@ -1,5 +1,5 @@
 """Back up everything JARVIS can't re-create: the code (a git bundle, with the latest from GitHub), backend\\.env,
-the main database and the FlowAccount catalog. One folder per day under BACKUP_DIR; the newest BACKUP_KEEP_DAYS stay.
+the databases and the slip pictures of the personal-money page. One folder per day under BACKUP_DIR; the newest BACKUP_KEEP_DAYS stay.
 
     python -m app.scripts.backup          # back up now (replaces today's folder); backup.bat runs this
     python -m app.scripts.backup --auto   # the daily task: does nothing if today's backup is already done
@@ -22,6 +22,7 @@ BACKEND = Path(__file__).resolve().parents[2]
 REPO = BACKEND.parent
 BUNDLE = "jarvis-code.bundle"
 README = "อ่านก่อน.txt"
+SLIPS = "personal-slips"
 DONE = "backup-ok.txt"  # written last: a folder without it is incomplete
 DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -95,7 +96,13 @@ def backup(root: Path, keep: int, auto: bool = False, today: date | None = None)
     else:
         problems.append(f"ไม่พบ {env}")
 
-    for name, url in (("jarvis.db", s.database_url), ("catalog.db", s.catalog_database_url), ("account.db", s.account_database_url)):
+    databases = (
+        ("jarvis.db", s.database_url),
+        ("catalog.db", s.catalog_database_url),
+        ("account.db", s.account_database_url),
+        ("personal.db", s.personal_database_url),
+    )
+    for name, url in databases:
         path = sqlite_path(url)
         if path is None:
             notes.append(f"{name}: ฐานข้อมูลไม่ใช่ SQLite ({url.split(':', 1)[0]}) ต้องสำรองด้วยเครื่องมือของฐานข้อมูลนั้นเอง")
@@ -107,6 +114,15 @@ def backup(root: Path, keep: int, auto: bool = False, today: date | None = None)
                 places.append((name, path))
             except sqlite3.Error as e:
                 problems.append(f"สำรอง {name} ไม่ได้: {e}")
+
+    slips = Path(s.personal_slip_dir)
+    slips = slips if slips.is_absolute() else (BACKEND / slips).resolve()
+    if slips.is_dir():
+        try:
+            shutil.copytree(slips, work / SLIPS)
+            places.append((SLIPS, slips))
+        except OSError as e:
+            problems.append(f"สำรองรูปสลิปไม่ได้: {e}")
 
     commit = ""
     try:
@@ -144,6 +160,8 @@ def _readme(day: str, commit: str, places: list[tuple[str, Path]], remarks: list
         "- jarvis.db   ข้อมูลหลัก: ผู้ใช้ การเชื่อม LINE อุปกรณ์ ลูกค้า ประวัติเอกสารและแชท",
         "- catalog.db  สินค้าและชุดสินค้า FlowAccount (ชุด A/B/C หมายเหตุ ราคาพิเศษ)",
         "- account.db  บัญชีรายรับ-รายจ่ายของหน้า Account (สำหรับสรุปภาษี)",
+        "- personal.db การเงินส่วนตัว: บัญชีธนาคาร รายรับ รายจ่าย",
+        f"- {SLIPS}  รูปสลิปจากกลุ่ม LINE สลิปรายรับ/สลิปรายจ่าย (ทั้งโฟลเดอร์)",
         "",
     ]
     if remarks:
@@ -171,9 +189,10 @@ def _readme(day: str, commit: str, places: list[tuple[str, Path]], remarks: list
         "   cd ..\\frontend",
         "   npm install",
         "   npm run build",
-        "3. ก๊อป .env, jarvis.db, catalog.db, account.db ไปไว้ที่เดียวกับข้อ 2 ของ \"กู้คืนแค่ข้อมูล\" ด้านบน",
+        f"3. ก๊อป .env, jarvis.db, catalog.db, account.db, personal.db และโฟลเดอร์ {SLIPS} ไปไว้ที่เดียวกับข้อ 2 ของ \"กู้คืนแค่ข้อมูล\" ด้านบน",
         "   (ถ้าโฟลเดอร์ใหม่ไม่ใช่ D:\\Claude\\jarvisclaude ให้วางในโฟลเดอร์ backend ของที่ใหม่แทน)",
-        "   (catalog.db อยู่ใน backend\\data\\flowaccount และ account.db อยู่ใน backend\\data\\account ถ้ายังไม่มีโฟลเดอร์ให้สร้างก่อน)",
+        "   (catalog.db อยู่ใน backend\\data\\flowaccount, account.db อยู่ใน backend\\data\\account,",
+        "    personal.db อยู่ใน backend\\data\\personal และรูปสลิปคือ backend\\data\\personal\\slips ถ้ายังไม่มีโฟลเดอร์ให้สร้างก่อน)",
         "4. ย้าย Cloudflare tunnel: เครื่องเก่ารัน cloudflared.exe service uninstall (Run as Administrator)",
         "   เครื่องใหม่รันคำสั่ง cloudflared.exe service install <token> จากหน้า Tunnels ใน Cloudflare Zero Trust",
         "5. ดับเบิลคลิก start.bat แล้วดับเบิลคลิก backup-schedule.bat เพื่อตั้งสำรองอัตโนมัติบนเครื่องใหม่",
