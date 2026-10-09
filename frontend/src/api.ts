@@ -40,6 +40,19 @@ export interface ChatResponse {
   tool_calls: ToolCall[]
 }
 
+/** One line of the shared dashboard conversation, as /core/chat/current returns it. */
+export interface ChatLine {
+  role: 'user' | 'jarvis'
+  text: string
+  tool_calls: ToolCall[]
+  pictures: number
+}
+
+/** A turn another screen just had ({type: 'chat'}), or a "เริ่มใหม่" on another screen ({type: 'chat_reset'}). */
+export type ChatEvent =
+  | ({ type: 'chat'; origin: string; text: string; pictures: number } & ChatResponse)
+  | { type: 'chat_reset'; origin: string }
+
 export interface User {
   id: number
   username: string
@@ -311,8 +324,10 @@ export const api = {
   voiceConfig: () => request<VoiceConfig>('GET', '/voice/config'),
   tts: (text: string) => requestBlob('/voice/tts', { text }),
   voiceLastError: () => request<{ error: string | null }>('GET', '/voice/last-error'),
-  chat: (text: string, sessionId: string | null, channel: 'dashboard' | 'voice' = 'dashboard', voice: 'female' | 'male' = 'female', images: string[] = []) =>
-    request<ChatResponse>('POST', '/core/chat', { text, session_id: sessionId, channel, voice, images }),
+  chat: (text: string, clientId: string, channel: 'dashboard' | 'voice' = 'dashboard', voice: 'female' | 'male' = 'female', images: string[] = []) =>
+    request<ChatResponse>('POST', '/core/chat', { text, client_id: clientId, channel, voice, images }),
+  chatCurrent: () => request<{ session_id: string | null; messages: ChatLine[] }>('GET', '/core/chat/current'),
+  chatReset: (clientId: string) => request<void>('POST', '/core/chat/reset', { client_id: clientId }),
   documents: () => request<DocumentRow[]>('GET', '/documents?limit=100'),
   products: () => request<ProductRow[]>('GET', '/products'),
   syncProducts: () => request<ProductRow[]>('POST', '/products/sync'),

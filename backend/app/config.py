@@ -68,6 +68,8 @@ class Settings(BaseSettings):
     line_channel_access_token: str = ""
     # A LINE chat continues the same conversation until it's been quiet this long.
     line_session_idle_minutes: int = 30
+    # The dashboard chat is one conversation across all the owner's screens; it starts over after this long quiet.
+    dashboard_session_idle_minutes: int = 30
 
     # FlowAccount Open API (spec §4.3). "mock" issues fake documents so the flow can be tried without an account.
     flowaccount_mode: Literal["mock", "live"] = "mock"

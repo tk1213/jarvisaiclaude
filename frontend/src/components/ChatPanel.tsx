@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { api, type ToolCall } from '../api'
+import { api, type ChatEvent, type ChatLine, type ToolCall } from '../api'
+import { chatEvents } from '../useDevices'
 import { chime, useWakeWord } from '../wake'
 import {
   getVoiceGender,
@@ -21,6 +22,12 @@ interface Message {
   toolCalls?: ToolCall[]
   // Pictures sent with a user message (small JPEG data URLs), shown in its bubble.
   pictures?: string[]
+}
+
+/** A line of the shared conversation (loaded, or from another screen) as a bubble; its pictures stay on the screen that sent them. */
+function fromLine(line: Pick<ChatLine, 'role' | 'text' | 'pictures'> & { tool_calls?: ToolCall[] }): Message {
+  const text = line.pictures ? `${line.text}\n📎 แนบรูป ${line.pictures} รูป` : line.text
+  return { role: line.role, text, toolCalls: line.tool_calls?.length ? line.tool_calls : undefined }
 }
 
 const MAX_PICTURES = 4
@@ -87,7 +94,15 @@ const SET_SUGGESTIONS = ['A', 'B', 'C', 'D'].map((s) => `ออกใบเส�
  */
 export function ChatPanel({ onDocuments, page = 'home' }: { onDocuments?: () => void; page?: 'home' | 'flowaccount' }) {
   const [messages, setMessages] = useState<Message[]>([])
-  const [sessionId, setSessionId] = useState<string | null>(null)
+  // One conversation is shared by every screen the owner has open: this screen's id, and the conversation it shows.
+  const clientId = useRef(Math.random().toString(36).slice(2, 12)).current
+  const session = useRef<string | null>(null)
+  const sending = useRef(false)
+  // The dashboard passes a new callback on every render; the live-chat listener reads the latest one from here.
+  const documentsChanged = useRef(onDocuments)
+  useEffect(() => {
+    documentsChanged.current = onDocuments
+  }, [onDocuments])
   const [text, setText] = useState('')
   const input = useRef<HTMLInputElement>(null)
   // Pictures waiting to go with the next message.
@@ -124,6 +139,42 @@ export function ChatPanel({ onDocuments, page = 'home' }: { onDocuments?: () => 
   useEffect(() => stopSpeaking, [])
 
   useEffect(() => {
+    // Show the shared conversation on open and after the live stream reconnects (turns may have been missed).
+    const load = () => {
+      api.chatCurrent().then(
+        (c) => {
+          if (sending.current) return // our own reply is on its way and will bring the conversation up to date
+          session.current = c.session_id
+          setMessages(c.messages.map(fromLine))
+        },
+        () => {}, // the chat still works; it just starts empty
+      )
+    }
+    // Turns and "เริ่มใหม่" from the owner's other screens; this screen already shows its own.
+    const onChat = (e: Event) => {
+      const event = (e as CustomEvent<ChatEvent>).detail
+      if (event.origin === clientId) return
+      if (event.type === 'chat_reset') {
+        session.current = null
+        setMessages([])
+        return
+      }
+      const turn = [fromLine({ role: 'user', text: event.text, pictures: event.pictures }), fromLine({ role: 'jarvis', text: event.reply, pictures: 0, tool_calls: event.tool_calls })]
+      const fresh = session.current !== null && session.current !== event.session_id
+      session.current = event.session_id
+      setMessages((m) => (fresh ? turn : [...m, ...turn]))
+      if (event.tool_calls.some((t) => t.name.endsWith('_document') || t.name.includes('product_set'))) documentsChanged.current?.()
+    }
+    load()
+    chatEvents.addEventListener('resync', load)
+    chatEvents.addEventListener('chat', onChat)
+    return () => {
+      chatEvents.removeEventListener('resync', load)
+      chatEvents.removeEventListener('chat', onChat)
+    }
+  }, [clientId])
+
+  useEffect(() => {
     api
       .voiceConfig()
       .then((c) => setVoiceEngine(c.engine))
@@ -141,9 +192,14 @@ export function ChatPanel({ onDocuments, page = 'home' }: { onDocuments?: () => 
     setPictureError(null)
     setMessages((m) => [...m, { role: 'user', text: trimmed, pictures: attached.length ? attached : undefined }])
     setBusy(true)
+    sending.current = true
     try {
-      const res = await api.chat(trimmed, sessionId, channel, getVoiceGender(), attached)
-      setSessionId(res.session_id)
+      const res = await api.chat(trimmed, clientId, channel, getVoiceGender(), attached)
+      if (session.current !== null && session.current !== res.session_id) {
+        // The conversation went quiet or was restarted elsewhere: this turn begins a new one.
+        setMessages((m) => m.slice(-1))
+      }
+      session.current = res.session_id
       setMessages((m) => [...m, { role: 'jarvis', text: res.reply, toolCalls: res.tool_calls }])
       if (res.tool_calls.some((t) => t.name.endsWith('_document') || t.name.includes('product_set'))) onDocuments?.()
       // A spoken question gets a spoken answer.
@@ -158,6 +214,7 @@ export function ChatPanel({ onDocuments, page = 'home' }: { onDocuments?: () => 
     } catch (e) {
       setMessages((m) => [...m, { role: 'error', text: (e as Error).message }])
     } finally {
+      sending.current = false
       setBusy(false)
     }
   }
@@ -232,7 +289,8 @@ export function ChatPanel({ onDocuments, page = 'home' }: { onDocuments?: () => 
   function reset() {
     quiet()
     setMessages([])
-    setSessionId(null)
+    session.current = null
+    api.chatReset(clientId).catch(() => {}) // the other screens clear too
   }
 
   return (

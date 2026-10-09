@@ -71,6 +71,11 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
   to the other gender, a notch slower (`TTS_RATE_MALE`). With the male voice the dashboard sends `voice: "male"`
   and the user turn asks for ครับ instead of ค่ะ (greeting "ครับ TK มีอะไรให้ช่วยไหมครับ"); switching back to female adds a
   reminder to use ค่ะ, and `match_voice()` fixes the particle in dashboard replies either way. LINE stays ค่ะ.
+- Dashboard chat is one conversation across all the owner's screens: the server picks the session (`live_session` in
+  `app/api/core.py`, 30 min idle via `DASHBOARD_SESSION_IDLE_MINUTES`, "เริ่มใหม่" = `POST /core/chat/reset`), `GET
+  /core/chat/current` reloads it from the `display` part of `chat_sessions` rows (never sent to Claude), and each turn goes to
+  that user's other screens over `/ws/devices` (`hub.publish_to_user`; `client_id` keeps the sender from showing it twice).
+  Only the screen that asked speaks the reply. LINE stays a separate conversation.
 - Hands-free: the 🎙 button keeps the mic waiting for "Hey Jarvis"/"เฮ้ จาร์วิส" only (the bare name doesn't
   wake it; sound-alikes "Hey David", "เฮ้ เดวิด/เดวิก/จาวิก", "เฮ้ยจาร์วิส", "hang/hen javis", "hen heavy", "เพลงจาร์วิส" also wake it); JARVIS greets "ค่ะ TK มีอะไรให้ช่วยไหมคะ";
   waking turns on the "โหมดปลุก" switch for a continuous conversation; "Stop Jarvis" /

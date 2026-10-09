@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, deviceStreamUrl, getToken, type Device } from './api'
+import { api, deviceStreamUrl, getToken, type ChatEvent, type Device } from './api'
 
-type StreamEvent = { type: 'device'; device: Device } | { type: 'device_removed'; id: number }
+type StreamEvent = { type: 'device'; device: Device } | { type: 'device_removed'; id: number } | ChatEvent
+
+/**
+ * The same stream carries this user's dashboard chat; the chat panel listens here. 'resync' fires on every
+ * (re)connect, when turns from other screens may have been missed.
+ */
+export const chatEvents = new EventTarget()
 
 export type LinkState = 'connecting' | 'live' | 'offline'
 
@@ -44,11 +50,13 @@ export function useDevices() {
         retry.current = 0
         setLink('live')
         void reload() // catch anything that changed while disconnected
+        chatEvents.dispatchEvent(new Event('resync'))
       }
       ws.onmessage = (msg) => {
         const event = JSON.parse(msg.data) as StreamEvent
         if (event.type === 'device') upsert(event.device)
-        else setDevices((prev) => prev.filter((d) => d.id !== event.id))
+        else if (event.type === 'device_removed') setDevices((prev) => prev.filter((d) => d.id !== event.id))
+        else chatEvents.dispatchEvent(new CustomEvent<ChatEvent>('chat', { detail: event }))
       }
       ws.onclose = (e) => {
         setLink('offline')
