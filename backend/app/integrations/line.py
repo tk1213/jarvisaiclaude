@@ -116,16 +116,6 @@ def line_configured() -> bool:
     return bool(s.line_channel_secret and s.line_channel_access_token)
 
 
-def get_personal_line_client() -> LineClient:
-    """The "tk รับจ่าย" OA, which only records personal income and expenses."""
-    return _client_for(get_settings().line_personal_channel_access_token)
-
-
-def personal_line_configured() -> bool:
-    s = get_settings()
-    return bool(s.line_personal_channel_secret and s.line_personal_channel_access_token)
-
-
 def maps_link(query: str) -> str:
     return f"https://www.google.com/maps/search/?api=1&query={quote(query)}"
 

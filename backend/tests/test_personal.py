@@ -1,15 +1,11 @@
 import base64
-import hashlib
-import hmac
 import io
-import json
 from datetime import date
 
 import pytest
 from PIL import Image
 
 from app.api import line as line_api
-from app.config import get_settings
 from app.db import PersonalSession
 from app.personal_models import PersonalEntry
 from app.services import personal
@@ -335,7 +331,7 @@ def test_chat_typed_lines():
         assert personal.balance(db, a) == 100000 - 12000 - 30000 - 100000
         assert personal.balance(db, b) == 100000 + 500000 - 20000
         assert personal.handle_chat_text(db, "U1", "ลบล่าสุด").startswith("ลบรายการล่าสุด 200.00 บาท")
-        assert personal.handle_chat_text(db, "U1", "สวัสดี") == personal.CHAT_HELP
+        assert personal.handle_chat_text(db, "U1", "สวัสดี") is None
         assert "รายละเอียด" in personal.handle_chat_text(db, "U1", "จ่าย")
 
 
@@ -357,66 +353,43 @@ def test_transfers_count_per_account_but_not_in_month_totals():
         assert personal.list_entries(db, "expense", "2026-02", b.id) == []
 
 
-# --- LINE "tk รับจ่าย" -----------------------------------------------------------------------------------
-
-PERSONAL_SECRET = "personal-secret"
+# --- LINE group "tk รับจ่าย" -----------------------------------------------------------------------------
 
 
-@pytest.fixture
-def rabjai(line, monkeypatch):  # noqa: F811
-    monkeypatch.setenv("LINE_PERSONAL_CHANNEL_SECRET", PERSONAL_SECRET)
-    monkeypatch.setenv("LINE_PERSONAL_CHANNEL_ACCESS_TOKEN", "token2")
-    get_settings.cache_clear()
-    fake = FakeLine()
-    monkeypatch.setattr(line_api, "get_personal_line_client", lambda: fake)
-    personal.clear_pending()
-    return fake
-
-
-def post_personal(client, event: dict, secret: str = PERSONAL_SECRET):
-    body = json.dumps({"destination": "U0", "events": [event]}).encode()
-    sig = base64.b64encode(hmac.new(secret.encode(), body, hashlib.sha256).digest()).decode()
-    return client.post("/line/personal/webhook", content=body, headers={"x-line-signature": sig, "content-type": "application/json"})
-
-
-def test_rabjai_chat(client, owner_headers, line, rabjai, monkeypatch):  # noqa: F811
-    link(client, owner_headers, line)  # linked on the main OA; same provider, same LINE user id
-    with PersonalSession() as db:
-        add(db, default=True)
-    assert post_personal(client, text_event("จ่าย ค่าข้าว 120"), secret="wrong").status_code == 401
-    post_personal(client, text_event("จ่าย ค่าข้าว 120"))
-    assert rabjai.sent[-1][1] == "Uowner"
-    assert rabjai.sent[-1][2][0]["text"].startswith("บันทึกรายจ่าย 120.00 บาท")
-    monkeypatch.setattr(line_api, "read_slip", lambda jpeg: slip())
-    rabjai.contents["m1"] = picture()
-    post_personal(client, text_event("") | {"message": {"type": "image", "id": "m1"}})
-    assert rabjai.sent[-1][2][0]["text"].startswith("บันทึกรายรับ 500.00 บาท")
-    assert rabjai.loading == ["Uowner"]
-    with PersonalSession() as db:
-        assert personal.balance(db, personal.accounts(db)[0]) == 100000 - 12000 + 50000
-    # Groups on this OA are ignored; strangers are told it isn't for them.
-    count = len(rabjai.sent)
-    post_personal(client, text_event("จ่าย 5") | {"source": {"type": "group", "groupId": "G1", "userId": "Uowner"}})
-    assert len(rabjai.sent) == count
-    post_personal(client, text_event("จ่าย 5", user="Ustranger"))
-    assert "ยังไม่รู้จัก LINE นี้" in rabjai.sent[-1][2][0]["text"]
-
-
-def test_rabjai_not_configured(client):
-    assert post_personal(client, text_event("ยอด")).status_code == 503
-
-
-def test_main_groups_stop_once_rabjai_is_set(client, owner_headers, groups, rabjai):
+def test_rabjai_group(client, owner_headers, groups, monkeypatch):
+    groups.groups["Grj"] = "tk รับจ่าย"
     link(client, owner_headers, groups)
     with PersonalSession() as db:
         add(db, default=True)
-    post_event(client, group_event({"type": "text", "id": "t1", "text": "ค่าข้าว 120"}, group="Gout"))
-    assert "tk รับจ่าย" in groups.sent[-1][2][0]["text"]
-    count = len(groups.sent)
-    post_event(client, group_event({"type": "text", "id": "t2", "text": "กินข้าวยัง"}, group="Gout"))  # chat: quiet
-    assert len(groups.sent) == count
+    post_event(client, group_event({}, group="Grj", kind="join"))
+    assert "รับ ค่าจ้าง 5000" in groups.sent[-1][2][0]["text"]
+    post_event(client, group_event({"type": "text", "id": "t1", "text": "จ่าย ค่าข้าว 120"}, group="Grj"))
+    assert groups.sent[-1][1] == "Grj"
+    assert groups.sent[-1][2][0]["text"].startswith("บันทึกรายจ่าย 120.00 บาท")
+    # A slip works out income by itself.
+    monkeypatch.setattr(line_api, "read_slip", lambda jpeg: slip())
+    groups.contents["m1"] = picture()
+    post_event(client, group_event({"type": "image", "id": "m1"}, group="Grj"))
+    assert groups.sent[-1][2][0]["text"].startswith("บันทึกรายรับ 500.00 บาท")
+    # No รับ/จ่าย: JARVIS asks, and the answer records it.
+    post_event(client, group_event({"type": "text", "id": "t2", "text": "ค่าน้ำ 300"}, group="Grj"))
+    assert "เป็นรายรับหรือรายจ่ายคะ" in groups.sent[-1][2][0]["text"]
+    post_event(client, group_event({"type": "text", "id": "t3", "text": "2"}, group="Grj"))
+    assert groups.sent[-1][2][0]["text"].startswith("บันทึกรายจ่าย 300.00 บาท")
     with PersonalSession() as db:
-        assert db.query(PersonalEntry).count() == 0
+        assert personal.balance(db, personal.accounts(db)[0]) == 100000 - 12000 + 50000 - 30000
+    # Ordinary chat and other members stay unanswered.
+    count = len(groups.sent)
+    post_event(client, group_event({"type": "text", "id": "t4", "text": "กินข้าวยัง"}, group="Grj"))
+    post_event(client, group_event({"type": "text", "id": "t5", "text": "จ่าย 5"}, group="Grj", user="Ufriend"))
+    assert len(groups.sent) == count
+
+
+def test_group_kind():
+    assert line_api.group_kind("tk รับจ่าย") == "both"
+    assert line_api.group_kind("สลิปรายรับ") == "income"
+    assert line_api.group_kind("สลิปรายจ่าย") == "expense"
+    assert line_api.group_kind("ครอบครัว") is None
 
 
 def test_banks_include_funds(client, owner_headers):

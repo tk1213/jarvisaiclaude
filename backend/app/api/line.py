@@ -293,7 +293,7 @@ def _ask_jarvis(db: Session, user: User, text: str, images: list[str] | None = N
     return reply_message(reply.text, devices, confirm_choices(reply.tool_calls))
 
 
-# --- Slip groups ("สลิปรายรับ" / "สลิปรายจ่าย") ---------------------------------------------------------
+# --- Slip groups ("tk รับจ่าย", "สลิปรายรับ" / "สลิปรายจ่าย") ---------------------------------------------------------
 
 
 def _group_name(client: LineClient, group_id: str) -> str:
@@ -309,7 +309,10 @@ def _group_name(client: LineClient, group_id: str) -> str:
 
 
 def group_kind(name: str) -> str | None:
-    """Which slip group this is, from its name: "income", "expense" or None (any other group)."""
+    """Which slip group this is, from its name: "both" ("tk รับจ่าย": works out income or expense itself),
+    "income", "expense" or None (any other group)."""
+    if "รับจ่าย" in name:
+        return "both"
     if "รายรับ" in name:
         return "income"
     if "รายจ่าย" in name:
@@ -317,7 +320,6 @@ def group_kind(name: str) -> str | None:
     return None
 
 
-MOVED = "ตอนนี้บันทึกรายรับรายจ่ายย้ายไปที่ LINE \"tk รับจ่าย\" แล้วค่ะ TK ส่งสลิปหรือพิมพ์ในแชทนั้นได้เลยนะคะ (กลุ่มนี้ไม่ได้บันทึกแล้ว)"
 GROUP_HELP = (
     "สวัสดีค่ะ TK กลุ่มนี้จาร์วิสจะบันทึก{word}ให้ในหน้า 💳 การเงินส่วนตัว\n"
     "- ส่งรูปสลิปมาได้เลย\n"
@@ -339,12 +341,11 @@ def handle_group_event(event: dict) -> None:
     except LineError as e:
         log.warning("could not read a LINE group's name: %s", e)
         return
-    moved = line_integration.personal_line_configured()
     if event.get("type") == "join":
-        if moved and kind is not None:
-            text = MOVED
+        if kind == "both":
+            text = "สวัสดีค่ะ TK " + personal.CHAT_HELP
         elif kind is None:
-            text = "สวัสดีค่ะ จาร์วิสทำงานในกลุ่มชื่อ \"สลิปรายรับ\" หรือ \"สลิปรายจ่าย\" เท่านั้นนะคะ ส่วนเรื่องอื่นคุยกับจาร์วิสในแชทส่วนตัวได้เลยค่ะ"
+            text = "สวัสดีค่ะ จาร์วิสทำงานในกลุ่มชื่อ \"tk รับจ่าย\" \"สลิปรายรับ\" หรือ \"สลิปรายจ่าย\" เท่านั้นนะคะ ส่วนเรื่องอื่นคุยกับจาร์วิสในแชทส่วนตัวได้เลยค่ะ"
         elif kind == "income":
             text = GROUP_HELP.format(word="รายรับ", example="ค่าจ้าง 5000 กสิกร")
         else:
@@ -358,16 +359,14 @@ def handle_group_event(event: dict) -> None:
         if user is None or not user.is_admin:
             return  # other members' chat in the group is not for JARVIS
     message = event.get("message") or {}
-    if moved:
-        # Recording moved to the "tk รับจ่าย" OA: say so for slips and entries, stay quiet for chat.
-        if message.get("type") == "image" or personal.parse_text(message.get("text") or "")[0] is not None:
-            _send_quietly(client, reply_token, group_id, MOVED)
-        return
     if message.get("type") == "image":
         text = _record_slip(client, group_id, kind, message)
     elif message.get("type") == "text":
         with PersonalSession() as db:
-            text = personal.handle_text(db, group_id, kind, message.get("text") or "")
+            if kind == "both":
+                text = personal.handle_chat_text(db, group_id, message.get("text") or "")
+            else:
+                text = personal.handle_text(db, group_id, kind, message.get("text") or "")
     else:
         return
     if text:
@@ -398,6 +397,8 @@ def _record_slip(client: LineClient, group_id: str, kind: str, message: dict) ->
     if isinstance(read, str):
         return read
     with PersonalSession() as db:
+        if kind == "both":
+            return personal.record_chat_slip(db, group_id, *read)
         return personal.record_slip(db, group_id, kind, *read)
 
 
@@ -406,60 +407,3 @@ def _send_quietly(client: LineClient, reply_token: str, to: str, text: str) -> N
         client.send(reply_token, to, [text_message(text)])
     except LineError:
         log.exception("could not answer in a LINE group")
-
-
-# --- "tk รับจ่าย": the personal income/expense OA ------------------------------------------------------------
-
-
-def get_personal_line_client() -> LineClient:
-    return line_integration.get_personal_line_client()
-
-
-@router.post("/line/personal/webhook")
-async def personal_webhook(request: Request, background: BackgroundTasks):
-    """The "tk รับจ่าย" OA. Only the owner's one-to-one chat is answered, and only about income and expenses."""
-    s = get_settings()
-    if not line_integration.personal_line_configured():
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "LINE tk รับจ่าย is not set up")
-    body = await request.body()
-    if not valid_signature(s.line_personal_channel_secret, body, request.headers.get("x-line-signature", "")):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "bad signature")
-    for event in json.loads(body).get("events", []):
-        if _already_seen(event.get("webhookEventId")):
-            continue
-        background.add_task(handle_personal_event, event)
-    return {"ok": True}
-
-
-def handle_personal_event(event: dict) -> None:
-    source = event.get("source") or {}
-    line_user_id = source.get("userId")
-    reply_token = event.get("replyToken")
-    if source.get("type") != "user" or not line_user_id or not reply_token:
-        return  # groups and rooms: the chat with the owner is the only place it works
-    kind = event.get("type")
-    message = event.get("message") or {}
-    if kind != "follow" and not (kind == "message" and message.get("type") in ("text", "image")):
-        return
-    client = get_personal_line_client()
-    with SessionLocal() as db:
-        user = db.scalar(select(User).where(User.line_user_id == line_user_id))
-        admin = user is not None and user.is_admin
-    if user is None:
-        text = "ยังไม่รู้จัก LINE นี้ค่ะ เชื่อมบัญชีกับจาร์วิสใน LINE jarvisclaude ก่อนนะคะ (LINE OA ทั้งสองต้องอยู่ Provider เดียวกัน)"
-    elif not admin:
-        text = "LINE นี้ใช้บันทึกรายรับรายจ่ายของ TK เท่านั้นค่ะ"
-    elif kind == "follow":
-        text = personal.CHAT_HELP
-    elif message.get("type") == "image":
-        client.show_loading(line_user_id)
-        read = _read_slip_picture(client, message)
-        if isinstance(read, str):
-            text = read
-        else:
-            with PersonalSession() as db:
-                text = personal.record_chat_slip(db, line_user_id, *read)
-    else:
-        with PersonalSession() as db:
-            text = personal.handle_chat_text(db, line_user_id, message.get("text") or "")
-    _send_quietly(client, reply_token, line_user_id, text)
