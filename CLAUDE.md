@@ -13,6 +13,7 @@
   - new Python dependencies: `cd backend && .venv\Scripts\activate && pip install -e ".[dev]"`
 - **Secrets live only in `backend\.env` on the owner's machine** (gitignored): `ANTHROPIC_API_KEY`,
   `TUYA_ACCESS_SECRET`, `GOOGLE_TTS_API_KEY`, `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN`,
+  `LINE_PERSONAL_CHANNEL_SECRET`, `LINE_PERSONAL_CHANNEL_ACCESS_TOKEN`,
   `FLOWACCOUNT_CLIENT_SECRET`, `JWT_SECRET`,
   `ENCRYPTION_KEY`. Never ask for them in chat;
   if one shows up in a screenshot or log, tell the owner to rotate it.
@@ -104,10 +105,16 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
   Next: per-user permissions (admin sets each user's pages; Account access view-only or add-only), then receipt photos and voice.
 - Personal money (💳 `#personal`, admin only): `app/services/personal.py`, `app/api/personal.py`, `personal_models.py` in
   `backend/data/personal/personal.db` (`PERSONAL_DATABASE_URL`, `PersonalSession`), slip pictures in `PERSONAL_SLIP_DIR`; both are
-  in the backup. Balance = opening balance + entries on/after its date. LINE groups whose name has "รายรับ"/"รายจ่าย" record slips
-  (`app/services/slip_reader.py`, Claude JSON-schema output) and typed lines ("ค่าข้าว 120 กสิกร", no bank = default account); only
-  linked admins are answered, other group chat is ignored. Income matches the receiver side, expense the sender side; both sides
-  the owner's = transfer; duplicate reference = refused; unclear = numbered question. No expense categories yet.
+  in the backup. Balance = opening balance + entries on/after its date. Recording is the separate LINE OA **"tk รับจ่าย"**
+  (`POST /line/personal/webhook`, `LINE_PERSONAL_CHANNEL_SECRET`/`_ACCESS_TOKEN`, same LINE provider as the main OA so the owner's
+  user id matches): one-to-one chat with linked admins only. Slips (`app/services/slip_reader.py`, Claude JSON-schema output) work out
+  the kind themselves (`guess_kind`: owner's receiver side = income, sender side = expense, both = transfer, else ask "1) รายรับ
+  2) รายจ่าย"); typed lines start with รับ / จ่าย / โอน ("จ่าย ค่าข้าว 120 กสิกร", no bank = default account, "โอน 5000 กสิกร ไป
+  K-SET50"), without one JARVIS asks. Duplicate reference = refused; unclear account = numbered question. Until the new OA is set, the
+  main OA's groups named "รายรับ"/"รายจ่าย" record as before; once set they only say it moved. Funds are accounts with bank
+  `FUND_A`..`FUND_F` (real name in the nickname, matched in slips and typed lines; balance = money put in, no NAV). A transfer is
+  one row but shows as รับโอน/โอนออก per account and in each account's month in/out, never in the month totals. No expense
+  categories yet.
 - New devices are added only by the "อัปเดตอุปกรณ์" button, never automatically.
 - The IR air conditioner (Air PANASONIC via the Temp Smart Jarvis hub) can't report changes made in the
   Tuya app or with its physical remote; the dashboard/JARVIS side is the source of truth.

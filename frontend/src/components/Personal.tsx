@@ -9,12 +9,12 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'balance', label: 'ยอดคงเหลือ' },
   { id: 'income', label: 'รายรับ' },
   { id: 'expense', label: 'รายจ่าย' },
-  { id: 'accounts', label: 'บัญชีธนาคาร' },
+  { id: 'accounts', label: 'บัญชี / กองทุน' },
 ]
 
 const SOURCE: Record<PersonalEntry['source'], string> = { slip: 'สลิป LINE', text: 'พิมพ์ใน LINE', manual: 'เพิ่มเอง' }
 
-/** 💳 Personal money: balances per bank account, income and expenses (also from the LINE slip groups), and the accounts. */
+/** 💳 Personal money: balances per bank or fund account, income and expenses (also from LINE "tk รับจ่าย"), and the accounts. */
 export function Personal() {
   const [tab, setTab] = useState<Tab>('balance')
   const [month, setMonth] = useState(thisMonth)
@@ -55,7 +55,7 @@ export function Personal() {
           <button onClick={() => setTab('accounts')} className="text-sky-700 underline dark:text-sky-300">
             เพิ่มบัญชีธนาคาร
           </button>{' '}
-          พร้อมเงินต้นก่อน แล้วค่อยส่งสลิปในกลุ่ม LINE "สลิปรายรับ" / "สลิปรายจ่าย"
+          พร้อมเงินต้นก่อน แล้วค่อยส่งสลิปใน LINE "tk รับจ่าย"
         </div>
       ) : tab === 'balance' ? (
         <Balances month={month} version={version} />
@@ -100,7 +100,10 @@ function Balances({ month, version }: { month: string; version: number }) {
           </div>
         ))}
       </div>
-      <p className="text-xs text-slate-500">ยอดคงเหลือ = เงินต้น + รายรับ − รายจ่าย ± โอนระหว่างบัญชี ตั้งแต่วันที่ของเงินต้น (ไม่ขึ้นกับเดือนที่เลือก)</p>
+      <p className="text-xs text-slate-500">
+        ยอดคงเหลือ = เงินต้น + รายรับ − รายจ่าย ± โอนระหว่างบัญชี ตั้งแต่วันที่ของเงินต้น (ไม่ขึ้นกับเดือนที่เลือก) · รับ/จ่ายของแต่ละบัญชีรวมเงินโอนเข้า/ออก
+        แต่ยอดรายรับ/รายจ่ายรวมของเดือนไม่นับการโอนระหว่างบัญชี · กองทุนแสดงเป็นเงินต้นที่โอนเข้าไป
+      </p>
     </section>
   )
 }
@@ -196,6 +199,9 @@ function Entries({
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
             {rows?.map((r) => {
               const transfer = r.kind === 'transfer'
+              // A transfer shows here as money in to its destination (income page) or out of its source (expense page).
+              const account = transfer && income ? r.to_account : r.account
+              const other = transfer ? (income ? `จาก ${r.account}` : `ไป ${r.to_account}`) : r.counterparty
               return (
                 <tr key={r.id} className={transfer ? 'text-slate-500' : ''}>
                   <td className="px-3 py-2 whitespace-nowrap">
@@ -203,16 +209,10 @@ function Entries({
                     {r.time && <span className="ml-1 text-xs text-slate-500">{r.time}</span>}
                   </td>
                   <td className="px-3 py-2">
-                    {transfer ? (
-                      <>
-                        <span className="mr-1.5 rounded bg-slate-100 px-1.5 text-xs dark:bg-slate-800">โอนระหว่างบัญชี</span>
-                        {r.account} → {r.to_account}
-                      </>
-                    ) : (
-                      r.account
-                    )}
+                    {transfer && <span className="mr-1.5 rounded bg-slate-100 px-1.5 text-xs dark:bg-slate-800">{income ? 'รับโอน' : 'โอนออก'}</span>}
+                    {account}
                   </td>
-                  <td className="px-3 py-2">{r.counterparty || '-'}</td>
+                  <td className="px-3 py-2">{other || '-'}</td>
                   <td className="max-w-[16rem] px-3 py-2 text-slate-600 dark:text-slate-300">
                     <span className="line-clamp-1">{r.note}</span>
                     <span className="text-[10px] text-slate-400">
@@ -244,7 +244,7 @@ function Entries({
             {rows?.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-3 py-8 text-center text-slate-500">
-                  ยังไม่มี{word}ในเดือนนี้ ส่งสลิปในกลุ่ม LINE "สลิป{word}" หรือกด "+ เพิ่ม{word}"
+                  ยังไม่มี{word}ในเดือนนี้ ส่งสลิปใน LINE "tk รับจ่าย" หรือกด "+ เพิ่ม{word}"
                 </td>
               </tr>
             )}
@@ -288,7 +288,9 @@ function Accounts({ accounts, onChange }: { accounts: BankAccount[] | null; onCh
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm text-slate-500">ใส่เลขบัญชีเต็มจะจับคู่กับสลิปได้แม่นที่สุด (สลิปแสดงเลขบางหลัก เช่น xxx-x-x1234-x)</p>
+        <p className="text-sm text-slate-500">
+          ใส่เลขบัญชีเต็มจะจับคู่กับสลิปได้แม่นที่สุด (สลิปแสดงเลขบางหลัก เช่น xxx-x-x1234-x) · กองทุนเลือก "กองทุน A–F" แล้วใส่ชื่อจริงในชื่อเรียก
+        </p>
         <button onClick={() => setEditing('new')} className="shrink-0 rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700">
           + เพิ่มบัญชี
         </button>
@@ -328,7 +330,7 @@ function Accounts({ accounts, onChange }: { accounts: BankAccount[] | null; onCh
         </div>
       )}
       <p className="text-xs text-slate-500">
-        บัญชีหลัก: ใช้เมื่อพิมพ์ในกลุ่ม LINE โดยไม่บอกธนาคาร เช่น "ค่าข้าว 120" (ถ้าบอก เช่น "ค่าข้าว 120 กสิกร" จะใช้บัญชีของธนาคารนั้น)
+        บัญชีหลัก: ใช้เมื่อพิมพ์ใน LINE "tk รับจ่าย" โดยไม่บอกธนาคาร เช่น "จ่าย ค่าข้าว 120" (ถ้าบอก เช่น "จ่าย ค่าข้าว 120 กสิกร" จะใช้บัญชีของธนาคารนั้น)
       </p>
       {editing && (
         <PersonalAccountForm

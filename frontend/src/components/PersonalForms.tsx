@@ -156,7 +156,7 @@ export function PersonalEntryForm({
   )
 }
 
-/** Add or edit a bank account: bank, nickname, number, opening balance and its date, default for typed LINE entries. */
+/** Add or edit a bank or fund account: bank (or กองทุน A–F), nickname, number, opening balance and its date, default for typed LINE entries. */
 export function PersonalAccountForm({ account, onSaved, onClose }: { account: BankAccount | null; onSaved: () => void; onClose: () => void }) {
   const [banks, setBanks] = useState<{ code: string; name: string }[]>([])
   const [bank, setBank] = useState(account?.bank ?? 'KBANK')
@@ -167,6 +167,7 @@ export function PersonalAccountForm({ account, onSaved, onClose }: { account: Ba
   const [isDefault, setIsDefault] = useState(account?.is_default ?? false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const fund = bank.startsWith('FUND_')
 
   useEffect(() => {
     api.banks().then(setBanks, (e) => setError((e as Error).message))
@@ -188,10 +189,10 @@ export function PersonalAccountForm({ account, onSaved, onClose }: { account: Ba
   }
 
   return (
-    <Dialog title={account ? 'แก้ไขบัญชีธนาคาร' : 'เพิ่มบัญชีธนาคาร'} onClose={onClose} onSubmit={(e) => void save(e)} error={error} saving={saving}>
+    <Dialog title={account ? 'แก้ไขบัญชี' : 'เพิ่มบัญชี / กองทุน'} onClose={onClose} onSubmit={(e) => void save(e)} error={error} saving={saving}>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="space-y-1">
-          <span className={caption}>ธนาคาร</span>
+          <span className={caption}>ธนาคาร / กองทุน</span>
           <select value={bank} onChange={(e) => setBank(e.target.value)} className={field}>
             {banks.map((b) => (
               <option key={b.code} value={b.code}>
@@ -201,12 +202,12 @@ export function PersonalAccountForm({ account, onSaved, onClose }: { account: Ba
           </select>
         </label>
         <label className="space-y-1">
-          <span className={caption}>ชื่อเรียก (ไม่ใส่ก็ได้)</span>
-          <input value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="เช่น กสิกร ใช้จ่าย" maxLength={64} className={field} />
+          <span className={caption}>{fund ? 'ชื่อกองทุน' : 'ชื่อเรียก (ไม่ใส่ก็ได้)'}</span>
+          <input value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder={fund ? 'เช่น K-SET50' : 'เช่น กสิกร ใช้จ่าย'} maxLength={64} className={field} />
         </label>
       </div>
       <label className="block space-y-1">
-        <span className={caption}>เลขบัญชี (เต็ม หรือ 4 ตัวท้าย)</span>
+        <span className={caption}>{fund ? 'เลขบัญชีกองทุน (ไม่ใส่ก็ได้)' : 'เลขบัญชี (เต็ม หรือ 4 ตัวท้าย)'}</span>
         <input value={accountNo} onChange={(e) => setAccountNo(e.target.value)} inputMode="numeric" placeholder="123-4-56789-0" maxLength={32} className={field} />
       </label>
       <div className="grid gap-3 sm:grid-cols-2">
