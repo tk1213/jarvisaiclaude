@@ -1,11 +1,15 @@
 import base64
+import hashlib
+import hmac
 import io
+import json
 from datetime import date
 
 import pytest
 from PIL import Image
 
 from app.api import line as line_api
+from app.config import get_settings
 from app.db import PersonalSession
 from app.personal_models import PersonalEntry
 from app.services import personal
@@ -270,3 +274,151 @@ def test_month_range():
     assert personal.month_range("2026-12") == (date(2026, 12, 1), date(2027, 1, 1))
     with pytest.raises(personal.PersonalError):
         personal.month_range("2026-13")
+
+
+# --- "tk รับจ่าย": slips and typed lines in the one-to-one chat ------------------------------------------
+
+
+def test_chat_slip_works_out_income_expense_and_transfer():
+    with PersonalSession() as db:
+        a = add(db)  # KBANK …8905
+        b = add(db, bank="SCB", no="1115554")
+        # Money into the owner's KBANK from a stranger: income.
+        assert personal.record_chat_slip(db, "U1", slip(sender_account="xxx-xxx999-1"), JPEG).startswith("บันทึกรายรับ 500.00 บาท เข้า กสิกรไทย")
+        # Money out of the owner's KBANK to a shop: expense.
+        out = slip(reference="REF002", sender_bank="กสิกรไทย", sender_account="xxx-x-x7890-x", receiver_name="ร้านข้าว", receiver_bank="พร้อมเพย์", receiver_account=None)
+        assert personal.record_chat_slip(db, "U1", out, JPEG).startswith("บันทึกรายจ่าย 500.00 บาท จาก กสิกรไทย")
+        # Between the owner's own accounts: a transfer.
+        move = slip(reference="REF003", sender_bank="กสิกรไทย", sender_account="xxx-x-x7890-x", receiver_bank="ไทยพาณิชย์", receiver_account="xxx-xx5554-x")
+        assert personal.record_chat_slip(db, "U1", move, JPEG).startswith("บันทึกโอนระหว่างบัญชี 500.00 บาท จาก กสิกรไทย (…8905) ไป ไทยพาณิชย์ (…5554)")
+        kinds = [(e.kind, e.account_id, e.to_account_id) for e in db.query(PersonalEntry).order_by(PersonalEntry.id)]
+        assert kinds == [("income", a.id, None), ("expense", a.id, None), ("transfer", a.id, b.id)]
+
+
+def test_chat_slip_that_cant_tell_asks_income_or_expense():
+    with PersonalSession() as db:
+        add(db, default=True)
+        # Neither side shows a bank or number of the owner's.
+        s = slip(sender_bank="พร้อมเพย์", sender_account=None, receiver_bank="พร้อมเพย์", receiver_account=None)
+        reply = personal.record_chat_slip(db, "U1", s, JPEG)
+        assert "เป็นรายรับหรือรายจ่ายคะ" in reply and "1) รายรับ" in reply and "2) รายจ่าย" in reply
+        assert db.query(PersonalEntry).count() == 0
+        assert personal.handle_chat_text(db, "U1", "2").startswith("บันทึกรายจ่าย 500.00 บาท จาก กสิกรไทย")
+        e = db.query(PersonalEntry).one()
+        assert (e.kind, e.source, e.ref_no) == ("expense", "slip", "REF001")
+
+
+def test_chat_slip_into_a_fund_by_its_name():
+    with PersonalSession() as db:
+        bank = add(db)
+        fund = add(db, bank="FUND_A", no="", opening="0", nickname="K-SET50")
+        buy = slip(sender_bank="กสิกรไทย", sender_account="xxx-x-x7890-x", receiver_name="กองทุนเปิด K-SET50", receiver_bank="บลจ.กสิกรไทย", receiver_account=None)
+        assert personal.record_chat_slip(db, "U1", buy, JPEG).startswith("บันทึกโอนระหว่างบัญชี 500.00 บาท จาก กสิกรไทย (…8905) ไป K-SET50")
+        assert (personal.balance(db, bank), personal.balance(db, fund)) == (50000, 50000)
+
+
+def test_chat_typed_lines():
+    with PersonalSession() as db:
+        a = add(db, default=True)
+        b = add(db, bank="SCB", no="5554")
+        fund = add(db, bank="FUND_B", no="", opening="0", nickname="K-SET50")
+        assert personal.handle_chat_text(db, "U1", "จ่าย ค่าข้าว 120") == "บันทึกรายจ่าย 120.00 บาท จาก กสิกรไทย (…8905) แล้วค่ะ TK\nคงเหลือ 880.00 บาท"
+        assert personal.handle_chat_text(db, "U1", "รับ ค่าจ้าง 5,000 scb").startswith("บันทึกรายรับ 5,000.00 บาท เข้า ไทยพาณิชย์ (…5554)")
+        # No รับ/จ่าย: JARVIS asks which.
+        assert "เป็นรายรับหรือรายจ่ายคะ" in personal.handle_chat_text(db, "U1", "ค่าน้ำ 300")
+        assert personal.handle_chat_text(db, "U1", "2").startswith("บันทึกรายจ่าย 300.00 บาท จาก กสิกรไทย")
+        # A transfer to a fund named by its nickname (its digits aren't the amount), and one by "กองทุน B".
+        assert personal.handle_chat_text(db, "U1", "โอน 1000 กสิกร ไป K-SET50").startswith("บันทึกโอนระหว่างบัญชี 1,000.00 บาท จาก กสิกรไทย (…8905) ไป K-SET50")
+        assert personal.handle_chat_text(db, "U1", "โอน 200 scb ไปกองทุน B").startswith("บันทึกโอนระหว่างบัญชี 200.00 บาท จาก ไทยพาณิชย์ (…5554) ไป K-SET50")
+        assert personal.handle_chat_text(db, "U1", "โอน 200") == personal.TRANSFER_HELP
+        assert personal.balance(db, fund) == 120000
+        assert personal.balance(db, a) == 100000 - 12000 - 30000 - 100000
+        assert personal.balance(db, b) == 100000 + 500000 - 20000
+        assert personal.handle_chat_text(db, "U1", "ลบล่าสุด").startswith("ลบรายการล่าสุด 200.00 บาท")
+        assert personal.handle_chat_text(db, "U1", "สวัสดี") == personal.CHAT_HELP
+        assert "รายละเอียด" in personal.handle_chat_text(db, "U1", "จ่าย")
+
+
+def test_transfers_count_per_account_but_not_in_month_totals():
+    with PersonalSession() as db:
+        a = add(db)
+        b = add(db, bank="SCB", no="5554")
+        personal.save_entry(db, {"kind": "expense", "account_id": a.id, "amount": "50", "date": "2026-02-02"})
+        personal.save_entry(db, {"kind": "transfer", "account_id": a.id, "to_account_id": b.id, "amount": "100", "date": "2026-02-03"})
+        s = personal.summary(db, "2026-02")
+        assert (s["month_in"], s["month_out"]) == (0, 50)
+        by_id = {x["id"]: x for x in s["accounts"]}
+        assert (by_id[a.id]["month_in"], by_id[a.id]["month_out"]) == (0, 150)
+        assert (by_id[b.id]["month_in"], by_id[b.id]["month_out"]) == (100, 0)
+        # Filtered by account, a transfer shows as money in on its destination and money out of its source.
+        assert [e.kind for e in personal.list_entries(db, "income", "2026-02", b.id)] == ["transfer"]
+        assert personal.list_entries(db, "income", "2026-02", a.id) == []
+        assert [e.kind for e in personal.list_entries(db, "expense", "2026-02", a.id)] == ["transfer", "expense"]
+        assert personal.list_entries(db, "expense", "2026-02", b.id) == []
+
+
+# --- LINE "tk รับจ่าย" -----------------------------------------------------------------------------------
+
+PERSONAL_SECRET = "personal-secret"
+
+
+@pytest.fixture
+def rabjai(line, monkeypatch):  # noqa: F811
+    monkeypatch.setenv("LINE_PERSONAL_CHANNEL_SECRET", PERSONAL_SECRET)
+    monkeypatch.setenv("LINE_PERSONAL_CHANNEL_ACCESS_TOKEN", "token2")
+    get_settings.cache_clear()
+    fake = FakeLine()
+    monkeypatch.setattr(line_api, "get_personal_line_client", lambda: fake)
+    personal.clear_pending()
+    return fake
+
+
+def post_personal(client, event: dict, secret: str = PERSONAL_SECRET):
+    body = json.dumps({"destination": "U0", "events": [event]}).encode()
+    sig = base64.b64encode(hmac.new(secret.encode(), body, hashlib.sha256).digest()).decode()
+    return client.post("/line/personal/webhook", content=body, headers={"x-line-signature": sig, "content-type": "application/json"})
+
+
+def test_rabjai_chat(client, owner_headers, line, rabjai, monkeypatch):  # noqa: F811
+    link(client, owner_headers, line)  # linked on the main OA; same provider, same LINE user id
+    with PersonalSession() as db:
+        add(db, default=True)
+    assert post_personal(client, text_event("จ่าย ค่าข้าว 120"), secret="wrong").status_code == 401
+    post_personal(client, text_event("จ่าย ค่าข้าว 120"))
+    assert rabjai.sent[-1][1] == "Uowner"
+    assert rabjai.sent[-1][2][0]["text"].startswith("บันทึกรายจ่าย 120.00 บาท")
+    monkeypatch.setattr(line_api, "read_slip", lambda jpeg: slip())
+    rabjai.contents["m1"] = picture()
+    post_personal(client, text_event("") | {"message": {"type": "image", "id": "m1"}})
+    assert rabjai.sent[-1][2][0]["text"].startswith("บันทึกรายรับ 500.00 บาท")
+    assert rabjai.loading == ["Uowner"]
+    with PersonalSession() as db:
+        assert personal.balance(db, personal.accounts(db)[0]) == 100000 - 12000 + 50000
+    # Groups on this OA are ignored; strangers are told it isn't for them.
+    count = len(rabjai.sent)
+    post_personal(client, text_event("จ่าย 5") | {"source": {"type": "group", "groupId": "G1", "userId": "Uowner"}})
+    assert len(rabjai.sent) == count
+    post_personal(client, text_event("จ่าย 5", user="Ustranger"))
+    assert "ยังไม่รู้จัก LINE นี้" in rabjai.sent[-1][2][0]["text"]
+
+
+def test_rabjai_not_configured(client):
+    assert post_personal(client, text_event("ยอด")).status_code == 503
+
+
+def test_main_groups_stop_once_rabjai_is_set(client, owner_headers, groups, rabjai):
+    link(client, owner_headers, groups)
+    with PersonalSession() as db:
+        add(db, default=True)
+    post_event(client, group_event({"type": "text", "id": "t1", "text": "ค่าข้าว 120"}, group="Gout"))
+    assert "tk รับจ่าย" in groups.sent[-1][2][0]["text"]
+    count = len(groups.sent)
+    post_event(client, group_event({"type": "text", "id": "t2", "text": "กินข้าวยัง"}, group="Gout"))  # chat: quiet
+    assert len(groups.sent) == count
+    with PersonalSession() as db:
+        assert db.query(PersonalEntry).count() == 0
+
+
+def test_banks_include_funds(client, owner_headers):
+    banks = {b["code"]: b["name"] for b in client.get("/personal/banks", headers=owner_headers).json()}
+    assert [banks[f"FUND_{x}"] for x in "ABCDEF"] == ["กองทุน A", "กองทุน B", "กองทุน C", "กองทุน D", "กองทุน E", "กองทุน F"]
