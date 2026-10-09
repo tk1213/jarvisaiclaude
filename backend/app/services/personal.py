@@ -671,13 +671,34 @@ def _delete_latest(db: Session, kind: str | None) -> str:
     return f"ลบรายการล่าสุด {info} แล้วค่ะ TK"
 
 
-def _balances(db: Session) -> str:
-    accs = accounts(db)
+def _balances(db: Session, accs: list[BankAccount] | None = None) -> str:
+    accs = accounts(db) if accs is None else accs
     if not accs:
         return "ยังไม่มีบัญชีธนาคารในระบบค่ะ"
+    if len(accs) == 1:
+        return f"ยอด {label(accs[0])} คงเหลือ {money(balance(db, accs[0]))} บาทค่ะ TK"
     rows = [(label(a), balance(db, a)) for a in accs]
     lines = "\n".join(f"{name}: {money(b)} บาท" for name, b in rows)
     return f"ยอดคงเหลือค่ะ TK\n{lines}\nรวม {money(sum(b for _, b in rows))} บาท"
+
+
+def _balance_question(db: Session, text: str) -> str | None:
+    """"ยอด" for every account, or "ยอด กรุงศรี เหลือเท่าไร" / "ยอดคงเหลือ K-SET50" for that bank's or fund's
+    accounts only. None when the text isn't a balance question (no ยอด/เหลือ, or it has an amount: an entry)."""
+    if text in BALANCE_WORDS:
+        return _balances(db)
+    if "ยอด" not in text and "เหลือ" not in text:
+        return None
+    accs = accounts(db)
+    if parse_text(_drop_nicknames(accs, text))[0] is not None:
+        return None
+    named = named_accounts(accs, text)
+    if not named:
+        code = bank_code(text)
+        named = [a for a in accs if a.bank == code] if code else []
+    if named:
+        return _balances(db, named)
+    return _balances(db) if text.startswith(("ยอด", "คงเหลือ", "เหลือ")) else None
 
 
 def handle_text(db: Session, group: str, kind: str, text: str) -> str | None:
@@ -688,8 +709,9 @@ def handle_text(db: Session, group: str, kind: str, text: str) -> str | None:
         return answer
     if text in DELETE_WORDS:
         return _delete_latest(db, kind)
-    if text in BALANCE_WORDS:
-        return _balances(db)
+    balance_answer = _balance_question(db, text)
+    if balance_answer is not None:
+        return balance_answer
     return _typed_entry(db, group, kind, text)
 
 
@@ -712,8 +734,9 @@ def handle_chat_text(db: Session, chat: str, text: str) -> str | None:
         return answer
     if text in DELETE_WORDS:
         return _delete_latest(db, None)
-    if text in BALANCE_WORDS:
-        return _balances(db)
+    balance_answer = _balance_question(db, text)
+    if balance_answer is not None:
+        return balance_answer
     m = _CHAT_WORD.match(text)
     if m:
         rest = text[m.end() :].strip()

@@ -109,7 +109,7 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
   staying quiet on ordinary chat. Slips (`app/services/slip_reader.py`, Claude JSON-schema output) work out
   the kind themselves (`guess_kind`: owner's receiver side = income, sender side = expense, both = transfer, else ask "1) รายรับ
   2) รายจ่าย"); typed lines start with รับ / จ่าย / โอน ("จ่าย ค่าข้าว 120 กสิกร", no bank = default account, "โอน 5000 กสิกร ไป
-  K-SET50"), without one JARVIS asks. Duplicate reference = refused; unclear account = numbered question. The older groups named
+  K-SET50"), without one JARVIS asks. "ยอด" = every balance; "ยอด กรุงศรี เหลือเท่าไร" / "ยอดคงเหลือ K-SET50" = that bank or fund only. Duplicate reference = refused; unclear account = numbered question. The older groups named
   "รายรับ"/"รายจ่าย" still record with a fixed kind. Funds are accounts with bank
   `FUND_A`..`FUND_F` (real name in the nickname, matched in slips and typed lines; balance = money put in, no NAV). A transfer is
   one row but shows as รับโอน/โอนออก per account and in each account's month in/out, never in the month totals. No expense
