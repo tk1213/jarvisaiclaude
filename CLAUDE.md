@@ -54,6 +54,9 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
   (`journalctl -u jarvis | grep cache_read` on the mini PC) to check it's hitting.
 - Server-side web search `web_search_20260209` (no `country` in `user_location`: "TH" is rejected);
   the loop resumes `pause_turn`.
+- Weather/rain/PM2.5 questions use the `get_weather` tool (`app/integrations/weather.py`, Open-Meteo forecast +
+  air-quality APIs, free, no key), never web search, which only finds stale snapshots of weather pages. No place =
+  home (`HOME_PLACE` / `HOME_LATITUDE` / `HOME_LONGITUDE`); other places pass their coordinates.
 
 ## Decisions already made with the owner
 
