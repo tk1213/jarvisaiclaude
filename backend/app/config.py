@@ -41,11 +41,15 @@ class Settings(BaseSettings):
     claude_effort: Literal["low", "medium", "high", "xhigh", "max"] = "low"
     claude_max_tool_rounds: int = 8
     timezone: str = "Asia/Bangkok"
-    # Anthropic's server-side web search, for outside questions (stocks, gold, weather, films, restaurants).
+    # Anthropic's server-side web search, for outside questions (stocks, gold, news, films, restaurants; weather has get_weather).
     web_search_enabled: bool = True
     web_search_max_uses: int = 3  # per reply; each search adds a few seconds
     # 2-letter country to localize results; empty = timezone only (the search provider doesn't support "TH").
     web_search_country: str = ""
+    # Where "อากาศเป็นไง" means when no place is named (get_weather, Open-Meteo). Set your home's coordinates.
+    home_place: str = "ลาดพร้าว"
+    home_latitude: float = 13.8030
+    home_longitude: float = 100.6070
 
     # Spoken replies use Microsoft Edge's online neural voices (free, no key); "browser" = the browser's own voices.
     tts_engine: Literal["edge", "browser"] = "edge"

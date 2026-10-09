@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.integrations import line as line_api
 from app.integrations.flowaccount import FlowAccountError
+from app.integrations import weather as weather_api
 from app.integrations.tuya import TuyaError, pulsar
 from app.models import Device, User
 from app.ratelimit import limiter
@@ -173,6 +174,17 @@ def send_to_line(ctx: ToolContext, text: str, links: list[dict] | None, location
     return {"sent": [m["type"] for m in messages]}
 
 
+def get_weather(ctx: ToolContext, place: str | None, latitude: float | None, longitude: float | None, days: int) -> Any:
+    s = get_settings()
+    if latitude is None or longitude is None:
+        place, latitude, longitude = place or s.home_place, s.home_latitude, s.home_longitude
+    try:
+        result = weather_api.get_weather(latitude, longitude, s.timezone, max(1, min(int(days), 7)))
+    except weather_api.WeatherError as e:
+        raise ToolError(str(e)) from None
+    return {"place": place or "", **result}
+
+
 def find_products(ctx: ToolContext, query: str) -> Any:
     with CatalogSession() as cdb:
         found = catalog.find_products(cdb, query)
@@ -312,6 +324,27 @@ TOOLS: list[dict] = [
             "type": "object",
             "properties": {"scene_id": {"type": "string"}},
             "required": ["scene_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_weather",
+        "description": (
+            "Live weather from Open-Meteo: conditions, temperature, feels-like, humidity and wind now; rain chance for the "
+            "next 12 hours; a daily forecast (condition, max/min, rain chance); and air quality (PM2.5, US AQI). Use it for "
+            "every weather, rain, temperature or PM2.5/ฝุ่น question instead of web_search. Leave latitude/longitude null for "
+            "the owner's home; for another place give its name and coordinates. days: 1 today, 2 with tomorrow, up to 7."
+        ),
+        "strict": True,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "place": {"type": ["string", "null"], "description": "place name to say in the reply; null = home"},
+                "latitude": {"type": ["number", "null"]},
+                "longitude": {"type": ["number", "null"]},
+                "days": {"type": "integer", "description": "1-7"},
+            },
+            "required": ["place", "latitude", "longitude", "days"],
             "additionalProperties": False,
         },
     },
@@ -579,6 +612,7 @@ _HANDLERS: dict[str, Callable[..., Any]] = {
     "list_scenes": list_scenes,
     "set_scene": set_scene,
     "send_to_line": send_to_line,
+    "get_weather": get_weather,
     "find_customers": find_customers,
     "find_products": find_products,
     "save_product_set": save_product_set,
