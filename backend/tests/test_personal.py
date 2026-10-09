@@ -335,6 +335,23 @@ def test_chat_typed_lines():
         assert "รายละเอียด" in personal.handle_chat_text(db, "U1", "จ่าย")
 
 
+def test_balance_of_one_bank_or_fund():
+    with PersonalSession() as db:
+        add(db, bank="BAY", no="6165", nickname="TK กรุงศรี")
+        add(db, bank="KBANK", no="5531", opening="2000")
+        add(db, bank="FUND_A", no="", opening="300", nickname="K-SET50")
+        for ask in ("ยอด กรุงศรี เหลือเท่าไร", "ยอดกรุงศรีเหลือเท่าไหร่", "ยอดคงเหลือ TK กรุงศรี"):
+            assert personal.handle_chat_text(db, "G", ask) == "ยอด TK กรุงศรี (…6165) คงเหลือ 1,000.00 บาทค่ะ TK", ask
+        assert personal.handle_chat_text(db, "G", "ยอด K-SET50") == "ยอด K-SET50 คงเหลือ 300.00 บาทค่ะ TK"
+        assert personal.handle_chat_text(db, "G", "ยอดเหลือ กองทุน A") == "ยอด K-SET50 คงเหลือ 300.00 บาทค่ะ TK"
+        assert "รวม 3,300.00 บาท" in personal.handle_chat_text(db, "G", "ยอดเหลือเท่าไหร่")
+        assert "รวม 3,300.00 บาท" in personal.handle_text(db, "G", "expense", "ยอด")
+        assert personal.handle_text(db, "G", "expense", "ยอด kbank") == "ยอด กสิกรไทย (…5531) คงเหลือ 2,000.00 บาทค่ะ TK"
+        assert personal.handle_chat_text(db, "G", "มีอะไรเหลือไหม") is None  # chat, not a question about money
+        # An entry that happens to say ยอด is still an entry.
+        assert personal.handle_chat_text(db, "G", "จ่าย ยอดค้าง 50 kbank").startswith("บันทึกรายจ่าย 50.00 บาท")
+
+
 def test_transfers_count_per_account_but_not_in_month_totals():
     with PersonalSession() as db:
         a = add(db)
