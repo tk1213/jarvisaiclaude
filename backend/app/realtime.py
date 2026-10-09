@@ -1,4 +1,5 @@
-"""Real-time device updates for the dashboard (spec §4.4).
+"""Real-time device updates for the dashboard (spec §4.4), plus each user's dashboard chat (shared by all their
+open screens).
 
 Every commit that touches a Device, whatever caused it (Pulsar events, REST
 calls, JARVIS tools, sync), is published to connected WebSocket clients.
@@ -22,20 +23,20 @@ _PENDING_KEY = "realtime_device_events"
 
 class DeviceHub:
     def __init__(self, queue_size: int = 100):
-        self._queues: set[asyncio.Queue] = set()
+        self._queues: dict[asyncio.Queue, int | None] = {}  # queue -> the user it belongs to
         self._loop: asyncio.AbstractEventLoop | None = None
         self._queue_size = queue_size
 
     def bind_loop(self, loop: asyncio.AbstractEventLoop | None) -> None:
         self._loop = loop
 
-    def subscribe(self) -> asyncio.Queue:
+    def subscribe(self, user_id: int | None = None) -> asyncio.Queue:
         q: asyncio.Queue = asyncio.Queue(self._queue_size)
-        self._queues.add(q)
+        self._queues[q] = user_id
         return q
 
     def unsubscribe(self, q: asyncio.Queue) -> None:
-        self._queues.discard(q)
+        self._queues.pop(q, None)
 
     def publish(self, events: list[dict]) -> None:
         """Thread-safe; a no-op until the server has bound its loop."""
@@ -44,9 +45,17 @@ class DeviceHub:
             return
         loop.call_soon_threadsafe(self._fanout, events)
 
+    def publish_to_user(self, user_id: int, event: dict) -> None:
+        """An event only that user's screens receive (their chat)."""
+        self.publish([{**event, "_user": user_id}])
+
     def _fanout(self, events: list[dict]) -> None:
-        for q in list(self._queues):
+        for q, owner in list(self._queues.items()):
             for e in events:
+                if "_user" in e:
+                    if e["_user"] != owner:
+                        continue
+                    e = {k: v for k, v in e.items() if k != "_user"}
                 try:
                     q.put_nowait(e)
                 except asyncio.QueueFull:

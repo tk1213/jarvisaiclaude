@@ -13,7 +13,8 @@ router = APIRouter()
 
 @router.websocket("/ws/devices")
 async def device_updates(websocket: WebSocket, token: str = ""):
-    """Streams {"type": "device", "device": {...}} / {"type": "device_removed", "id": ...} events.
+    """Streams {"type": "device", "device": {...}} / {"type": "device_removed", "id": ...} events, and this user's
+    dashboard chat ({"type": "chat", ...} / {"type": "chat_reset", ...}) so every open screen shows the same conversation.
 
     Browsers can't set headers on WebSocket requests, so the JWT comes as ?token=.
     """
@@ -28,7 +29,7 @@ async def device_updates(websocket: WebSocket, token: str = ""):
             return
 
     await websocket.accept()
-    queue = hub.subscribe()
+    queue = hub.subscribe(user_id)
 
     async def forward():
         while True:

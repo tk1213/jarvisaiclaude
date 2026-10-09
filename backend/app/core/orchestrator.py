@@ -209,13 +209,15 @@ class Orchestrator:
             log.warning("tool loop hit max rounds (%d) for session %s", self.max_tool_rounds, session_id)
             return CoreReply(session_id, "ขออภัยค่ะ งานนี้ซับซ้อนเกินไป ลองแบ่งเป็นคำสั่งสั้นๆ อีกครั้งนะคะ", calls)
 
-        self._persist(db, user, msg, session_id, new_messages)
         text = _reply_text(response.content) or "เรียบร้อยค่ะ"
         if response.stop_reason == "max_tokens":
             text += " …"
+        self._persist(db, user, msg, session_id, new_messages, text, calls)
         return CoreReply(session_id, text, calls)
 
-    def _persist(self, db: Session, user: User, msg: InboundMessage, session_id: str, new_messages: list[dict]):
+    def _persist(
+        self, db: Session, user: User, msg: InboundMessage, session_id: str, new_messages: list[dict], reply: str, calls: list[ToolCallRecord]
+    ):
         # Pictures are used for this turn only: storing them would re-send them (and their tokens) on every
         # later turn. What JARVIS read from them is in its reply and tool calls; drop_block covers the changed prefix.
         new_messages = [
@@ -224,16 +226,14 @@ class Orchestrator:
             else m
             for m in new_messages
         ]
-        for m in new_messages:
-            db.add(
-                ChatMessage(
-                    user_id=user.id,
-                    channel=msg.channel.value,
-                    session_id=session_id,
-                    role=m["role"],
-                    content={"blocks": m["content"]},
-                )
-            )
+        # What the chat shows for this turn (the dashboard reloads it on every screen); never sent to Claude.
+        shown = {
+            0: {"role": "user", "text": msg.text, "pictures": len(msg.images)},
+            len(new_messages) - 1: {"role": "jarvis", "text": reply, "tool_calls": [c.__dict__ for c in calls]},
+        }
+        for i, m in enumerate(new_messages):
+            content = {"blocks": m["content"]} | ({"display": shown[i]} if i in shown else {})
+            db.add(ChatMessage(user_id=user.id, channel=msg.channel.value, session_id=session_id, role=m["role"], content=content))
         db.commit()
 
 
