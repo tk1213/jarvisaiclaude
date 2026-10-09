@@ -68,11 +68,6 @@ class Settings(BaseSettings):
     line_channel_access_token: str = ""
     # A LINE chat continues the same conversation until it's been quiet this long.
     line_session_idle_minutes: int = 30
-    # The "tk รับจ่าย" OA (personal income/expense, POST /line/personal/webhook). Create it under the same LINE
-    # provider as the main OA, so the owner's LINE user id is the same and no second linking is needed.
-    # Once set, the main OA's "รายรับ"/"รายจ่าย" groups stop recording.
-    line_personal_channel_secret: str = ""
-    line_personal_channel_access_token: str = ""
 
     # FlowAccount Open API (spec §4.3). "mock" issues fake documents so the flow can be tried without an account.
     flowaccount_mode: Literal["mock", "live"] = "mock"

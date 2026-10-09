@@ -1,6 +1,6 @@
-"""Personal money (the 💳 page): bank and fund accounts, income/expense entries, balances, and what LINE records
-from a slip picture or a typed line: the "tk รับจ่าย" OA's one-to-one chat (it works out income or expense
-itself) or, before that OA is set up, the jarvisclaude groups "สลิปรายรับ" / "สลิปรายจ่าย".
+"""Personal money (the 💳 page): bank and fund accounts, income/expense entries, balances, and what the LINE
+groups record from a slip picture or a typed line: "tk รับจ่าย" (any group named with "รับจ่าย"; it works out
+income or expense itself) and the older "สลิปรายรับ" / "สลิปรายจ่าย".
 
 Every function that answers LINE returns the Thai reply to send; nothing here talks to LINE or Claude itself.
 """
@@ -413,7 +413,7 @@ def guess_kind(accs: list[BankAccount], slip: dict) -> str | None:
 
 @dataclass
 class Pending:
-    """A slip or typed line waiting for the owner's answer: which account it was or, in the "tk รับจ่าย" chat,
+    """A slip or typed line waiting for the owner's answer: which account it was or, in the "tk รับจ่าย" group,
     whether it was income or expense."""
 
     kind: str  # "income" | "expense"; "" while asking which of the two
@@ -534,7 +534,7 @@ def record_slip(db: Session, group: str, kind: str, slip: dict, jpeg: bytes) -> 
 
 
 def record_chat_slip(db: Session, chat: str, slip: dict, jpeg: bytes) -> str:
-    """A slip picture sent to the "tk รับจ่าย" chat: income, expense or a transfer, from whose accounts its two
+    """A slip picture sent to the "tk รับจ่าย" group: income, expense or a transfer, from whose accounts its two
     sides are. When that can't be told, it asks."""
     checked = _check_slip(db, slip)
     if isinstance(checked, str):
@@ -694,7 +694,7 @@ def handle_text(db: Session, group: str, kind: str, text: str) -> str | None:
 
 
 CHAT_HELP = (
-    "จาร์วิสบันทึกรายรับรายจ่ายให้ค่ะ TK\n"
+    "กลุ่มนี้จาร์วิสบันทึกรายรับรายจ่ายให้ในหน้า 💳 การเงินส่วนตัวค่ะ\n"
     "- ส่งรูปสลิปมาได้เลย (ดูเองว่ารับหรือจ่าย)\n"
     "- หรือพิมพ์เอง เช่น \"รับ ค่าจ้าง 5000 กสิกร\" / \"จ่าย ค่าข้าว 120\" (ไม่บอกธนาคารจะใช้บัญชีหลัก)\n"
     "- โอนระหว่างบัญชี เช่น \"โอน 5000 กสิกร ไป กองทุน A\"\n"
@@ -703,8 +703,9 @@ CHAT_HELP = (
 _CHAT_WORD = re.compile(r"^(รายรับ|รายจ่าย|รับ|จ่าย|โอน)(?=[\s\d]|$)")
 
 
-def handle_chat_text(db: Session, chat: str, text: str) -> str:
-    """A typed line in the "tk รับจ่าย" chat. It starts with รับ / จ่าย / โอน; without one, JARVIS asks which."""
+def handle_chat_text(db: Session, chat: str, text: str) -> str | None:
+    """A typed line in the "tk รับจ่าย" group. It starts with รับ / จ่าย / โอน; without one, JARVIS asks which.
+    None for ordinary chat (no amount): stay quiet."""
     text = text.strip()
     answer = _answer_pending(db, chat, text)
     if answer is not None:
@@ -723,7 +724,7 @@ def handle_chat_text(db: Session, chat: str, text: str) -> str:
     accs = accounts(db)
     amount, code, note = parse_text(_drop_nicknames(accs, text))
     if amount is None:
-        return CHAT_HELP
+        return None
     if not note and not code and not named_accounts(accs, text):
         return "พิมพ์รายละเอียดกับจำนวนเงินด้วยนะคะ เช่น \"จ่าย ค่าข้าว 120\" หรือ \"รับ ค่าจ้าง 5000 กสิกร\""
     if amount <= 0:

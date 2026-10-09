@@ -14,7 +14,7 @@ const TABS: { id: Tab; label: string }[] = [
 
 const SOURCE: Record<PersonalEntry['source'], string> = { slip: 'สลิป LINE', text: 'พิมพ์ใน LINE', manual: 'เพิ่มเอง' }
 
-/** 💳 Personal money: balances per bank or fund account, income and expenses (also from LINE "tk รับจ่าย"), and the accounts. */
+/** 💳 Personal money: balances per bank or fund account, income and expenses (also from the LINE group "tk รับจ่าย"), and the accounts. */
 export function Personal() {
   const [tab, setTab] = useState<Tab>('balance')
   const [month, setMonth] = useState(thisMonth)
@@ -55,7 +55,7 @@ export function Personal() {
           <button onClick={() => setTab('accounts')} className="text-sky-700 underline dark:text-sky-300">
             เพิ่มบัญชีธนาคาร
           </button>{' '}
-          พร้อมเงินต้นก่อน แล้วค่อยส่งสลิปใน LINE "tk รับจ่าย"
+          พร้อมเงินต้นก่อน แล้วค่อยส่งสลิปในกลุ่ม LINE "tk รับจ่าย"
         </div>
       ) : tab === 'balance' ? (
         <Balances month={month} version={version} />
@@ -244,7 +244,7 @@ function Entries({
             {rows?.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-3 py-8 text-center text-slate-500">
-                  ยังไม่มี{word}ในเดือนนี้ ส่งสลิปใน LINE "tk รับจ่าย" หรือกด "+ เพิ่ม{word}"
+                  ยังไม่มี{word}ในเดือนนี้ ส่งสลิปในกลุ่ม LINE "tk รับจ่าย" หรือกด "+ เพิ่ม{word}"
                 </td>
               </tr>
             )}
@@ -330,7 +330,7 @@ function Accounts({ accounts, onChange }: { accounts: BankAccount[] | null; onCh
         </div>
       )}
       <p className="text-xs text-slate-500">
-        บัญชีหลัก: ใช้เมื่อพิมพ์ใน LINE "tk รับจ่าย" โดยไม่บอกธนาคาร เช่น "จ่าย ค่าข้าว 120" (ถ้าบอก เช่น "จ่าย ค่าข้าว 120 กสิกร" จะใช้บัญชีของธนาคารนั้น)
+        บัญชีหลัก: ใช้เมื่อพิมพ์ในกลุ่ม LINE "tk รับจ่าย" โดยไม่บอกธนาคาร เช่น "จ่าย ค่าข้าว 120" (ถ้าบอก เช่น "จ่าย ค่าข้าว 120 กสิกร" จะใช้บัญชีของธนาคารนั้น)
       </p>
       {editing && (
         <PersonalAccountForm
