@@ -49,6 +49,9 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
   `block_binding.prefix_mismatch_behavior="drop_block"`, effort `low`.
 - The system prompt and tool list must stay byte-identical across a conversation; per-turn data (time,
   device snapshot, voice hint) goes in the user turn. History is append-only (preserved thinking).
+- Automatic prompt caching: top-level `cache_control={"type": "ephemeral"}` on every orchestrator call, so tool rounds and
+  turns within 5 minutes read the repeated prefix at the cache rate. Each round logs `cache_read=` / `cache_write=` tokens
+  (`journalctl -u jarvis | grep cache_read` on the mini PC) to check it's hitting.
 - Server-side web search `web_search_20260209` (no `country` in `user_location`: "TH" is rejected);
   the loop resumes `pause_turn`.
 

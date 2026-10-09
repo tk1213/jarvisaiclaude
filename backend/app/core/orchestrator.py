@@ -143,6 +143,10 @@ class Orchestrator:
             output_config={"effort": self.effort},
             betas=BETAS,
             fallbacks="default",
+            # Every call re-sends the same tools, system prompt and (append-only) history; caching that prefix
+            # bills the repeat at the cache-read rate instead of full input price. The breakpoint moves to the
+            # end of each request, so the next tool round or turn within 5 minutes reads everything before it.
+            cache_control={"type": "ephemeral"},
         )
 
     def handle(self, db: Session, tuya, user: User, msg: InboundMessage) -> CoreReply:
@@ -164,7 +168,17 @@ class Orchestrator:
         for round_no in range(1, self.max_tool_rounds + 1):
             started = time.perf_counter()
             response = self._call(history + new_messages)
-            log.info("Claude round %d: %.1fs (%s)", round_no, time.perf_counter() - started, response.stop_reason)
+            u = response.usage
+            log.info(
+                "Claude round %d: %.1fs (%s) tokens in=%d cache_read=%d cache_write=%d out=%d",
+                round_no,
+                time.perf_counter() - started,
+                response.stop_reason,
+                u.input_tokens,
+                u.cache_read_input_tokens or 0,
+                u.cache_creation_input_tokens or 0,
+                u.output_tokens,
+            )
 
             if response.stop_reason == "refusal":
                 # Nothing is persisted for a declined turn, keeping the history clean.

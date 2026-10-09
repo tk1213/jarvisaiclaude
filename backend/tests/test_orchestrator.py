@@ -74,6 +74,13 @@ def ask(orch, db, tuya, user, text_, session_id=None):
     return orch.handle(db, tuya, user, msg)
 
 
+def test_requests_cache_the_repeated_prefix(home):
+    db, tuya, user, _ = home
+    fake = FakeClaude([message([text("สวัสดีค่ะ TK")], "end_turn")])
+    ask(make(fake), db, tuya, user, "สวัสดี")
+    assert fake.requests[0]["cache_control"] == {"type": "ephemeral"}
+
+
 def test_turns_on_device_via_tools(home):
     db, tuya, user, devices = home
     light = devices["ไฟห้องนั่งเล่น"]
