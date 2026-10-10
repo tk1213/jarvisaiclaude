@@ -722,12 +722,39 @@ CHAT_HELP = (
     "- โอนระหว่างบัญชี เช่น \"โอน 5000 กสิกร ไป กองทุน A\"\n"
     "- \"ยอด\" ดูยอดคงเหลือ / \"ลบล่าสุด\" ลบรายการล่าสุด"
 )
-_CHAT_WORD = re.compile(r"^(รายรับ|รายจ่าย|รับ|จ่าย|โอน)(?=[\s\d]|$)")
+_KIND_WORDS = {"รายรับ": "income", "รับ": "income", "รายจ่าย": "expense", "จ่าย": "expense", "โอน": "transfer"}
+# A word on its own anywhere ("Kbank จ่าย 20"), maybe with the amount stuck on ("จ่าย120") ...
+_KIND_TOKEN = re.compile(r"^(รายรับ|รายจ่าย|รับ|จ่าย|โอน)(\d[\d,.]*)?$")
+# ... or stuck to the start of the line ("รับค่าจ้าง 5000"). Mid-line it must stand alone, so a word that merely
+# contains it ("ค่าเครื่องรับสัญญาณ") isn't taken for one.
+_KIND_START = re.compile(r"^(รายรับ|รายจ่าย|รับ|จ่าย|โอน)(\S+)")
+
+
+def split_kind(text: str) -> tuple[str | None, str]:
+    """("income" | "expense" | "transfer" | None, the text without that word). None when the line has no such word,
+    or both รับ and จ่าย (then JARVIS asks)."""
+    tokens = text.split()
+    kinds, kept = [], []
+    for token in tokens:
+        m = _KIND_TOKEN.match(token)
+        if m:
+            kinds.append(_KIND_WORDS[m[1]])
+            if m[2]:
+                kept.append(m[2])
+        else:
+            kept.append(token)
+    if not kinds and tokens:
+        m = _KIND_START.match(tokens[0])
+        if m:
+            kinds, kept = [_KIND_WORDS[m[1]]], [m[2], *tokens[1:]]
+    if len(set(kinds)) != 1:
+        return None, text
+    return kinds[0], " ".join(kept)
 
 
 def handle_chat_text(db: Session, chat: str, text: str) -> str | None:
-    """A typed line in the "tk รับจ่าย" group. It starts with รับ / จ่าย / โอน; without one, JARVIS asks which.
-    None for ordinary chat (no amount): stay quiet."""
+    """A typed line in the "tk รับจ่าย" group, with รับ / จ่าย / โอน anywhere in it ("Kbank จ่าย 20 บาท"); without
+    one, JARVIS asks which. None for ordinary chat (no amount): stay quiet."""
     text = text.strip()
     answer = _answer_pending(db, chat, text)
     if answer is not None:
@@ -737,13 +764,12 @@ def handle_chat_text(db: Session, chat: str, text: str) -> str | None:
     balance_answer = _balance_question(db, text)
     if balance_answer is not None:
         return balance_answer
-    m = _CHAT_WORD.match(text)
-    if m:
-        rest = text[m.end() :].strip()
-        if m[1] == "โอน":
-            return _typed_transfer(db, rest)
-        kind = "income" if m[1] in ("รับ", "รายรับ") else "expense"
-        return _typed_entry(db, chat, kind, rest) or f"พิมพ์รายละเอียดกับจำนวนเงินด้วยนะคะ เช่น \"{m[1]} ค่าข้าว 120\""
+    kind, rest = split_kind(text)
+    if kind == "transfer":
+        return _typed_transfer(db, rest)
+    if kind:
+        word = "รับ ค่าจ้าง 5000" if kind == "income" else "จ่าย ค่าข้าว 120"
+        return _typed_entry(db, chat, kind, rest) or f"พิมพ์รายละเอียดกับจำนวนเงินด้วยนะคะ เช่น \"{word}\""
     accs = accounts(db)
     amount, code, note = parse_text(_drop_nicknames(accs, text))
     if amount is None:
