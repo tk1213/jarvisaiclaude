@@ -335,6 +335,33 @@ def test_chat_typed_lines():
         assert "รายละเอียด" in personal.handle_chat_text(db, "U1", "จ่าย")
 
 
+def test_split_kind():
+    assert personal.split_kind("Kbank จ่าย 20 บาท") == ("expense", "Kbank 20 บาท")
+    assert personal.split_kind("ค่าข้าว จ่าย 120") == ("expense", "ค่าข้าว 120")
+    assert personal.split_kind("กสิกร รับ ค่าจ้าง 5000") == ("income", "กสิกร ค่าจ้าง 5000")
+    assert personal.split_kind("รับค่าจ้าง 5000") == ("income", "ค่าจ้าง 5000")
+    assert personal.split_kind("รายจ่ายค่าไฟ 800") == ("expense", "ค่าไฟ 800")
+    assert personal.split_kind("จ่าย120 ค่าข้าว") == ("expense", "120 ค่าข้าว")
+    assert personal.split_kind("Kbank โอน 5000 ไป K-SET50") == ("transfer", "Kbank 5000 ไป K-SET50")
+    assert personal.split_kind("ค่าเครื่องรับสัญญาณ 500") == (None, "ค่าเครื่องรับสัญญาณ 500")
+    assert personal.split_kind("รับ 100 จ่าย 50") == (None, "รับ 100 จ่าย 50")
+    assert personal.split_kind("ค่าข้าว 120") == (None, "ค่าข้าว 120")
+
+
+def test_kind_word_anywhere_in_the_line():
+    with PersonalSession() as db:
+        add(db, bank="KBANK", no="5531", nickname="TK Kbank")
+        add(db, bank="BAY", no="6165", default=True)
+        fund = add(db, bank="FUND_A", no="", opening="0", nickname="K-SET50")
+        assert personal.handle_chat_text(db, "G", "Kbank จ่าย 20 บาท") == "บันทึกรายจ่าย 20.00 บาท จาก TK Kbank (…5531) แล้วค่ะ TK\nคงเหลือ 980.00 บาท"
+        assert personal.handle_chat_text(db, "G", "ค่าข้าว จ่าย 120").startswith("บันทึกรายจ่าย 120.00 บาท จาก กรุงศรี (…6165)")
+        assert db.query(PersonalEntry).order_by(PersonalEntry.id.desc()).first().note == "ค่าข้าว"
+        assert personal.handle_chat_text(db, "G", "รับค่าจ้าง 5000").startswith("บันทึกรายรับ 5,000.00 บาท เข้า กรุงศรี")
+        assert personal.handle_chat_text(db, "G", "Kbank โอน 300 ไป K-SET50").startswith("บันทึกโอนระหว่างบัญชี 300.00 บาท จาก TK Kbank")
+        assert personal.balance(db, fund) == 30000
+        assert "เป็นรายรับหรือรายจ่ายคะ" in personal.handle_chat_text(db, "G", "ค่าเครื่องรับสัญญาณ 500")
+
+
 def test_balance_of_one_bank_or_fund():
     with PersonalSession() as db:
         add(db, bank="BAY", no="6165", nickname="TK กรุงศรี")
