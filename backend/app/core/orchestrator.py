@@ -31,6 +31,9 @@ from app.models import ChatMessage, Device, User
 
 log = logging.getLogger(__name__)
 
+# When Claude last answered and last failed (e.g. no credit left), for the "สถานะระบบ" report.
+claude_status: dict = {"ok_at": None, "error_at": None, "error": None}
+
 BETAS = [
     # Re-run a declined request on a fallback model instead of just stopping.
     "server-side-fallback-2026-07-01",
@@ -133,6 +136,15 @@ class Orchestrator:
             return self._create(messages)
 
     def _create(self, messages: list[dict]):
+        try:
+            response = self._request(messages)
+        except anthropic.APIError as e:
+            claude_status.update(error_at=datetime.now(timezone.utc), error=str(getattr(e, "message", e))[:200])
+            raise
+        claude_status["ok_at"] = datetime.now(timezone.utc)
+        return response
+
+    def _request(self, messages: list[dict]):
         return self.client.beta.messages.create(
             model=self.model,
             max_tokens=16000,

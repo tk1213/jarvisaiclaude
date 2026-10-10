@@ -125,6 +125,10 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
   `FUND_A`..`FUND_F` (real name in the nickname, matched in slips and typed lines; balance = money put in, no NAV). A transfer is
   one row but shows as รับโอน/โอนออก per account and in each account's month in/out, never in the month totals. No expense
   categories yet.
+- Server health: "สถานะระบบ" / "เช็คระบบ" / "server" on LINE answers from `app/services/system_status.py` without Claude
+  (uptime, CPU, RAM, disk, CPU temp from /proc and /sys, Tuya/Pulsar, `orchestrator.claude_status` last ok/error, last backup
+  folder, git version; ⚠️ headline on problems). The `get_system_status` tool returns the same data for free-form questions.
+  Down-time alerts are external (Healthchecks.io pinged from the mini PC's cron), since a dead server can't report itself.
 - New devices are added only by the "อัปเดตอุปกรณ์" button, never automatically.
 - The IR air conditioner (Air PANASONIC via the Temp Smart Jarvis hub) can't report changes made in the
   Tuya app or with its physical remote; the dashboard/JARVIS side is the source of truth.

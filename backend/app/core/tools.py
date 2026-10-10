@@ -26,6 +26,7 @@ from app.ratelimit import limiter
 from app.services import devices as svc
 from app.db import CatalogSession
 from app.services import catalog
+from app.services import system_status
 from app.services import documents as docs
 
 
@@ -183,6 +184,10 @@ def get_weather(ctx: ToolContext, place: str | None, latitude: float | None, lon
     except weather_api.WeatherError as e:
         raise ToolError(str(e)) from None
     return {"place": place or "", **result}
+
+
+def get_system_status(ctx: ToolContext) -> Any:
+    return {k: v.isoformat() if isinstance(v, datetime) else v for k, v in system_status.collect(ctx.db).items()}
 
 
 def find_products(ctx: ToolContext, query: str) -> Any:
@@ -347,6 +352,16 @@ TOOLS: list[dict] = [
             "required": ["place", "latitude", "longitude", "days"],
             "additionalProperties": False,
         },
+    },
+    {
+        "name": "get_system_status",
+        "description": (
+            "How the JARVIS server (the owner's mini PC) is doing: uptime, CPU, RAM, free disk, CPU temperature, Tuya "
+            "connection and devices online, Claude's last answer/error, the last backup and the code version. Use it when "
+            "asked whether the server/system is running or healthy, then answer briefly and point out anything wrong."
+        ),
+        "strict": True,
+        "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False},
     },
     {
         "name": "send_to_line",
@@ -612,6 +627,7 @@ _HANDLERS: dict[str, Callable[..., Any]] = {
     "list_scenes": list_scenes,
     "set_scene": set_scene,
     "send_to_line": send_to_line,
+    "get_system_status": get_system_status,
     "get_weather": get_weather,
     "find_customers": find_customers,
     "find_products": find_products,

@@ -37,7 +37,7 @@ from app.integrations.line import (
 from app.integrations.tuya import TuyaError, get_tuya_client
 from app.models import ChatMessage, Device, User
 from app.ratelimit import limiter
-from app.services import personal
+from app.services import personal, system_status
 from app.services.slip_reader import SlipReadError, read_slip
 
 log = logging.getLogger(__name__)
@@ -193,6 +193,8 @@ def _answer(db: Session, client: LineClient, event: dict, line_user_id: str, use
             _fresh.add(user.id)
             _pending_images.pop(line_user_id, None)
         return text_message("เริ่มบทสนทนาใหม่แล้วค่ะ มีอะไรให้ช่วยไหมคะ")
+    if text.lower() in system_status.STATUS_WORDS:
+        return text_message(system_status.report(db))  # answered here, without Claude: free, and works when Claude doesn't
     client.show_loading(line_user_id)
     return _ask_jarvis(db, user, text, _take_images(line_user_id))
 
