@@ -346,6 +346,15 @@ def test_split_kind():
     assert personal.split_kind("ค่าเครื่องรับสัญญาณ 500") == (None, "ค่าเครื่องรับสัญญาณ 500")
     assert personal.split_kind("รับ 100 จ่าย 50") == (None, "รับ 100 จ่าย 50")
     assert personal.split_kind("ค่าข้าว 120") == (None, "ค่าข้าว 120")
+    # Stuck to a word mid-line, front or back (the owner's own lines).
+    assert personal.split_kind("kbank หูฟังจ่าย 620") == ("expense", "kbank หูฟัง 620")
+    assert personal.split_kind("Kbank จ่ายข้าว 350") == ("expense", "Kbank ข้าว 350")
+    assert personal.split_kind("กสิกร ค่าจ้างรับ 5000") == ("income", "กสิกร ค่าจ้าง 5000")
+    assert personal.split_kind("ค่ารายจ่าย 10") == ("expense", "ค่า 10")
+    assert personal.split_kind("เงินโอน 500") == (None, "เงินโอน 500")  # โอน only counts at the front
+    assert personal.split_kind("โอนเงิน 5000 กสิกร ไป K-SET50") == ("transfer", "เงิน 5000 กสิกร ไป K-SET50")
+    # A nickname's own words aren't taken for รับ/จ่าย.
+    assert personal.split_kind("ค่าข้าว 120 กสิกร ใช้จ่าย", {"กสิกร", "ใช้จ่าย"}) == (None, "ค่าข้าว 120 กสิกร ใช้จ่าย")
 
 
 def test_kind_word_anywhere_in_the_line():
@@ -360,6 +369,10 @@ def test_kind_word_anywhere_in_the_line():
         assert personal.handle_chat_text(db, "G", "Kbank โอน 300 ไป K-SET50").startswith("บันทึกโอนระหว่างบัญชี 300.00 บาท จาก TK Kbank")
         assert personal.balance(db, fund) == 30000
         assert "เป็นรายรับหรือรายจ่ายคะ" in personal.handle_chat_text(db, "G", "ค่าเครื่องรับสัญญาณ 500")
+        assert personal.handle_chat_text(db, "G", "kbank หูฟังจ่าย 620").startswith("บันทึกรายจ่าย 620.00 บาท จาก TK Kbank")
+        assert db.query(PersonalEntry).order_by(PersonalEntry.id.desc()).first().note == "หูฟัง"
+        assert personal.handle_chat_text(db, "G", "Kbank จ่ายข้าว 350").startswith("บันทึกรายจ่าย 350.00 บาท จาก TK Kbank")
+        assert db.query(PersonalEntry).order_by(PersonalEntry.id.desc()).first().note == "ข้าว"
 
 
 def test_balance_of_one_bank_or_fund():
