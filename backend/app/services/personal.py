@@ -725,28 +725,33 @@ CHAT_HELP = (
 _KIND_WORDS = {"รายรับ": "income", "รับ": "income", "รายจ่าย": "expense", "จ่าย": "expense", "โอน": "transfer"}
 # A word on its own anywhere ("Kbank จ่าย 20"), maybe with the amount stuck on ("จ่าย120") ...
 _KIND_TOKEN = re.compile(r"^(รายรับ|รายจ่าย|รับ|จ่าย|โอน)(\d[\d,.]*)?$")
-# ... or stuck to the start of the line ("รับค่าจ้าง 5000"). Mid-line it must stand alone, so a word that merely
-# contains it ("ค่าเครื่องรับสัญญาณ") isn't taken for one.
-_KIND_START = re.compile(r"^(รายรับ|รายจ่าย|รับ|จ่าย|โอน)(\S+)")
+# ... stuck to the front of a word ("Kbank จ่ายข้าว 350", "โอนเงิน") ...
+_KIND_FRONT = re.compile(r"^(รายรับ|รายจ่าย|รับ|จ่าย|โอน)(\S+)$")
+# ... or to its end ("kbank หูฟังจ่าย 620"; not โอน: "เงินโอน" is money received, not a move between accounts).
+# Inside a word ("ค่าเครื่องรับสัญญาณ") it doesn't count.
+_KIND_BACK = re.compile(r"^(\S+?)(รายรับ|รายจ่าย|รับ|จ่าย)$")
 
 
-def split_kind(text: str) -> tuple[str | None, str]:
+def split_kind(text: str, keep: set[str] = frozenset()) -> tuple[str | None, str]:
     """("income" | "expense" | "transfer" | None, the text without that word). None when the line has no such word,
-    or both รับ and จ่าย (then JARVIS asks)."""
-    tokens = text.split()
+    or both รับ and จ่าย (then JARVIS asks). Words in `keep` (parts of account nicknames like "กสิกร ใช้จ่าย") are
+    left alone."""
     kinds, kept = [], []
-    for token in tokens:
-        m = _KIND_TOKEN.match(token)
-        if m:
+    for token in text.split():
+        if token.lower() in keep:
+            kept.append(token)
+        elif m := _KIND_TOKEN.match(token):
             kinds.append(_KIND_WORDS[m[1]])
             if m[2]:
                 kept.append(m[2])
+        elif m := _KIND_FRONT.match(token):
+            kinds.append(_KIND_WORDS[m[1]])
+            kept.append(m[2])
+        elif m := _KIND_BACK.match(token):
+            kinds.append(_KIND_WORDS[m[2]])
+            kept.append(m[1])
         else:
             kept.append(token)
-    if not kinds and tokens:
-        m = _KIND_START.match(tokens[0])
-        if m:
-            kinds, kept = [_KIND_WORDS[m[1]]], [m[2], *tokens[1:]]
     if len(set(kinds)) != 1:
         return None, text
     return kinds[0], " ".join(kept)
@@ -764,7 +769,7 @@ def handle_chat_text(db: Session, chat: str, text: str) -> str | None:
     balance_answer = _balance_question(db, text)
     if balance_answer is not None:
         return balance_answer
-    kind, rest = split_kind(text)
+    kind, rest = split_kind(text, {w.lower() for a in accounts(db) for w in a.nickname.split()})
     if kind == "transfer":
         return _typed_transfer(db, rest)
     if kind:
