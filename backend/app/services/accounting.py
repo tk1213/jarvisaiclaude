@@ -256,8 +256,9 @@ def _fa_entry(kind: str, path: str, doc: dict) -> dict | None:
 
 
 def sync_flowaccount(db: Session, client) -> dict:
-    """Read sales tax invoices and expenses from FlowAccount; new ones are added, known ones refreshed."""
-    counts = {"added": 0, "updated": 0}
+    """Read sales tax invoices and expenses from FlowAccount; new ones are added, known ones refreshed, and rows read
+    from a kind of document that is no longer read (expenses used to come from "/expenses") are removed."""
+    counts = {"added": 0, "updated": 0, "removed": 0}
     jobs = [("income", path) for path in INCOME_PATHS] + [("expense", EXPENSE_PATH)]
     existing = {
         (e.kind, e.external_id): e for e in db.scalars(select(AccountEntry).where(AccountEntry.source == "flowaccount"))
@@ -286,6 +287,11 @@ def sync_flowaccount(db: Session, client) -> dict:
                 setattr(entry, key, value)
             if entry.vat_satang == 0:
                 entry.full_tax_invoice = False
+    read = {(kind, path.strip("/")) for kind, path in jobs}
+    for (kind, external_id), entry in existing.items():
+        if (kind, external_id.split(":", 1)[0]) not in read:
+            db.delete(entry)
+            counts["removed"] += 1
     set_setting(db, LAST_SYNC, datetime.now(timezone.utc).isoformat(timespec="seconds"))
     db.commit()
     return counts

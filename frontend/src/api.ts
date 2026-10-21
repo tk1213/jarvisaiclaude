@@ -339,7 +339,7 @@ export const api = {
   addAccountEntry: (body: AccountEntryInput) => request<AccountEntry>('POST', '/account/entries', body),
   editAccountEntry: (id: number, body: Partial<AccountEntryInput>) => request<AccountEntry>('PUT', `/account/entries/${id}`, body),
   deleteAccountEntry: (id: number) => request<void>('DELETE', `/account/entries/${id}`),
-  syncAccount: () => request<{ added: number; updated: number; last_sync: string }>('POST', '/account/sync'),
+  syncAccount: () => request<{ added: number; updated: number; removed: number; last_sync: string }>('POST', '/account/sync'),
   accountSummary: (month: string) => request<AccountSummary>('GET', `/account/summary?month=${month}`),
   banks: () => request<{ code: string; name: string }[]>('GET', '/personal/banks'),
   bankAccounts: () => request<BankAccount[]>('GET', '/personal/accounts'),
