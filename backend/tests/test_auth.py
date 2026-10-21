@@ -26,7 +26,7 @@ def test_admin_creates_user_without_device_permission(client, owner_headers):
     r = client.post(
         "/users",
         headers=owner_headers,
-        json={"username": "guest", "password": "password123", "can_control_devices": False},
+        json={"username": "guest", "password": "password123", "permissions": {"home": "view"}},
     )
     assert r.status_code == 201
     token = client.post("/auth/login", json={"username": "guest", "password": "password123"}).json()["access_token"]

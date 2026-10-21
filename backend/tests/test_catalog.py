@@ -117,7 +117,7 @@ def test_set_remarks(db, main_db):
     assert catalog.expand_set(db, "ชุด A")["remarks"] == "รับประกัน 1 ปี"
     assert catalog.expand_set(db, "ชุด C")["remarks"] is None
 
-    owner = User(username="owner", password_hash="x")
+    owner = User(username="owner", password_hash="x", can_issue_documents=True)
     main_db.add(owner)
     main_db.commit()
     ctx = ToolContext(db=main_db, tuya=None, user=owner)

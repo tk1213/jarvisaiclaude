@@ -10,13 +10,15 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app import permissions
 from app.db import get_personal_db
-from app.deps import require_admin
 from app.models import User
 from app.personal_models import BankAccount, PersonalEntry
 from app.services import personal
 
 router = APIRouter(prefix="/personal", tags=["personal"])
+can_view = permissions.require("personal")
+can_edit = permissions.require("personal", "edit")
 
 
 class AccountIn(BaseModel):
@@ -77,17 +79,17 @@ def _names(db: Session) -> dict[int, str]:
 
 
 @router.get("/banks")
-def banks(_: User = Depends(require_admin)):
+def banks(_: User = Depends(can_view)):
     return [{"code": code, "name": name} for code, (name, _words) in personal.BANKS.items()]
 
 
 @router.get("/accounts")
-def list_accounts(db: Session = Depends(get_personal_db), _: User = Depends(require_admin)):
+def list_accounts(db: Session = Depends(get_personal_db), _: User = Depends(can_view)):
     return [_account_out(db, a) for a in personal.accounts(db)]
 
 
 @router.post("/accounts", status_code=201)
-def add_account(body: AccountIn, db: Session = Depends(get_personal_db), _: User = Depends(require_admin)):
+def add_account(body: AccountIn, db: Session = Depends(get_personal_db), _: User = Depends(can_edit)):
     try:
         return _account_out(db, personal.save_account(db, body.model_dump()))
     except personal.PersonalError as e:
@@ -95,7 +97,7 @@ def add_account(body: AccountIn, db: Session = Depends(get_personal_db), _: User
 
 
 @router.put("/accounts/{account_id}")
-def edit_account(account_id: int, body: AccountIn, db: Session = Depends(get_personal_db), _: User = Depends(require_admin)):
+def edit_account(account_id: int, body: AccountIn, db: Session = Depends(get_personal_db), _: User = Depends(can_edit)):
     try:
         return _account_out(db, personal.save_account(db, body.model_dump(), _account(db, account_id)))
     except personal.PersonalError as e:
@@ -103,7 +105,7 @@ def edit_account(account_id: int, body: AccountIn, db: Session = Depends(get_per
 
 
 @router.delete("/accounts/{account_id}", status_code=204)
-def delete_account(account_id: int, db: Session = Depends(get_personal_db), _: User = Depends(require_admin)):
+def delete_account(account_id: int, db: Session = Depends(get_personal_db), _: User = Depends(can_edit)):
     try:
         personal.delete_account(db, _account(db, account_id))
     except personal.PersonalError as e:
@@ -111,7 +113,7 @@ def delete_account(account_id: int, db: Session = Depends(get_personal_db), _: U
 
 
 @router.get("/summary")
-def summary(month: str, db: Session = Depends(get_personal_db), _: User = Depends(require_admin)):
+def summary(month: str, db: Session = Depends(get_personal_db), _: User = Depends(can_view)):
     try:
         return personal.summary(db, month)
     except personal.PersonalError as e:
@@ -119,7 +121,7 @@ def summary(month: str, db: Session = Depends(get_personal_db), _: User = Depend
 
 
 @router.get("/entries")
-def list_entries(kind: str, month: str, account_id: int | None = None, db: Session = Depends(get_personal_db), _: User = Depends(require_admin)):
+def list_entries(kind: str, month: str, account_id: int | None = None, db: Session = Depends(get_personal_db), _: User = Depends(can_view)):
     if kind not in ("income", "expense"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "kind must be income or expense")
     try:
@@ -131,7 +133,7 @@ def list_entries(kind: str, month: str, account_id: int | None = None, db: Sessi
 
 
 @router.post("/entries", status_code=201)
-def add_entry(body: EntryIn, db: Session = Depends(get_personal_db), _: User = Depends(require_admin)):
+def add_entry(body: EntryIn, db: Session = Depends(get_personal_db), _: User = Depends(can_edit)):
     try:
         e = personal.save_entry(db, body.model_dump())
     except personal.PersonalError as err:
@@ -140,7 +142,7 @@ def add_entry(body: EntryIn, db: Session = Depends(get_personal_db), _: User = D
 
 
 @router.put("/entries/{entry_id}")
-def edit_entry(entry_id: int, body: EntryIn, db: Session = Depends(get_personal_db), _: User = Depends(require_admin)):
+def edit_entry(entry_id: int, body: EntryIn, db: Session = Depends(get_personal_db), _: User = Depends(can_edit)):
     try:
         e = personal.save_entry(db, body.model_dump(), _entry(db, entry_id))
     except personal.PersonalError as err:
@@ -149,13 +151,13 @@ def edit_entry(entry_id: int, body: EntryIn, db: Session = Depends(get_personal_
 
 
 @router.delete("/entries/{entry_id}", status_code=204)
-def delete_entry(entry_id: int, db: Session = Depends(get_personal_db), _: User = Depends(require_admin)):
+def delete_entry(entry_id: int, db: Session = Depends(get_personal_db), _: User = Depends(can_edit)):
     personal.delete_entry(db, _entry(db, entry_id))
     return Response(status_code=204)
 
 
 @router.get("/entries/{entry_id}/slip")
-def slip(entry_id: int, db: Session = Depends(get_personal_db), _: User = Depends(require_admin)):
+def slip(entry_id: int, db: Session = Depends(get_personal_db), _: User = Depends(can_view)):
     entry = _entry(db, entry_id)
     path = (personal.slip_dir() / entry.slip_file).resolve() if entry.slip_file else None
     if path is None or not path.is_relative_to(personal.slip_dir().resolve()) or not path.is_file():

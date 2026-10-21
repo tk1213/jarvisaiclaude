@@ -14,13 +14,25 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+PageLevel = Literal["none", "view", "edit"]
+
+
 class UserCreate(BaseModel):
     username: str = Field(min_length=3, max_length=64)
     password: str = Field(min_length=8)
-    display_name: str = ""
+    display_name: str = Field(default="", max_length=128)
     is_admin: bool = False
-    can_control_devices: bool = True
-    can_issue_documents: bool = False
+    # Pages this member may open ({"home": "edit", "account": "view"}); a new member starts with none.
+    permissions: dict[str, PageLevel] = Field(default_factory=dict)
+
+
+class UserUpdate(BaseModel):
+    display_name: str | None = Field(default=None, max_length=128)
+    permissions: dict[str, PageLevel] | None = None
+
+
+class PasswordReset(BaseModel):
+    password: str = Field(min_length=8)
 
 
 class UserOut(BaseModel):
@@ -32,6 +44,8 @@ class UserOut(BaseModel):
     is_admin: bool
     can_control_devices: bool
     can_issue_documents: bool
+    permissions: dict[str, PageLevel]
+    line_linked: bool = False
 
 
 class DeviceOut(BaseModel):

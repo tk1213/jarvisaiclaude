@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, getToken, setToken, type User } from './api'
+import { api, can, getToken, setToken, type User } from './api'
 import { Account } from './components/Account'
 import { Catalog } from './components/Catalog'
 import { ChatPanel } from './components/ChatPanel'
@@ -7,20 +7,28 @@ import { DeviceCard } from './components/DeviceCard'
 import { Documents } from './components/Documents'
 import { LineLink } from './components/LineLink'
 import { Login } from './components/Login'
+import { Members } from './components/Members'
 import { Personal } from './components/Personal'
 import { Scenes } from './components/Scenes'
 import { powerCode } from './readings'
 import { useDevices, type LinkState } from './useDevices'
 
-type Page = 'home' | 'flowaccount' | 'account' | 'personal'
-const PAGES: { id: Page; label: string; adminOnly?: boolean }[] = [
+type Page = 'home' | 'flowaccount' | 'account' | 'personal' | 'members'
+const PAGES: { id: Page; label: string }[] = [
   { id: 'home', label: '🏠 บ้าน' },
   { id: 'flowaccount', label: '📄 FlowAccount' },
-  { id: 'account', label: '💰 Account', adminOnly: true },
-  { id: 'personal', label: '💳 การเงินส่วนตัว', adminOnly: true },
+  { id: 'account', label: '💰 Account' },
+  { id: 'personal', label: '💳 การเงินส่วนตัว' },
+  { id: 'members', label: '👥 สมาชิก' },
 ]
 
-/** The page from the address (#flowaccount, #account, #personal), so a refresh or bookmark lands on the same page. */
+/** Whether this user may open a page: the members page is for admins, the rest follow the ticks an admin set. */
+function mayOpen(user: User | null, page: Page): boolean {
+  if (!user) return false
+  return page === 'members' ? user.is_admin : can(user, page)
+}
+
+/** The page from the address (#flowaccount, #account, #personal, #members), so a refresh or bookmark lands on the same page. */
 function pageFromHash(): Page {
   const page = location.hash.slice(1)
   return PAGES.find((p) => p.id === page)?.id ?? 'home'
@@ -53,8 +61,8 @@ export default function App() {
 }
 
 function Dashboard({ onLogout }: { onLogout: () => void }) {
-  const { devices, link, error, upsert, setDevices } = useDevices()
   const [user, setUser] = useState<User | null>(null)
+  const { devices, link, error, upsert, setDevices } = useDevices(user ? can(user, 'home') : null)
   const [syncing, setSyncing] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
   const [syncNote, setSyncNote] = useState<string | null>(null)
@@ -98,7 +106,11 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     }
   }
 
-  const canControl = user?.can_control_devices ?? false
+  const canControl = can(user, 'home', 'edit')
+  const allowedPages = PAGES.filter((p) => mayOpen(user, p.id))
+  // A page this member can't open (e.g. from an old bookmark) shows their first allowed page instead.
+  const shown: Page | null = user ? (mayOpen(user, page) ? page : (allowedPages[0]?.id ?? null)) : null
+  const chat = can(user, 'chat')
   const onCount = devices.filter((d) => {
     const code = powerCode(d.status)
     return code !== null && d.status[code] === true
@@ -126,8 +138,8 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         </div>
         <div className="flex items-center gap-2 text-sm">
           {user && <span className="hidden text-slate-500 sm:inline">{user.display_name}</span>}
-          <LineLink />
-          {page === 'home' && (
+          {(chat || can(user, 'personal', 'edit')) && <LineLink />}
+          {shown === 'home' && canControl && (
             <button
               onClick={() => void sync()}
               disabled={syncing}
@@ -143,13 +155,13 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       </header>
 
       <nav className="-mt-2 flex gap-1 overflow-x-auto [scrollbar-width:none] border-b border-slate-200 dark:border-slate-800">
-        {PAGES.filter((p) => !p.adminOnly || user?.is_admin).map((p) => (
+        {allowedPages.map((p) => (
           <button
             key={p.id}
             onClick={() => go(p.id)}
-            aria-current={page === p.id ? 'page' : undefined}
+            aria-current={shown === p.id ? 'page' : undefined}
             className={`-mb-px shrink-0 border-b-2 px-4 py-2 text-sm font-medium whitespace-nowrap ${
-              page === p.id ? 'border-sky-600 text-sky-700 dark:text-sky-300' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              shown === p.id ? 'border-sky-600 text-sky-700 dark:text-sky-300' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
             }`}
           >
             {p.label}
@@ -157,25 +169,23 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         ))}
       </nav>
 
-      {page === 'account' || page === 'personal' ? (
-        user?.is_admin ? (
-          page === 'account' ? (
-            <Account />
-          ) : (
-            <Personal />
-          )
-        ) : (
-          <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
-            {user ? 'หน้านี้สำหรับผู้ดูแลระบบ (admin) เท่านั้น' : 'กำลังโหลด…'}
-          </p>
-        )
+      {shown === null ? (
+        <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
+          {user ? 'บัญชีนี้ยังไม่ได้รับสิทธิ์เข้าหน้าไหน ติดต่อ admin ให้เปิดสิทธิ์ในหน้า 👥 สมาชิก' : 'กำลังโหลด…'}
+        </p>
+      ) : shown === 'members' ? (
+        <Members />
+      ) : shown === 'account' ? (
+        <Account canEdit={can(user, 'account', 'edit')} />
+      ) : shown === 'personal' ? (
+        <Personal canEdit={can(user, 'personal', 'edit')} />
       ) : (
-        <div className="grid flex-1 gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
-          {page === 'flowaccount' ? (
+        <div className={`grid flex-1 gap-6 ${chat ? 'lg:grid-cols-[minmax(0,1fr)_24rem]' : ''}`}>
+          {shown === 'flowaccount' ? (
             <main className="space-y-6">
               <h2 className="text-lg font-semibold">เอกสารและสินค้า FlowAccount</h2>
               <Documents refreshKey={documentsVersion} />
-              <Catalog refreshKey={documentsVersion} />
+              <Catalog refreshKey={documentsVersion} canEdit={can(user, 'flowaccount', 'edit')} />
             </main>
           ) : (
             <main className="space-y-5">
@@ -221,9 +231,11 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
             </main>
           )}
 
-          <aside className="lg:sticky lg:top-5 lg:h-[calc(100vh-7rem)]">
-            <ChatPanel page={page} onDocuments={() => setDocumentsVersion((v) => v + 1)} />
-          </aside>
+          {chat && (
+            <aside className="lg:sticky lg:top-5 lg:h-[calc(100vh-7rem)]">
+              <ChatPanel page={shown} onDocuments={() => setDocumentsVersion((v) => v + 1)} />
+            </aside>
+          )}
         </div>
       )}
     </div>

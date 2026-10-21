@@ -3,14 +3,16 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import permissions
 from app.catalog_models import Product, ProductSet
 from app.db import get_catalog_db
-from app.deps import get_current_user
 from app.integrations.flowaccount import FlowAccountError
 from app.models import User
 from app.services import catalog
 
 router = APIRouter(tags=["catalog"])
+can_view = permissions.require("flowaccount")
+can_edit = permissions.require("flowaccount", "edit")
 
 
 class ProductOut(BaseModel):
@@ -57,12 +59,12 @@ def _products(db: Session) -> list[ProductOut]:
 
 
 @router.get("/products", response_model=list[ProductOut])
-def list_products(db: Session = Depends(get_catalog_db), _: User = Depends(get_current_user)):
+def list_products(db: Session = Depends(get_catalog_db), _: User = Depends(can_view)):
     return _products(db)
 
 
 @router.post("/products/sync", response_model=list[ProductOut])
-def sync_products(db: Session = Depends(get_catalog_db), _: User = Depends(get_current_user)):
+def sync_products(db: Session = Depends(get_catalog_db), _: User = Depends(can_edit)):
     """Copy the product list from FlowAccount (the "อัปเดตสินค้า" button)."""
     try:
         catalog.sync_products(db)
@@ -72,12 +74,12 @@ def sync_products(db: Session = Depends(get_catalog_db), _: User = Depends(get_c
 
 
 @router.get("/product-sets", response_model=list[ProductSetOut])
-def list_sets(db: Session = Depends(get_catalog_db), _: User = Depends(get_current_user)):
+def list_sets(db: Session = Depends(get_catalog_db), _: User = Depends(can_view)):
     return catalog.list_sets(db)
 
 
 @router.put("/product-sets/{set_id}", response_model=ProductSetOut)
-def update_set(set_id: int, body: ProductSetIn, db: Session = Depends(get_catalog_db), _: User = Depends(get_current_user)):
+def update_set(set_id: int, body: ProductSetIn, db: Session = Depends(get_catalog_db), _: User = Depends(can_edit)):
     """Edit a set from the dashboard: name, description, remarks, items, quantities and special prices."""
     product_set = db.get(ProductSet, set_id)
     if product_set is None:
@@ -90,7 +92,7 @@ def update_set(set_id: int, body: ProductSetIn, db: Session = Depends(get_catalo
 
 
 @router.delete("/product-sets/{set_id}", status_code=204)
-def delete_set(set_id: int, db: Session = Depends(get_catalog_db), _: User = Depends(get_current_user)):
+def delete_set(set_id: int, db: Session = Depends(get_catalog_db), _: User = Depends(can_edit)):
     product_set = db.get(ProductSet, set_id)
     if product_set is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Set not found")

@@ -11,13 +11,15 @@ from sqlalchemy.orm import Session
 
 from app.account_models import AccountEntry
 from app.config import get_settings
+from app import permissions
 from app.db import get_account_db
-from app.deps import require_admin
 from app.integrations.flowaccount import FlowAccountError, get_flowaccount_client
 from app.models import User
 from app.services import accounting
 
 router = APIRouter(prefix="/account", tags=["account"])
+can_view = permissions.require("account")
+can_edit = permissions.require("account", "edit")
 
 
 class EntryIn(BaseModel):
@@ -59,7 +61,7 @@ def _bad(e: Exception) -> HTTPException:
 
 
 @router.get("/info")
-def info(db: Session = Depends(get_account_db), _: User = Depends(require_admin)):
+def info(db: Session = Depends(get_account_db), _: User = Depends(can_view)):
     s = get_settings()
     synced = accounting.last_sync(db)
     return {
@@ -71,7 +73,7 @@ def info(db: Session = Depends(get_account_db), _: User = Depends(require_admin)
 
 
 @router.get("/entries")
-def list_entries(kind: str, month: str, db: Session = Depends(get_account_db), _: User = Depends(require_admin)):
+def list_entries(kind: str, month: str, db: Session = Depends(get_account_db), _: User = Depends(can_view)):
     try:
         return [accounting.entry_out(e) for e in accounting.list_entries(db, kind, month)]
     except accounting.AccountingError as e:
@@ -79,7 +81,7 @@ def list_entries(kind: str, month: str, db: Session = Depends(get_account_db), _
 
 
 @router.post("/entries", status_code=201)
-def add_entry(body: EntryIn, db: Session = Depends(get_account_db), user: User = Depends(require_admin)):
+def add_entry(body: EntryIn, db: Session = Depends(get_account_db), user: User = Depends(can_edit)):
     try:
         return accounting.entry_out(accounting.save_manual(db, body.model_dump(mode="json"), created_by=user.username))
     except accounting.AccountingError as e:
@@ -87,7 +89,7 @@ def add_entry(body: EntryIn, db: Session = Depends(get_account_db), user: User =
 
 
 @router.put("/entries/{entry_id}")
-def edit_entry(entry_id: int, body: dict, db: Session = Depends(get_account_db), _: User = Depends(require_admin)):
+def edit_entry(entry_id: int, body: dict, db: Session = Depends(get_account_db), _: User = Depends(can_edit)):
     entry = _entry(db, entry_id)
     try:
         if entry.source == "manual":
@@ -102,7 +104,7 @@ def edit_entry(entry_id: int, body: dict, db: Session = Depends(get_account_db),
 
 
 @router.delete("/entries/{entry_id}", status_code=204)
-def delete_entry(entry_id: int, db: Session = Depends(get_account_db), _: User = Depends(require_admin)):
+def delete_entry(entry_id: int, db: Session = Depends(get_account_db), _: User = Depends(can_edit)):
     try:
         accounting.delete_entry(db, _entry(db, entry_id))
     except accounting.AccountingError as e:
@@ -110,7 +112,7 @@ def delete_entry(entry_id: int, db: Session = Depends(get_account_db), _: User =
 
 
 @router.post("/sync")
-def sync(db: Session = Depends(get_account_db), _: User = Depends(require_admin)):
+def sync(db: Session = Depends(get_account_db), _: User = Depends(can_edit)):
     """Read tax invoices and expenses from FlowAccount (the "ดึงข้อมูลจาก FlowAccount" button)."""
     try:
         counts = accounting.sync_flowaccount(db, get_flowaccount_client())
@@ -120,7 +122,7 @@ def sync(db: Session = Depends(get_account_db), _: User = Depends(require_admin)
 
 
 @router.get("/summary")
-def summary(month: str, db: Session = Depends(get_account_db), _: User = Depends(require_admin)):
+def summary(month: str, db: Session = Depends(get_account_db), _: User = Depends(can_view)):
     try:
         return accounting.summary(db, month)
     except accounting.AccountingError as e:
@@ -132,7 +134,7 @@ def report(
     month: str,
     kind: str = Query(pattern="^(income|expense)$"),
     db: Session = Depends(get_account_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(can_view),
 ):
     """รายงานภาษีขาย / รายงานภาษีซื้อ as an Excel file."""
     try:

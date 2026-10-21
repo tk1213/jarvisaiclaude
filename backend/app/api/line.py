@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import permissions
 from app.config import get_settings
 from app.core import images as image_utils
 from app.core.messages import Channel, InboundMessage
@@ -188,6 +189,8 @@ def _answer(db: Session, client: LineClient, event: dict, line_user_id: str, use
     text = (message.get("text") or "").strip()
     if user is None:
         return text_message(_link(db, line_user_id, text))
+    if not permissions.allowed(user, "chat"):
+        return text_message("บัญชีนี้ยังไม่ได้รับสิทธิ์คุยกับจาร์วิสค่ะ ให้ admin เปิดสิทธิ์ \"แชทกับจาร์วิส\" ในหน้า 👥 สมาชิกก่อนนะคะ")
     if text.lower() in RESET_WORDS:
         with _lock:
             _fresh.add(user.id)
@@ -331,7 +334,7 @@ GROUP_HELP = (
 
 
 def handle_group_event(event: dict) -> None:
-    """A message in a LINE group. Only the slip groups answer, and only to linked admin accounts."""
+    """A message in a LINE group. Only the slip groups answer, and only to linked accounts that may edit personal money."""
     source = event.get("source") or {}
     group_id = source.get("groupId")
     reply_token = event.get("replyToken")
@@ -358,7 +361,7 @@ def handle_group_event(event: dict) -> None:
         return
     with SessionLocal() as db:
         user = db.scalar(select(User).where(User.line_user_id == source.get("userId"))) if source.get("userId") else None
-        if user is None or not user.is_admin:
+        if user is None or not permissions.allowed(user, "personal", "edit"):
             return  # other members' chat in the group is not for JARVIS
     message = event.get("message") or {}
     if message.get("type") == "image":

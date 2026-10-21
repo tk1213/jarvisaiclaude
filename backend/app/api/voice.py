@@ -8,6 +8,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 
+from app import permissions
 from app.config import get_settings
 from app.db import SessionLocal
 from app.deps import get_current_user
@@ -198,7 +199,7 @@ def last_error(_: User = Depends(get_current_user)):
 
 
 @router.post("/tts", responses={200: {"content": {"audio/mpeg": {}}}})
-async def tts(body: TtsRequest, _: User = Depends(get_current_user)):
+async def tts(body: TtsRequest, _: User = Depends(permissions.require("chat"))):
     """Speak text with the configured voice (the whole MP3 at once)."""
     try:
         audio = await _audio_for(body.text, body.voice)
@@ -218,8 +219,11 @@ async def tts_stream(text: str = Query(min_length=1, max_length=1500), token: st
     except Exception:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid token") from None
     with SessionLocal() as db:
-        if db.get(User, user_id) is None:
+        user = db.get(User, user_id)
+        if user is None or user.deleted_at is not None:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid token")
+        if not permissions.allowed(user, "chat"):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, permissions.denied_text("chat"))
     try:
         audio = await _audio_for(text, voice)
     except edge_voice.TtsError as e:

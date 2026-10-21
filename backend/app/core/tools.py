@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app import permissions
 from app.config import get_settings
 from app.integrations import line as line_api
 from app.integrations.flowaccount import FlowAccountError
@@ -66,8 +67,8 @@ def _get_device(ctx: ToolContext, device_id: int) -> Device:
 
 
 def _require_control(ctx: ToolContext) -> None:
-    if not ctx.user.can_control_devices:
-        raise ToolError("ผู้ใช้นี้ไม่มีสิทธิ์ควบคุมอุปกรณ์")
+    if not permissions.allowed(ctx.user, "home", "edit"):
+        raise ToolError(permissions.denied_text("home", "edit"))
     try:
         limiter.hit(f"control:{ctx.user.id}", get_settings().rate_limit_control_per_minute)
     except HTTPException:
@@ -644,11 +645,37 @@ _HANDLERS: dict[str, Callable[..., Any]] = {
 }
 
 
+# The page level each tool needs (app/permissions.py); tools not listed (weather, system status, LINE) need only chat.
+_TOOL_PAGES: dict[str, tuple[str, permissions.Level]] = {
+    "get_devices": ("home", "view"),
+    "get_device_status": ("home", "view"),
+    "list_scenes": ("home", "view"),
+    "control_device": ("home", "edit"),
+    "control_air_conditioner": ("home", "edit"),
+    "set_scene": ("home", "edit"),
+    "find_customers": ("flowaccount", "view"),
+    "find_products": ("flowaccount", "view"),
+    "get_product_set": ("flowaccount", "view"),
+    "list_product_sets": ("flowaccount", "view"),
+    "last_order": ("flowaccount", "view"),
+    "list_documents": ("flowaccount", "view"),
+    "save_product_set": ("flowaccount", "edit"),
+    "set_product_set_remarks": ("flowaccount", "edit"),
+    "delete_product_set": ("flowaccount", "edit"),
+    "prepare_document": ("flowaccount", "edit"),
+    "issue_document": ("flowaccount", "edit"),
+    "cancel_document": ("flowaccount", "edit"),
+}
+
+
 def run_tool(ctx: ToolContext, name: str, tool_input: dict) -> tuple[str, bool]:
     """Execute a tool call; returns (content for tool_result, is_error)."""
     handler = _HANDLERS.get(name)
     if handler is None:
         return f"Unknown tool: {name}", True
+    page, need = _TOOL_PAGES.get(name, ("chat", "edit"))
+    if ctx.user is not None and not permissions.allowed(ctx.user, page, need):  # None: called by the server itself
+        return permissions.denied_text(page, need), True
     try:
         result = handler(ctx, **tool_input)
     except ToolError as e:

@@ -12,6 +12,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app import permissions
 from app.integrations.flowaccount import DOC_PATHS, get_flowaccount_client
 from app.models import Contact, DocumentLog, User
 
@@ -93,7 +94,7 @@ def prepare(
     remarks: str,
     today: date,
 ) -> DocumentLog:
-    if not user.can_issue_documents:
+    if not permissions.allowed(user, "flowaccount", "edit"):
         raise DocumentError("ผู้ใช้นี้ไม่มีสิทธิ์ออกเอกสารการเงิน")
     if doc_type not in DOC_PATHS:
         raise DocumentError(f"ไม่รู้จักเอกสารประเภท {doc_type}")
@@ -175,7 +176,7 @@ def summary(doc: DocumentLog) -> dict:
 def issue(db: Session, user: User, draft_id: int, turn_started: datetime) -> DocumentLog:
     """Send a draft to FlowAccount. Refused unless the draft was prepared before the current message,
     i.e. the user has seen the summary and answered it."""
-    if not user.can_issue_documents:
+    if not permissions.allowed(user, "flowaccount", "edit"):
         raise DocumentError("ผู้ใช้นี้ไม่มีสิทธิ์ออกเอกสารการเงิน")
     doc = db.get(DocumentLog, draft_id)
     if doc is None or doc.user_id != user.id:

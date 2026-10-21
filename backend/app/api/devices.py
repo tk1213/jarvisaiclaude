@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app import permissions
 from app.db import get_db
-from app.deps import get_current_user, get_tuya, require_device_control
+from app.deps import get_tuya, require_device_control
 from app.schemas import AcRequest, CommandRequest, DeviceOut, DeviceUpdate, PowerRequest, SceneOut
 from app.services import devices as svc
 
-router = APIRouter(tags=["home_control"], dependencies=[Depends(get_current_user)])
+router = APIRouter(tags=["home_control"], dependencies=[Depends(permissions.require("home"))])
 
 
 def _get(db: Session, device_id: int):
@@ -17,7 +18,7 @@ def _get(db: Session, device_id: int):
 
 
 @router.post("/devices/sync", response_model=list[DeviceOut])
-def sync_devices(db: Session = Depends(get_db), tuya=Depends(get_tuya)):
+def sync_devices(db: Session = Depends(get_db), tuya=Depends(get_tuya), _=Depends(permissions.require("home", "edit"))):
     return svc.sync_devices(db, tuya)
 
 
