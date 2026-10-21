@@ -280,14 +280,17 @@ function Summary({ month, version }: { month: string; version: number }) {
   if (error) return <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-300">{error}</p>
   if (!s) return <p className="text-sm text-slate-500">กำลังคำนวณ…</p>
 
-  const row = (label: string, value: number, opts: { strong?: boolean; minus?: boolean; note?: string } = {}) => (
+  // VAT due this month in red (pay more), input tax credit carried forward in green (nothing to pay).
+  const TONE = { pay: 'text-red-600 dark:text-red-400', credit: 'text-emerald-600 dark:text-emerald-400' }
+  const row = (label: string, value: number, opts: { strong?: boolean; minus?: boolean; note?: string; tone?: 'pay' | 'credit' } = {}) => (
     <div className={`flex items-baseline justify-between gap-3 py-1 ${opts.strong ? 'border-t border-slate-200 pt-2 font-semibold dark:border-slate-700' : ''}`}>
       <span className={opts.strong ? '' : 'text-slate-600 dark:text-slate-300'}>
         {label}
         {opts.note && <span className="block text-xs font-normal text-slate-400">{opts.note}</span>}
       </span>
-      <span className="tabular-nums">
+      <span className={`tabular-nums ${value > 0 && opts.tone ? TONE[opts.tone] : ''}`}>
         {opts.minus && value > 0 ? '− ' : ''}
+        {opts.tone === 'pay' && value > 0 ? '+ ' : ''}
         {baht.format(value)}
       </span>
     </div>
@@ -309,8 +312,8 @@ function Summary({ month, version }: { month: string; version: number }) {
           {row('ภาษีซื้อที่ขอคืนได้', s.input_vat, { minus: true, note: `จากยอดซื้อ ${baht.format(s.purchases)} บาท (${s.expense_count} รายการ)` })}
           {s.credit_brought_forward > 0 && row('ภาษีซื้อเกินยกมาจากเดือนก่อน', s.credit_brought_forward, { minus: true })}
           {s.credit_carried_forward > 0
-            ? row('ภาษีซื้อเกิน ยกไปเดือนหน้า', s.credit_carried_forward, { strong: true, note: 'เดือนนี้ไม่ต้องชำระ VAT (ยังต้องยื่นแบบ ภ.พ.30)' })
-            : row('VAT ที่ต้องชำระ', s.vat_payable, { strong: true })}
+            ? row('ภาษีซื้อเกิน ยกไปเดือนหน้า', s.credit_carried_forward, { strong: true, minus: true, tone: 'credit', note: 'เดือนนี้ไม่ต้องชำระ VAT (ยังต้องยื่นแบบ ภ.พ.30)' })
+            : row('VAT ที่ต้องชำระ', s.vat_payable, { strong: true, tone: 'pay' })}
           {due(s.due.pp30, s.due.pp30_efiling)}
           {s.unclaimable_vat > 0 && (
             <p className="text-xs text-amber-700 dark:text-amber-300">VAT {baht.format(s.unclaimable_vat)} บาท จากรายจ่ายที่ไม่มีใบกำกับภาษีเต็มรูป ขอคืนไม่ได้</p>
