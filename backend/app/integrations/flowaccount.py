@@ -19,9 +19,10 @@ DOC_PATHS = {
     "tax_invoice": "/tax-invoices",
     "receipt": "/receipts",
 }
-# Documents read back for the Account page: sales tax invoices (incl. cash sales) and expenses.
+# Documents read back for the Account page: sales tax invoices (incl. cash sales) and, for expenses,
+# receiving inventory (ใบรับสินค้า), which is where the owner records purchases (not "/expenses", บันทึกค่าใช้จ่าย).
 INCOME_PATHS = ("/tax-invoices", "/cash-invoices")
-EXPENSE_PATH = "/expenses"
+EXPENSE_PATH = "/purchases"
 
 
 class FlowAccountError(RuntimeError):
@@ -106,7 +107,7 @@ class FlowAccountClient:
         return self._list("/products", "รายการสินค้า", page_size=100)
 
     def list_documents(self, path: str) -> list[dict]:
-        """Every document of one kind, e.g. "/tax-invoices" or "/expenses" (FlowAccount allows 200 per page)."""
+        """Every document of one kind, e.g. "/tax-invoices" or "/purchases" (FlowAccount allows 200 per page)."""
         return self._list(path, f"เอกสาร {path}", page_size=200)
 
     def _list(self, path: str, what: str, page_size: int) -> list[dict]:
@@ -188,8 +189,8 @@ class MockFlowAccountClient:
                 {"recordId": 7101, "documentSerial": "CA-MOCK-0001", "publishedOn": day, "contactName": "ร้าน ตัวอย่าง", "contactTaxId": "",
                  "contactGroup": 1, "subTotal": 2000, "totalAfterDiscount": 2000, "isVat": True, "vatAmount": 140, "grandTotal": 2140, "statusString": "Approved"},
             ],
-            "/expenses": [
-                {"recordId": 8001, "documentSerial": "EXP-MOCK-0001", "publishedOn": day, "contactName": "บริษัท ผู้ขาย จำกัด", "contactTaxId": "0105666666666",
+            "/purchases": [
+                {"recordId": 8001, "documentSerial": "PU-MOCK-0001", "publishedOn": day, "contactName": "บริษัท ผู้ขาย จำกัด", "contactTaxId": "0105666666666",
                  "contactGroup": 3, "subTotal": 3000, "totalAfterDiscount": 3000, "isVat": True, "vatAmount": 210, "grandTotal": 3210,
                  "documentWithholdingTaxPercentage": 3, "documentWithholdingTaxAmount": 90, "remarks": "ค่าบริการขนส่ง", "statusString": "Approved"},
             ],

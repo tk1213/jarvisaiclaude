@@ -108,7 +108,7 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
   cron backups, no sleep, Chrome autostart. Idempotent. `.gitattributes` keeps `*.sh` LF.
 - Account page (💰, admin only until the user-permission page lands): `app/services/accounting.py`, `app/api/account.py`,
   `account_models.py` in a separate SQLite file `backend/data/account/account.db` (`ACCOUNT_DATABASE_URL`, `AccountSession`),
-  amounts in satang. Income = FlowAccount `/tax-invoices` + `/cash-invoices`, expenses = `/expenses` (not purchase orders),
+  amounts in satang. Income = FlowAccount `/tax-invoices` + `/cash-invoices`, expenses = `/purchases` (ใบรับสินค้า; not `/expenses` or purchase orders; rows from a path no longer read are removed on sync),
   read daily in live mode or by the button; imported rows keep FlowAccount's amounts (only category/payee type/excluded/claimable
   change). Monthly summary: ภ.พ.30 with excess input VAT carried forward, ภ.ง.ด.3 (person) / ภ.ง.ด.53 (company), Excel tax reports
   (openpyxl, `COMPANY_NAME`/`COMPANY_TAX_ID`/`COMPANY_BRANCH`). Claimable input VAT needs the seller's 13-digit tax ID.

@@ -47,7 +47,7 @@ export function Account() {
     setMessage(null)
     try {
       const r = await api.syncAccount()
-      setMessage(`ดึงข้อมูลจาก FlowAccount แล้ว: เพิ่มใหม่ ${r.added} รายการ อัปเดต ${r.updated} รายการ`)
+      setMessage(`ดึงข้อมูลจาก FlowAccount แล้ว: เพิ่มใหม่ ${r.added} รายการ อัปเดต ${r.updated} รายการ${r.removed ? ` นำออก ${r.removed} รายการ` : ''}`)
       setVersion((v) => v + 1)
     } catch (e) {
       setMessage((e as Error).message)

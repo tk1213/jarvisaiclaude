@@ -73,7 +73,7 @@ def test_excess_input_vat_is_carried_forward(db):
 
 def test_sync_from_flowaccount_adds_once_and_keeps_local_choices(db):
     client = fa.MockFlowAccountClient()
-    assert acc.sync_flowaccount(db, client) == {"added": 3, "updated": 0}
+    assert acc.sync_flowaccount(db, client) == {"added": 3, "updated": 0, "removed": 0}
     month = date.today().strftime("%Y-%m")
     income = acc.list_entries(db, "income", month)
     expense = acc.list_entries(db, "expense", month)
@@ -84,12 +84,37 @@ def test_sync_from_flowaccount_adds_once_and_keeps_local_choices(db):
     assert (exp.party_type, exp.wht_satang, exp.full_tax_invoice, exp.description) == ("company", 9000, True, "ค่าบริการขนส่ง")
 
     acc.update_imported(db, exp, {"party_type": "person", "category": "ค่าขนส่ง", "base_satang": 1})  # amounts can't be changed
-    assert acc.sync_flowaccount(db, client) == {"added": 0, "updated": 3}
+    assert acc.sync_flowaccount(db, client) == {"added": 0, "updated": 3, "removed": 0}
     db.refresh(exp)
     assert (exp.party_type, exp.category, exp.base_satang) == ("person", "ค่าขนส่ง", 300000)
     assert acc.last_sync(db) is not None
     with pytest.raises(acc.AccountingError):
         acc.delete_entry(db, exp)
+
+
+def test_expenses_come_from_receiving_inventory(db):
+    """Expenses are read from ใบรับสินค้า (/purchases); rows read earlier from บันทึกค่าใช้จ่าย (/expenses) are dropped."""
+    doc = {"recordId": 5, "documentSerial": "X1", "publishedOn": "2026-10-02", "contactName": "ร้าน C", "contactTaxId": "0105666666666",
+           "isVat": True, "vatAmount": 70, "grandTotal": 1070}
+    seen = []
+
+    class Client:
+        def list_documents(self, path):
+            seen.append(path)
+            return [doc | {"documentSerial": "RI1"}] if path == "/purchases" else []
+
+    old = acc.AccountEntry(source="flowaccount", created_by="FlowAccount", kind="expense", external_id="expenses:5", entry_date=date(2026, 10, 2),
+                           doc_no="EXP1", party="ร้าน C", base_satang=100000, vat_satang=7000, wht_rate=0, wht_satang=0)
+    manual = acc.save_manual(db, {"kind": "expense", "date": "2026-10-03", "party": "ร้าน D", "base": 100, "full_tax_invoice": False})
+    db.add(old)
+    db.commit()
+
+    assert acc.sync_flowaccount(db, Client()) == {"added": 1, "updated": 0, "removed": 1}
+    assert "/expenses" not in seen and "/purchases" in seen
+    rows = {e.doc_no: e for e in acc.list_entries(db, "expense", "2026-10")}
+    assert set(rows) == {"RI1", ""} and rows[""].id == manual.id  # typed-in expenses stay
+    assert (rows["RI1"].external_id, rows["RI1"].base_satang, rows["RI1"].vat_satang, rows["RI1"].full_tax_invoice) == ("purchases:5", 100000, 7000, True)
+    assert acc.summary(db, "2026-10")["input_vat"] == 70
 
 
 def test_voided_documents_are_not_counted(db):
@@ -118,8 +143,8 @@ def test_live_client_reads_every_page():
         return httpx.Response(200, json={"status": True, "data": {"list": rows, "total": 201}})
 
     client = fa.FlowAccountClient("https://fa.test/v1", "id", "secret", "flowaccount-api", http=httpx.Client(transport=httpx.MockTransport(handler)))
-    assert len(client.list_documents("/expenses")) == 201
-    assert pages == [("/v1/expenses", 1, "200"), ("/v1/expenses", 2, "200")]
+    assert len(client.list_documents("/purchases")) == 201
+    assert pages == [("/v1/purchases", 1, "200"), ("/v1/purchases", 2, "200")]
 
 
 def test_account_api(client, owner_headers):
