@@ -6,12 +6,15 @@
 - **Ask before changing anything.** When the owner asks whether something can be done ("ทำได้ไหม"), first answer
   yes or no and why. Before making any change (code, files, PRs, settings), summarize what will change and wait
   for the owner to confirm; don't start until they do.
-- The owner runs everything on **Windows** (PowerShell, Python 3.14, Chrome) from `D:\Claude\jarvisclaude`
-  (a clone of this repo). Give Windows commands, and after each change say exactly what to run there:
-  - server-only changes: `git pull`, then close and reopen `start.bat`
+- JARVIS runs on the owner's **Ubuntu mini PC** (Ubuntu Desktop 24.04, bash, Chrome) from `~/jarvisclaude` (a clone
+  of this repo, set up by `install-ubuntu.sh`) as the systemd service `jarvis` on port 8765. Give Ubuntu (bash)
+  commands, not Windows ones, and after each change say exactly what to run there (`cd ~/jarvisclaude` first):
+  - server-only changes: `git pull`, then `sudo systemctl restart jarvis`
   - frontend changes: also `cd frontend && npm run build`, then Ctrl+F5 in the dashboard
-  - new Python dependencies: `cd backend && .venv\Scripts\activate && pip install -e ".[dev]"`
-- **Secrets live only in `backend\.env` on the owner's machine** (gitignored): `ANTHROPIC_API_KEY`,
+  - new Python dependencies: `cd backend && .venv/bin/pip install -e ".[dev]"`, then restart
+  - logs: `journalctl -u jarvis -f`; one-off scripts run with `backend/.venv/bin/python -m app.scripts.<name>`
+  The old Windows setup (`D:\Claude\jarvisclaude`, `start.bat`, `.bat` backups) is no longer the main machine.
+- **Secrets live only in `backend/.env` on the owner's machine** (gitignored): `ANTHROPIC_API_KEY`,
   `TUYA_ACCESS_SECRET`, `GOOGLE_TTS_API_KEY`, `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN`,
   `FLOWACCOUNT_CLIENT_SECRET`, `JWT_SECRET`,
   `ENCRYPTION_KEY`. Never ask for them in chat;
@@ -100,8 +103,8 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
   text (max 4, 10 min, `_pending_images` in `app/api/line.py`); the dashboard's 📎 button sends up to 4 with the message.
   `app/core/images.py` (Pillow) re-encodes them as JPEG ≤1024 px. Images go to Claude in that turn only: `_persist` stores
   a text placeholder instead, so they're never re-sent with later turns.
-- Backups: `backup.bat` / the daily "JARVIS Backup" task (`backup-schedule.bat` → `backup-schedule.ps1`, 12:00 + at logon,
-  StartWhenAvailable) run `app.scripts.backup` (`--auto` skips once today's is done) into `D:\JarvisClaudeBackup\<date>`:
+- Backups: on the Ubuntu mini PC, cron (12:00 and 10 min after boot) runs `app.scripts.backup` (`--auto` skips once today's
+  is done) into `~/JarvisClaudeBackup/<date>` (`BACKUP_DIR`); on Windows it was `backup.bat` / the "JARVIS Backup" task:
   git bundle (after `git fetch`), `.env`, both SQLite files via the backup API, Thai restore notes; keeps 15 days.
 - Ubuntu: `install-ubuntu.sh <backup folder>` sets up a Ubuntu Desktop 24.04 mini PC from a backup (bundle + .env + DBs,
   never overwriting existing data): apt packages, Node 22, Chrome, cloudflared, `jarvis.service` (systemd, port 8765),
@@ -146,6 +149,6 @@ per-set `remarks` that become the document's หมายเหตุ; a short d
 as cards with a hover/tap pop-up and edits them in `SetEditor.tsx` via `PUT /product-sets/{id}`) and
 `last_order` ("เหมือนครั้งก่อน") feed `prepare_document`. The sandbox connection and test quotation work.
 Phase 1 is done. LINE OA's webhook is `https://jarvis.jarvisthai.com/line/webhook`
-through a named Cloudflare tunnel (Windows service, path `^/line/webhook$` → `127.0.0.1:8765`;
-`start.bat` runs uvicorn on port 8765, so the dashboard is http://localhost:8765); `tunnel.bat` (quick tunnel) is the fallback. A LINE account is answered only after linking with the dashboard's 6-digit code. Remind the owner to renew the Anthropic API key
+through a named Cloudflare tunnel (cloudflared on the mini PC, path `^/line/webhook$` → `127.0.0.1:8765`;
+`jarvis.service` runs uvicorn on port 8765, so the dashboard is http://localhost:8765); `tunnel.bat` (quick tunnel) is the fallback. A LINE account is answered only after linking with the dashboard's 6-digit code. Remind the owner to renew the Anthropic API key
 before it expires on 29 Dec 2026.
