@@ -24,7 +24,7 @@ def get_current_user(
     except Exception:
         raise unauthorized from None
     user = db.get(User, user_id)
-    if user is None:
+    if user is None or user.deleted_at is not None:
         raise unauthorized
     return user
 
@@ -36,8 +36,10 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
 
 
 def require_device_control(user: User = Depends(get_current_user)) -> User:
-    if not user.can_control_devices:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "No permission to control devices")
+    from app import permissions
+
+    if not permissions.allowed(user, "home", "edit"):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, permissions.denied_text("home", "edit"))
     limiter.hit(f"control:{user.id}", get_settings().rate_limit_control_per_minute)
     return user
 

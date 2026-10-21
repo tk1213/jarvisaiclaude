@@ -53,12 +53,26 @@ export type ChatEvent =
   | ({ type: 'chat'; origin: string; text: string; pictures: number } & ChatResponse)
   | { type: 'chat_reset'; origin: string }
 
+/** What a member may do on a page: nothing (hidden), look only, or also change things. */
+export type PageLevel = 'none' | 'view' | 'edit'
+export type PageId = 'home' | 'flowaccount' | 'account' | 'personal' | 'chat'
+export type Permissions = Record<PageId, PageLevel>
+
 export interface User {
   id: number
   username: string
   display_name: string
   is_admin: boolean
   can_control_devices: boolean
+  permissions: Permissions
+  line_linked: boolean
+}
+
+/** True when the user has at least `need` on `page` (admins have everything). */
+export function can(user: User | null, page: PageId, need: 'view' | 'edit' = 'view'): boolean {
+  if (!user) return false
+  const level = user.permissions[page]
+  return need === 'view' ? level !== 'none' : level === 'edit'
 }
 
 const TOKEN_KEY = 'jarvis.token'
@@ -312,6 +326,11 @@ export const api = {
   login: (username: string, password: string) =>
     request<{ access_token: string }>('POST', '/auth/login', { username, password }),
   me: () => request<User>('GET', '/auth/me'),
+  users: () => request<User[]>('GET', '/users'),
+  addUser: (body: { username: string; password: string; display_name: string; permissions: Partial<Permissions> }) => request<User>('POST', '/users', body),
+  updateUser: (id: number, changes: { display_name?: string; permissions?: Partial<Permissions> }) => request<User>('PUT', `/users/${id}`, changes),
+  resetPassword: (id: number, password: string) => request<void>('POST', `/users/${id}/password`, { password }),
+  deleteUser: (id: number) => request<void>('DELETE', `/users/${id}`),
   devices: () => request<Device[]>('GET', '/devices'),
   device: (id: number) => request<Device>('GET', `/devices/${id}`),
   sync: () => request<Device[]>('POST', '/devices/sync'),

@@ -71,7 +71,7 @@ def test_turns_and_resets_reach_only_this_users_screens(client, owner_headers, m
     core_api._reset_at.clear()
     fake = FakeClaude([message([text("สวัสดีค่ะ TK")], "end_turn")])
     monkeypatch.setattr(orch_module, "_orchestrator", make(fake))
-    client.post("/users", headers=owner_headers, json={"username": "kid", "password": "password123"})
+    client.post("/users", headers=owner_headers, json={"username": "kid", "password": "password123", "permissions": {"home": "view"}})
     kid = client.post("/auth/login", json={"username": "kid", "password": "password123"}).json()["access_token"]
     client.post("/devices/sync", headers=owner_headers)
 

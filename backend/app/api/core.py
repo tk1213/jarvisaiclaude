@@ -10,18 +10,20 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import permissions
 from app.core import images as image_utils
 from app.core.messages import Channel, InboundMessage
 from app.core.orchestrator import CoreNotConfigured, get_orchestrator
 from app.core.prompts import match_voice
 from app.config import get_settings
 from app.db import get_db
-from app.deps import get_current_user, get_tuya
+from app.deps import get_tuya
 from app.models import ChatMessage, User
 from app.realtime import hub
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["core"])
+can_chat = permissions.require("chat")
 
 
 class ChatRequest(BaseModel):
@@ -93,7 +95,7 @@ def live_session(db: Session, user: User) -> str | None:
 
 
 @router.get("/core/chat/current", response_model=ChatHistory)
-def current_chat(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def current_chat(db: Session = Depends(get_db), user: User = Depends(can_chat)):
     """The conversation every dashboard screen shows: what was said, without Claude's tool traffic."""
     session_id = live_session(db, user)
     if session_id is None:
@@ -105,7 +107,7 @@ def current_chat(db: Session = Depends(get_db), user: User = Depends(get_current
 
 
 @router.post("/core/chat/reset", status_code=204)
-def reset_chat(body: ChatReset, user: User = Depends(get_current_user)):
+def reset_chat(body: ChatReset, user: User = Depends(can_chat)):
     """Start a new conversation on every screen (the "เริ่มใหม่" button)."""
     with _lock:
         _reset_at[user.id] = datetime.now(timezone.utc)
@@ -113,7 +115,7 @@ def reset_chat(body: ChatReset, user: User = Depends(get_current_user)):
 
 
 @router.post("/core/chat", response_model=ChatResponse)
-def chat(body: ChatRequest, db: Session = Depends(get_db), tuya=Depends(get_tuya), user: User = Depends(get_current_user)):
+def chat(body: ChatRequest, db: Session = Depends(get_db), tuya=Depends(get_tuya), user: User = Depends(can_chat)):
     """Talk to JARVIS from the dashboard. Every screen shares one conversation (live_session); session_id is
     ignored and kept only for older dashboards."""
     try:

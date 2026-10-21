@@ -22,6 +22,7 @@ import anthropic
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import permissions
 from app.config import get_settings
 from app.core.messages import Channel, InboundMessage
 from app.core.images import block as image_block
@@ -164,7 +165,6 @@ class Orchestrator:
     def handle(self, db: Session, tuya, user: User, msg: InboundMessage) -> CoreReply:
         session_id = msg.session_id or uuid.uuid4().hex
         history = self._history(db, user, session_id)
-        # Attaching the device list saves Claude a get_devices round trip on most commands.
         # Earlier turns with the male voice make the model keep saying ครับ; say so when it's female again.
         back_to_female = msg.voice == "female" and any(
             MALE_VOICE_HINT in block.get("text", "")
@@ -173,7 +173,9 @@ class Orchestrator:
             for block in m["content"]
             if isinstance(block, dict)
         )
-        new_messages = [self._user_turn(msg.text, msg.channel, device_snapshot(db), msg.voice == "male", back_to_female, msg.images)]
+        # Attaching the device list saves Claude a get_devices round trip on most commands (members who may see the home page).
+        devices = device_snapshot(db) if permissions.allowed(user, "home") else ""
+        new_messages = [self._user_turn(msg.text, msg.channel, devices, msg.voice == "male", back_to_female, msg.images)]
         ctx = ToolContext(db=db, tuya=tuya, user=user, channel=msg.channel.value, turn_started=datetime.now(timezone.utc))
         calls: list[ToolCallRecord] = []
 

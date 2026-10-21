@@ -23,6 +23,11 @@ class User(Base):
     # Device control and financial documents are separate permissions (spec §6).
     can_control_devices: Mapped[bool] = mapped_column(Boolean, default=True)
     can_issue_documents: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Page access levels as JSON ({"home": "edit", "account": "view", ...}, see app/permissions.py);
+    # NULL = an account from before page permissions, which keeps its old access.
+    permissions: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Removed members are kept (documents_log still names them) but can't sign in and aren't listed.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     line_user_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

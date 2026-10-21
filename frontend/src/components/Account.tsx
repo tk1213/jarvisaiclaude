@@ -29,8 +29,9 @@ function shiftMonth(month: string, by: number) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
-/** The Account page: income and expense records for tax, read from FlowAccount or typed in, and the monthly tax summary. */
-export function Account() {
+/** The Account page: income and expense records for tax, read from FlowAccount or typed in, and the monthly tax summary.
+ * canEdit false = view only (no sync, add, edit or delete). */
+export function Account({ canEdit }: { canEdit: boolean }) {
   const [tab, setTab] = useState<Tab>('income')
   const [month, setMonth] = useState(thisMonth)
   const [info, setInfo] = useState<AccountInfo | null>(null)
@@ -82,13 +83,15 @@ export function Account() {
           >
             ›
           </button>
-          <button
-            onClick={() => void sync()}
-            disabled={syncing}
-            className="rounded-lg border border-slate-300 px-3 py-1 hover:border-sky-500 disabled:opacity-50 dark:border-slate-700"
-          >
-            {syncing ? 'กำลังดึงข้อมูล…' : 'ดึงข้อมูลจาก FlowAccount'}
-          </button>
+          {canEdit && (
+            <button
+              onClick={() => void sync()}
+              disabled={syncing}
+              className="rounded-lg border border-slate-300 px-3 py-1 hover:border-sky-500 disabled:opacity-50 dark:border-slate-700"
+            >
+              {syncing ? 'กำลังดึงข้อมูล…' : 'ดึงข้อมูลจาก FlowAccount'}
+            </button>
+          )}
         </div>
       </div>
       <p className="text-xs text-slate-500">
@@ -120,13 +123,27 @@ export function Account() {
       {tab === 'summary' ? (
         <Summary month={month} version={version} />
       ) : (
-        <Entries key={tab} kind={tab} month={month} version={version} categories={info?.categories ?? []} onChange={() => setVersion((v) => v + 1)} />
+        <Entries key={tab} kind={tab} month={month} version={version} categories={info?.categories ?? []} canEdit={canEdit} onChange={() => setVersion((v) => v + 1)} />
       )}
     </main>
   )
 }
 
-function Entries({ kind, month, version, categories, onChange }: { kind: EntryKind; month: string; version: number; categories: string[]; onChange: () => void }) {
+function Entries({
+  kind,
+  month,
+  version,
+  categories,
+  canEdit,
+  onChange,
+}: {
+  kind: EntryKind
+  month: string
+  version: number
+  categories: string[]
+  canEdit: boolean
+  onChange: () => void
+}) {
   const [rows, setRows] = useState<AccountEntry[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<AccountEntry | 'new' | null>(null)
@@ -157,9 +174,11 @@ function Entries({ kind, month, version, categories, onChange }: { kind: EntryKi
           {rows ? `${counted.length} รายการ` : 'กำลังโหลด…'}
           {rows && rows.length > counted.length && ` (ไม่นับ ${rows.length - counted.length})`}
         </p>
-        <button onClick={() => setEditing('new')} className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700">
-          + เพิ่ม{income ? 'รายรับ' : 'รายจ่าย'}
-        </button>
+        {canEdit && (
+          <button onClick={() => setEditing('new')} className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700">
+            + เพิ่ม{income ? 'รายรับ' : 'รายจ่าย'}
+          </button>
+        )}
       </div>
       {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-300">{error}</p>}
 
@@ -208,10 +227,12 @@ function Entries({ kind, month, version, categories, onChange }: { kind: EntryKi
                 <td className="px-3 py-2 text-right font-medium tabular-nums">{baht.format(r.total)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{r.wht > 0 ? `${baht.format(r.wht)} (${r.wht_rate}%)` : '-'}</td>
                 <td className="px-3 py-2 text-right whitespace-nowrap">
-                  <button onClick={() => setEditing(r)} className="text-xs text-sky-700 hover:underline dark:text-sky-300">
-                    แก้ไข
-                  </button>
-                  {r.source === 'manual' && (
+                  {canEdit && (
+                    <button onClick={() => setEditing(r)} className="text-xs text-sky-700 hover:underline dark:text-sky-300">
+                      แก้ไข
+                    </button>
+                  )}
+                  {canEdit && r.source === 'manual' && (
                     <button onClick={() => void remove(r)} className="ml-3 text-xs text-slate-400 hover:text-red-600">
                       ลบ
                     </button>

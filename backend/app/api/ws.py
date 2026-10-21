@@ -3,6 +3,7 @@ import contextlib
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from app import permissions
 from app.db import SessionLocal
 from app.models import User
 from app.realtime import hub
@@ -24,16 +25,20 @@ async def device_updates(websocket: WebSocket, token: str = ""):
         await websocket.close(code=4401)
         return
     with SessionLocal() as db:
-        if db.get(User, user_id) is None:
+        user = db.get(User, user_id)
+        if user is None or user.deleted_at is not None:
             await websocket.close(code=4401)
             return
+        sees_devices = permissions.allowed(user, "home")
 
     await websocket.accept()
     queue = hub.subscribe(user_id)
 
     async def forward():
         while True:
-            await websocket.send_json(await queue.get())
+            event = await queue.get()
+            if sees_devices or not str(event.get("type", "")).startswith("device"):
+                await websocket.send_json(event)
 
     async def wait_for_close():
         # We don't expect client messages; this just notices a disconnect promptly.

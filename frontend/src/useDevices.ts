@@ -11,12 +11,15 @@ export const chatEvents = new EventTarget()
 
 export type LinkState = 'connecting' | 'live' | 'offline'
 
-/** Device list kept current by the /ws/devices stream, reconnecting with backoff. */
-export function useDevices() {
+/** Device list kept current by the /ws/devices stream, reconnecting with backoff. The list is only loaded for members
+ * who may see the home page (`seesDevices`; null while the user is still loading, and nothing connects yet); the stream
+ * still runs for everyone, since it also carries the chat. */
+export function useDevices(seesDevices: boolean | null) {
   const [devices, setDevices] = useState<Device[]>([])
   const [link, setLink] = useState<LinkState>('connecting')
   const [error, setError] = useState<string | null>(null)
   const retry = useRef(0)
+  const sees = useRef(false)
 
   const upsert = useCallback((d: Device) => {
     setDevices((prev) => {
@@ -29,6 +32,7 @@ export function useDevices() {
   }, [])
 
   const reload = useCallback(async () => {
+    if (!sees.current) return
     try {
       setDevices(await api.devices())
       setError(null)
@@ -38,6 +42,8 @@ export function useDevices() {
   }, [])
 
   useEffect(() => {
+    if (seesDevices === null) return
+    sees.current = seesDevices
     let ws: WebSocket | null = null
     let timer: number | undefined
     let stopped = false
@@ -76,7 +82,7 @@ export function useDevices() {
       window.clearTimeout(timer)
       ws?.close()
     }
-  }, [reload, upsert])
+  }, [reload, upsert, seesDevices])
 
   return { devices, link, error, reload, upsert, setDevices }
 }

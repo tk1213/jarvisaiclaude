@@ -109,14 +109,23 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
 - Ubuntu: `install-ubuntu.sh <backup folder>` sets up a Ubuntu Desktop 24.04 mini PC from a backup (bundle + .env + DBs,
   never overwriting existing data): apt packages, Node 22, Chrome, cloudflared, `jarvis.service` (systemd, port 8765),
   cron backups, no sleep, Chrome autostart. Idempotent. `.gitattributes` keeps `*.sh` LF.
-- Account page (💰, admin only until the user-permission page lands): `app/services/accounting.py`, `app/api/account.py`,
+- Page permissions (👥 สมาชิก `#members`, admin only, `Members.tsx`): each member has a level per page, "none" / "view" /
+  "edit", for `home`, `flowaccount`, `account`, `personal`, and `chat` ("none"/"edit" only), stored as JSON in `users.permissions`
+  (`app/permissions.py`; NULL = an account from before this, which keeps home/FlowAccount/chat from its old flags; admins always "edit").
+  New members start with nothing ticked. `permissions.require(page, level)` guards every router (GET = view, changes = edit);
+  `run_tool` checks `_TOOL_PAGES` (device control = home edit, documents/sets = flowaccount edit) so the tool list stays byte-identical;
+  the chat's device snapshot and `/ws/devices` device events go only to members who can see home; LINE one-to-one chat needs `chat`,
+  the slip groups need `personal` edit. `can_control_devices`/`can_issue_documents` follow home/flowaccount "edit". Members are
+  added, re-permissioned, given a new password (`POST /users/{id}/password`) or removed (`DELETE /users/{id}`: soft delete,
+  `deleted_at`, username renamed so it can be reused, chats deleted, documents_log kept); admins can't be removed or narrowed.
+- Account page (💰, members with the "account" page level): `app/services/accounting.py`, `app/api/account.py`,
   `account_models.py` in a separate SQLite file `backend/data/account/account.db` (`ACCOUNT_DATABASE_URL`, `AccountSession`),
   amounts in satang. Income = FlowAccount `/tax-invoices` + `/cash-invoices`, expenses = `/purchases` (ใบรับสินค้า; not `/expenses` or purchase orders; rows from a path no longer read are removed on sync),
   read daily in live mode or by the button; imported rows keep FlowAccount's amounts (only category/payee type/excluded/claimable
   change). Monthly summary: ภ.พ.30 with excess input VAT carried forward, ภ.ง.ด.3 (person) / ภ.ง.ด.53 (company), Excel tax reports
   (openpyxl, `COMPANY_NAME`/`COMPANY_TAX_ID`/`COMPANY_BRANCH`). Claimable input VAT needs the seller's 13-digit tax ID.
-  Next: per-user permissions (admin sets each user's pages; Account access view-only or add-only), then receipt photos and voice.
-- Personal money (💳 `#personal`, admin only): `app/services/personal.py`, `app/api/personal.py`, `personal_models.py` in
+  Next: receipt photos and voice.
+- Personal money (💳 `#personal`, members with the "personal" page level): `app/services/personal.py`, `app/api/personal.py`, `personal_models.py` in
   `backend/data/personal/personal.db` (`PERSONAL_DATABASE_URL`, `PersonalSession`), slip pictures in `PERSONAL_SLIP_DIR`; both are
   in the backup. Balance = opening balance + entries on/after its date. Recording is the main OA's LINE **group "tk รับจ่าย"**
   (any group whose name has "รับจ่าย", `group_kind` "both"; a plain group, not a separate OA), answering linked admins only and

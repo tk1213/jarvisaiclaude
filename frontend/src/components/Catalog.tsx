@@ -5,7 +5,8 @@ import { SetEditor } from './SetEditor'
 const baht = new Intl.NumberFormat('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 /** Products copied from FlowAccount and the named sets ("ชุด A") JARVIS quotes from. */
-export function Catalog({ refreshKey }: { refreshKey: number }) {
+/** canEdit false = view only: products and sets are shown, but not refreshed, edited or deleted. */
+export function Catalog({ refreshKey, canEdit }: { refreshKey: number; canEdit: boolean }) {
   const [products, setProducts] = useState<ProductRow[]>([])
   const [sets, setSets] = useState<ProductSetRow[]>([])
   const [showProducts, setShowProducts] = useState(false)
@@ -50,13 +51,15 @@ export function Catalog({ refreshKey }: { refreshKey: number }) {
     <section className="space-y-2">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-medium text-slate-500">สินค้าและชุดสินค้า</h2>
-        <button
-          onClick={() => void sync()}
-          disabled={syncing}
-          className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs hover:border-sky-500 disabled:opacity-50 dark:border-slate-700"
-        >
-          {syncing ? 'กำลังอัปเดต…' : 'อัปเดตสินค้า'}
-        </button>
+        {canEdit && (
+          <button
+            onClick={() => void sync()}
+            disabled={syncing}
+            className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs hover:border-sky-500 disabled:opacity-50 dark:border-slate-700"
+          >
+            {syncing ? 'กำลังอัปเดต…' : 'อัปเดตสินค้า'}
+          </button>
+        )}
       </div>
       {message && <p className="text-xs text-slate-500">{message}</p>}
       <div className="rounded-2xl border border-slate-200 bg-white text-sm dark:border-slate-800 dark:bg-slate-900">
@@ -102,7 +105,7 @@ export function Catalog({ refreshKey }: { refreshKey: number }) {
                       {s.description || 'ยังไม่มีคำอธิบาย'}
                     </span>
                   </button>
-                  <div className="mt-2 flex gap-3 text-xs">
+                  <div className={`mt-2 flex gap-3 text-xs ${canEdit ? '' : 'hidden'}`}>
                     <button onClick={() => setEditing(s)} className="text-sky-700 hover:underline dark:text-sky-300">
                       ✏️ แก้ไข
                     </button>

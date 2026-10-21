@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app import permissions
 from app.db import get_db
-from app.deps import get_current_user
 from app.models import User
 from app.services import documents as docs
 
@@ -22,7 +22,7 @@ class DocumentOut(BaseModel):
 
 
 @router.get("/documents", response_model=list[DocumentOut])
-def list_documents(limit: int = 20, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def list_documents(limit: int = 20, db: Session = Depends(get_db), user: User = Depends(permissions.require("flowaccount"))):
     """Documents JARVIS prepared or issued for this user, newest first (spec §6 audit trail)."""
     return [
         DocumentOut(

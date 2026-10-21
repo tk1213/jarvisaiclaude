@@ -15,7 +15,8 @@ const TABS: { id: Tab; label: string }[] = [
 const SOURCE: Record<PersonalEntry['source'], string> = { slip: 'สลิป LINE', text: 'พิมพ์ใน LINE', manual: 'เพิ่มเอง' }
 
 /** 💳 Personal money: balances per bank or fund account, income and expenses (also from the LINE group "tk รับจ่าย"), and the accounts. */
-export function Personal() {
+/** canEdit false = view only: balances, entries and slips can be looked at but nothing added, changed or deleted. */
+export function Personal({ canEdit }: { canEdit: boolean }) {
   const [tab, setTab] = useState<Tab>('balance')
   const [month, setMonth] = useState(thisMonth)
   const [accounts, setAccounts] = useState<BankAccount[] | null>(null)
@@ -51,18 +52,23 @@ export function Personal() {
 
       {accounts && accounts.length === 0 && tab !== 'accounts' ? (
         <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500 dark:border-slate-700">
-          ยังไม่มีบัญชีธนาคาร{' '}
-          <button onClick={() => setTab('accounts')} className="text-sky-700 underline dark:text-sky-300">
-            เพิ่มบัญชีธนาคาร
-          </button>{' '}
-          พร้อมเงินต้นก่อน แล้วค่อยส่งสลิปในกลุ่ม LINE "tk รับจ่าย"
+          ยังไม่มีบัญชีธนาคาร
+          {canEdit && (
+            <>
+              {' '}
+              <button onClick={() => setTab('accounts')} className="text-sky-700 underline dark:text-sky-300">
+                เพิ่มบัญชีธนาคาร
+              </button>{' '}
+              พร้อมเงินต้นก่อน แล้วค่อยส่งสลิปในกลุ่ม LINE "tk รับจ่าย"
+            </>
+          )}
         </div>
       ) : tab === 'balance' ? (
         <Balances month={month} version={version} />
       ) : tab === 'accounts' ? (
-        <Accounts accounts={accounts} onChange={changed} />
+        <Accounts accounts={accounts} canEdit={canEdit} onChange={changed} />
       ) : (
-        <Entries key={tab} kind={tab} month={month} accounts={accounts ?? []} version={version} onChange={changed} />
+        <Entries key={tab} kind={tab} month={month} accounts={accounts ?? []} version={version} canEdit={canEdit} onChange={changed} />
       )}
     </main>
   )
@@ -122,12 +128,14 @@ function Entries({
   month,
   accounts,
   version,
+  canEdit,
   onChange,
 }: {
   kind: 'income' | 'expense'
   month: string
   accounts: BankAccount[]
   version: number
+  canEdit: boolean
   onChange: () => void
 }) {
   const [accountId, setAccountId] = useState(0)
@@ -178,9 +186,11 @@ function Entries({
             {rows && <span className={`font-medium tabular-nums ${income ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}`}>{baht.format(total)}</span>}
           </span>
         </div>
-        <button onClick={() => setEditing('new')} className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700">
-          + เพิ่ม{word}
-        </button>
+        {canEdit && (
+          <button onClick={() => setEditing('new')} className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700">
+            + เพิ่ม{word}
+          </button>
+        )}
       </div>
       {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-300">{error}</p>}
 
@@ -231,12 +241,16 @@ function Entries({
                         🧾 สลิป
                       </button>
                     )}
-                    <button onClick={() => setEditing(r)} className="rounded px-1.5 py-0.5 text-xs text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
-                      แก้ไข
-                    </button>
-                    <button onClick={() => void remove(r)} className="rounded px-1.5 py-0.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-950/50">
-                      ลบ
-                    </button>
+                    {canEdit && (
+                      <>
+                        <button onClick={() => setEditing(r)} className="rounded px-1.5 py-0.5 text-xs text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
+                          แก้ไข
+                        </button>
+                        <button onClick={() => void remove(r)} className="rounded px-1.5 py-0.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-950/50">
+                          ลบ
+                        </button>
+                      </>
+                    )}
                   </td>
                 </tr>
               )
@@ -270,7 +284,7 @@ function Entries({
   )
 }
 
-function Accounts({ accounts, onChange }: { accounts: BankAccount[] | null; onChange: () => void }) {
+function Accounts({ accounts, canEdit, onChange }: { accounts: BankAccount[] | null; canEdit: boolean; onChange: () => void }) {
   const [editing, setEditing] = useState<BankAccount | 'new' | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -291,9 +305,11 @@ function Accounts({ accounts, onChange }: { accounts: BankAccount[] | null; onCh
         <p className="text-sm text-slate-500">
           ใส่เลขบัญชีเต็มจะจับคู่กับสลิปได้แม่นที่สุด (สลิปแสดงเลขบางหลัก เช่น xxx-x-x1234-x) · กองทุนเลือก "กองทุน A–F" แล้วใส่ชื่อจริงในชื่อเรียก
         </p>
-        <button onClick={() => setEditing('new')} className="shrink-0 rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700">
-          + เพิ่มบัญชี
-        </button>
+        {canEdit && (
+          <button onClick={() => setEditing('new')} className="shrink-0 rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700">
+            + เพิ่มบัญชี
+          </button>
+        )}
       </div>
       {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-300">{error}</p>}
       {!accounts ? (
@@ -312,7 +328,7 @@ function Accounts({ accounts, onChange }: { accounts: BankAccount[] | null; onCh
                     {a.bank_name} · {a.account_no ? a.account_no : 'ไม่ได้ใส่เลขบัญชี'}
                   </p>
                 </div>
-                <div className="flex shrink-0 gap-1">
+                <div className={`flex shrink-0 gap-1 ${canEdit ? '' : 'hidden'}`}>
                   <button onClick={() => setEditing(a)} className="rounded px-1.5 py-0.5 text-xs text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
                     แก้ไข
                   </button>
