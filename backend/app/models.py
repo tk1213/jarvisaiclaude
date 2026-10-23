@@ -98,6 +98,15 @@ class ChatMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class AppSetting(Base):
+    """Small app-wide settings changed from the dashboard (e.g. the page names, see app/page_names.py)."""
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, default="")
+
+
 class ProviderToken(Base):
     """Encrypted access tokens for Tuya / FlowAccount (spec §6)."""
 

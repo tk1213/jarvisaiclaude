@@ -1,3 +1,5 @@
+import type { PageNames } from './pageNames'
+
 export type DeviceStatus = Record<string, boolean | number | string>
 
 export interface Device {
@@ -328,6 +330,8 @@ export const api = {
   login: (username: string, password: string) =>
     request<{ access_token: string }>('POST', '/auth/login', { username, password }),
   me: () => request<User>('GET', '/auth/me'),
+  pageNames: () => request<PageNames>('GET', '/page-names'),
+  savePageNames: (names: Partial<PageNames>) => request<PageNames>('PUT', '/page-names', names),
   users: () => request<User[]>('GET', '/users'),
   addUser: (body: { username: string; password: string; display_name: string; permissions: Partial<Permissions> }) => request<User>('POST', '/users', body),
   updateUser: (id: number, changes: { display_name?: string; permissions?: Partial<Permissions> }) => request<User>('PUT', `/users/${id}`, changes),

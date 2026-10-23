@@ -8,20 +8,16 @@ import { Documents } from './components/Documents'
 import { LineLink } from './components/LineLink'
 import { Login } from './components/Login'
 import { Members } from './components/Members'
+import { PageNamesEditor } from './components/PageNamesEditor'
 import { Personal } from './components/Personal'
 import { Scenes } from './components/Scenes'
 import { powerCode } from './readings'
+import { DEFAULT_NAMES, PageNamesContext, type PageKey, type PageNames } from './pageNames'
 import { useDevices, type LinkState } from './useDevices'
 
-type Page = 'home' | 'flowaccount' | 'account' | 'personal' | 'company' | 'members'
-const PAGES: { id: Page; label: string }[] = [
-  { id: 'home', label: '🏠 บ้าน' },
-  { id: 'flowaccount', label: '📄 FlowAccount' },
-  { id: 'account', label: '💰 Account ภาษี' },
-  { id: 'personal', label: '💳 การเงินส่วนตัว' },
-  { id: 'company', label: '🏢 การเงินบริษัท' },
-  { id: 'members', label: '👥 สมาชิก' },
-]
+type Page = PageKey
+/** Tab order; the names come from the server (an admin can change them). */
+const PAGES: { id: Page }[] = [{ id: 'home' }, { id: 'flowaccount' }, { id: 'account' }, { id: 'personal' }, { id: 'company' }, { id: 'members' }]
 
 /** Whether this user may open a page: the members page is for admins, the rest follow the ticks an admin set. */
 function mayOpen(user: User | null, page: Page): boolean {
@@ -69,6 +65,8 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [syncNote, setSyncNote] = useState<string | null>(null)
   const [documentsVersion, setDocumentsVersion] = useState(0)
   const [page, setPage] = useState<Page>(pageFromHash)
+  const [names, setNames] = useState<PageNames>(DEFAULT_NAMES)
+  const [renaming, setRenaming] = useState(false)
 
   useEffect(() => {
     const onHash = () => setPage(pageFromHash())
@@ -80,6 +78,10 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     history.replaceState(null, '', next === 'home' ? location.pathname : `#${next}`)
     setPage(next)
   }
+
+  useEffect(() => {
+    api.pageNames().then(setNames, () => {})
+  }, [])
 
   useEffect(() => {
     api.me().then(setUser, () => {})
@@ -125,6 +127,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   const shownError = syncError ?? error
 
   return (
+    <PageNamesContext.Provider value={names}>
     <div className="mx-auto flex min-h-full max-w-7xl flex-col gap-6 px-4 py-5 sm:px-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -165,14 +168,20 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
               shown === p.id ? 'border-sky-600 text-sky-700 dark:text-sky-300' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
             }`}
           >
-            {p.label}
+            {names[p.id]}
           </button>
         ))}
+        {user?.is_admin && !renaming && (
+          <button onClick={() => setRenaming(true)} title="แก้ชื่อหน้า" aria-label="แก้ชื่อหน้า" className="-mb-px shrink-0 px-2 py-2 text-sm text-slate-400 hover:text-sky-600">
+            ✏️
+          </button>
+        )}
       </nav>
+      {renaming && <PageNamesEditor pages={allowedPages.map((p) => p.id)} names={names} onSaved={setNames} onClose={() => setRenaming(false)} />}
 
       {shown === null ? (
         <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
-          {user ? 'บัญชีนี้ยังไม่ได้รับสิทธิ์เข้าหน้าไหน ติดต่อ admin ให้เปิดสิทธิ์ในหน้า 👥 สมาชิก' : 'กำลังโหลด…'}
+          {user ? `บัญชีนี้ยังไม่ได้รับสิทธิ์เข้าหน้าไหน ติดต่อ admin ให้เปิดสิทธิ์ในหน้า ${names.members}` : 'กำลังโหลด…'}
         </p>
       ) : shown === 'members' ? (
         <Members />
@@ -242,5 +251,6 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         </div>
       )}
     </div>
+    </PageNamesContext.Provider>
   )
 }

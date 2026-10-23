@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, type BankAccount, type Book, type PersonalEntry, type PersonalSummary } from '../api'
 import { BookContext, useBook } from '../book'
+import { usePageNames } from '../pageNames'
 import { baht, thaiDate, thaiMonth, thisMonth } from '../months'
 import { MonthPicker } from './MonthPicker'
 import { PersonalAccountForm, PersonalEntryForm, SlipViewer } from './PersonalForms'
@@ -14,7 +15,6 @@ const TABS: { id: Tab; label: string }[] = [
 ]
 
 const SOURCE: Record<PersonalEntry['source'], string> = { slip: 'สลิป LINE', text: 'พิมพ์ใน LINE', manual: 'เพิ่มเอง' }
-const TITLE: Record<Book, string> = { personal: 'การเงินส่วนตัว', company: 'การเงินบริษัท' }
 /** Where LINE entries for each book come from. */
 const GROUPS: Record<Book, string> = { personal: '"TKรับจ่าย"', company: '"สลิปรายรับ" / "สลิปรายจ่าย"' }
 
@@ -31,6 +31,7 @@ export function Personal({ book, canEdit, canMove = false }: { book: Book; canEd
 
 function MoneyPage({ canEdit, canMove }: { canEdit: boolean; canMove: boolean }) {
   const book = useBook()
+  const names = usePageNames()
   const [tab, setTab] = useState<Tab>('balance')
   const [month, setMonth] = useState(thisMonth)
   const [accounts, setAccounts] = useState<BankAccount[] | null>(null)
@@ -47,7 +48,7 @@ function MoneyPage({ canEdit, canMove }: { canEdit: boolean; canMove: boolean })
     <main className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">{TITLE[book]}</h2>
+          <h2 className="text-lg font-semibold">{names[book]}</h2>
           <p className="text-xs text-slate-500">รายการจาก LINE มาจากกลุ่ม {GROUPS[book]}</p>
         </div>
         {tab !== 'accounts' && <MonthPicker month={month} onChange={setMonth} />}
@@ -334,6 +335,7 @@ function Entries({
 
 /** Move ticked personal entries to company money, into one of its accounts. */
 function MoveBar({ picked, onMoved }: { picked: Set<number>; onMoved: () => void }) {
+  const company = usePageNames().company
   const [targets, setTargets] = useState<BankAccount[] | null>(null)
   const [target, setTarget] = useState(0)
   const [busy, setBusy] = useState(false)
@@ -350,12 +352,12 @@ function MoveBar({ picked, onMoved }: { picked: Set<number>; onMoved: () => void
   }, [])
 
   async function move() {
-    if (!window.confirm(`ย้าย ${picked.size} รายการไปหน้า 🏢 การเงินบริษัท ?`)) return
+    if (!window.confirm(`ย้าย ${picked.size} รายการไปหน้า ${company} ?`)) return
     setBusy(true)
     setNote(null)
     try {
       const r = await api.moveToCompany([...picked], target)
-      setNote(`ย้ายไปการเงินบริษัทแล้ว ${r.moved} รายการ`)
+      setNote(`ย้ายไปหน้า ${company} แล้ว ${r.moved} รายการ`)
       onMoved()
     } catch (e) {
       setNote((e as Error).message)
@@ -366,9 +368,9 @@ function MoveBar({ picked, onMoved }: { picked: Set<number>; onMoved: () => void
 
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-xl bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:bg-sky-950/40 dark:text-sky-100">
-      <span>ติ๊กรายการของบริษัท (เช่น ที่เคยมาจากกลุ่มสลิปรายรับ/สลิปรายจ่าย) แล้วย้ายไปหน้า 🏢 การเงินบริษัท</span>
+      <span>ติ๊กรายการของบริษัท (เช่น ที่เคยมาจากกลุ่มสลิปรายรับ/สลิปรายจ่าย) แล้วย้ายไปหน้า {company}</span>
       {targets && targets.length === 0 ? (
-        <span className="text-amber-700 dark:text-amber-300">เพิ่มบัญชีธนาคารในหน้า 🏢 การเงินบริษัทก่อน</span>
+        <span className="text-amber-700 dark:text-amber-300">เพิ่มบัญชีธนาคารในหน้า {company} ก่อน</span>
       ) : (
         <>
           <select
@@ -384,7 +386,7 @@ function MoveBar({ picked, onMoved }: { picked: Set<number>; onMoved: () => void
             ))}
           </select>
           <button onClick={() => void move()} disabled={busy || picked.size === 0 || !target} className="rounded-lg bg-sky-600 px-3 py-1 font-medium text-white hover:bg-sky-700 disabled:opacity-50">
-            ย้าย {picked.size} รายการไปการเงินบริษัท
+            ย้าย {picked.size} รายการไป {company}
           </button>
         </>
       )}

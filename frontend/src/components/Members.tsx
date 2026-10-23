@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { api, type PageId, type PageLevel, type Permissions, type User } from '../api'
+import { usePageNames } from '../pageNames'
 
-/** The pages an admin can open to a member, in tab order. Chat has no view-only mode. */
-const PAGES: { id: PageId; label: string; viewOnly: boolean }[] = [
-  { id: 'home', label: '🏠 บ้าน', viewOnly: true },
-  { id: 'flowaccount', label: '📄 FlowAccount', viewOnly: true },
-  { id: 'account', label: '💰 Account ภาษี', viewOnly: true },
-  { id: 'personal', label: '💳 การเงินส่วนตัว', viewOnly: true },
-  { id: 'company', label: '🏢 การเงินบริษัท', viewOnly: true },
-  { id: 'chat', label: '💬 แชทกับจาร์วิส', viewOnly: false },
-]
+/** The pages an admin can open to a member, in tab order, with their current names. Chat has no view-only mode. */
+function usePages(): { id: PageId; label: string; viewOnly: boolean }[] {
+  const names = usePageNames()
+  return [
+    { id: 'home', label: names.home, viewOnly: true },
+    { id: 'flowaccount', label: names.flowaccount, viewOnly: true },
+    { id: 'account', label: names.account, viewOnly: true },
+    { id: 'personal', label: names.personal, viewOnly: true },
+    { id: 'company', label: names.company, viewOnly: true },
+    { id: 'chat', label: '💬 แชทกับจาร์วิส', viewOnly: false },
+  ]
+}
 const NONE: Permissions = { home: 'none', flowaccount: 'none', account: 'none', personal: 'none', company: 'none', chat: 'none' }
 
 const field =
@@ -20,10 +24,11 @@ const secondary = 'rounded-lg border border-slate-300 px-3 py-1.5 text-sm hover:
 
 /** Ticks for every page: "ดู" (view) and "แก้ไข" (edit, which includes view); chat is one tick. */
 function PageTicks({ value, onChange }: { value: Permissions; onChange: (next: Permissions) => void }) {
+  const pages = usePages()
   const set = (page: PageId, level: PageLevel) => onChange({ ...value, [page]: level })
   return (
     <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-      {PAGES.map((p) => {
+      {pages.map((p) => {
         const level = value[p.id]
         return (
           <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800/50">
@@ -54,8 +59,8 @@ function PageTicks({ value, onChange }: { value: Permissions; onChange: (next: P
   )
 }
 
-function summary(perms: Permissions): string {
-  const open = PAGES.filter((p) => perms[p.id] !== 'none').map((p) => `${p.label}${p.viewOnly ? (perms[p.id] === 'edit' ? ' (แก้ไข)' : ' (ดู)') : ''}`)
+function summary(pages: ReturnType<typeof usePages>, perms: Permissions): string {
+  const open = pages.filter((p) => perms[p.id] !== 'none').map((p) => `${p.label}${p.viewOnly ? (perms[p.id] === 'edit' ? ' (แก้ไข)' : ' (ดู)') : ''}`)
   return open.length ? open.join(' · ') : 'ยังไม่ได้เปิดหน้าไหน'
 }
 
@@ -132,7 +137,8 @@ function MemberCard({ member, onChanged }: { member: User; onChanged: () => void
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const dirty = displayName !== member.display_name || PAGES.some((p) => perms[p.id] !== member.permissions[p.id])
+  const pages = usePages()
+  const dirty = displayName !== member.display_name || pages.some((p) => perms[p.id] !== member.permissions[p.id])
 
   async function run(action: () => Promise<unknown>, done: string) {
     setBusy(true)
@@ -169,7 +175,7 @@ function MemberCard({ member, onChanged }: { member: User; onChanged: () => void
   return (
     <div className={card}>
       {title}
-      <p className="text-xs text-slate-500">ตอนนี้: {summary(member.permissions)}</p>
+      <p className="text-xs text-slate-500">ตอนนี้: {summary(pages, member.permissions)}</p>
       <label className="block max-w-sm space-y-1">
         <span className="text-xs text-slate-500">ชื่อที่แสดง</span>
         <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={128} className={field} />

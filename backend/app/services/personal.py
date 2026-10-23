@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
+from app import page_names
 from app.config import get_settings
 from app.db import company_engine
 from app.personal_models import BankAccount, PersonalEntry
@@ -309,8 +310,9 @@ def save_entry(db: Session, data: dict, entry: PersonalEntry | None = None) -> P
 
 
 def page_name(db: Session) -> str:
-    """The dashboard page this book shows on: the same code serves personal and company money (separate files)."""
-    return "🏢 การเงินบริษัท" if db.get_bind() is company_engine else "💳 การเงินส่วนตัว"
+    """The dashboard page this book shows on (its current name): the same code serves personal and company money
+    (separate files)."""
+    return page_names.name("company" if db.get_bind() is company_engine else "personal")
 
 
 def no_accounts(db: Session) -> str:
@@ -760,7 +762,7 @@ def handle_text(db: Session, group: str, kind: str, text: str) -> str | None:
 
 
 CHAT_HELP = (
-    "กลุ่มนี้จาร์วิสบันทึกรายรับรายจ่ายให้ในหน้า 💳 การเงินส่วนตัวค่ะ (รายการของบริษัทส่งในกลุ่ม \"สลิปรายรับ\" / \"สลิปรายจ่าย\")\n"
+    "กลุ่มนี้จาร์วิสบันทึกรายรับรายจ่ายให้ในหน้า {page} ค่ะ (รายการของบริษัทส่งในกลุ่ม \"สลิปรายรับ\" / \"สลิปรายจ่าย\")\n"
     "- ส่งรูปสลิปมาได้เลย (ดูเองว่ารับหรือจ่าย)\n"
     "- หรือพิมพ์เอง เช่น \"รับ ค่าจ้าง 5000 กสิกร\" / \"จ่าย ค่าข้าว 120\" (ไม่บอกธนาคารจะใช้บัญชีหลัก)\n"
     "- โอนระหว่างบัญชี เช่น \"โอน 5000 กสิกร ไป กองทุน A\"\n"

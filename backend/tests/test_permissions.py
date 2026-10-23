@@ -113,9 +113,9 @@ def test_jarvis_tools_follow_the_pages(db):
     db.commit()
     ctx = ToolContext(db=db, tuya=None, user=user)
     out, err = run_tool(ctx, "control_device", {"device_id": 1, "commands": [{"code": "switch_1", "value": True}]})
-    assert err and "แก้ไขหน้าบ้าน" in out
+    assert err and "แก้ไขหน้า 🏠 บ้าน" in out
     out, err = run_tool(ctx, "list_product_sets", {})
-    assert err and "เข้าหน้าFlowAccount" in out
+    assert err and "เข้าหน้า 📄 FlowAccount" in out
 
 
 def test_line_chat_needs_the_chat_page(client, owner_headers, line, monkeypatch):  # noqa: F811
