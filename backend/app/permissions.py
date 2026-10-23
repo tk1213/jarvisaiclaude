@@ -10,19 +10,12 @@ from typing import Literal
 
 from fastapi import Depends, HTTPException, status
 
+from app import page_names
 from app.deps import get_current_user
 from app.models import User
 
 Level = Literal["none", "view", "edit"]
 PAGES = ("home", "flowaccount", "account", "personal", "company", "chat")
-PAGE_NAMES = {
-    "home": "บ้าน",
-    "flowaccount": "FlowAccount",
-    "account": "Account ภาษี",
-    "personal": "การเงินส่วนตัว",
-    "company": "การเงินบริษัท",
-    "chat": "แชทกับจาร์วิส",
-}
 _RANK = {"none": 0, "view": 1, "edit": 2}
 
 
@@ -72,7 +65,7 @@ def set_levels(user: User, new: dict) -> None:
 
 def denied_text(page: str, need: Level = "view") -> str:
     what = "แก้ไข" if need == "edit" else "เข้า"
-    return f"บัญชีนี้ไม่มีสิทธิ์{what}หน้า{PAGE_NAMES[page]} ให้ admin เปิดสิทธิ์ในหน้า 👥 สมาชิก"
+    return f"บัญชีนี้ไม่มีสิทธิ์{what}หน้า {page_names.name(page)} ให้ admin เปิดสิทธิ์ในหน้า {page_names.name('members')}"
 
 
 def require(page: str, need: Level = "view"):

@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app import permissions
+from app import page_names, permissions
 from app.config import get_settings
 from app.core import images as image_utils
 from app.core.messages import Channel, InboundMessage
@@ -334,7 +334,7 @@ def _book(kind: str) -> tuple[str, sessionmaker]:
 
 
 GROUP_HELP = (
-    "สวัสดีค่ะ TK กลุ่มนี้จาร์วิสจะบันทึก{word}ของบริษัทให้ในหน้า 🏢 การเงินบริษัท\n"
+    "สวัสดีค่ะ TK กลุ่มนี้จาร์วิสจะบันทึก{word}ของบริษัทให้ในหน้า {page}\n"
     "- ส่งรูปสลิปมาได้เลย\n"
     "- หรือพิมพ์เอง เช่น \"{example}\" (ไม่บอกธนาคารจะใช้บัญชีหลัก)\n"
     "- \"ลบล่าสุด\" ลบรายการล่าสุดของกลุ่มนี้ / \"ยอด\" ดูยอดคงเหลือ"
@@ -357,13 +357,13 @@ def handle_group_event(event: dict) -> None:
         return
     if event.get("type") == "join":
         if kind == "both":
-            text = "สวัสดีค่ะ TK " + personal.CHAT_HELP
+            text = "สวัสดีค่ะ TK " + personal.CHAT_HELP.format(page=page_names.name("personal"))
         elif kind is None:
             text = "สวัสดีค่ะ จาร์วิสทำงานในกลุ่มชื่อ \"TKรับจ่าย\" \"สลิปรายรับ\" หรือ \"สลิปรายจ่าย\" เท่านั้นนะคะ ส่วนเรื่องอื่นคุยกับจาร์วิสในแชทส่วนตัวได้เลยค่ะ"
         elif kind == "income":
-            text = GROUP_HELP.format(word="รายรับ", example="ค่าจ้าง 5000 กสิกร")
+            text = GROUP_HELP.format(word="รายรับ", example="ค่าจ้าง 5000 กสิกร", page=page_names.name("company"))
         else:
-            text = GROUP_HELP.format(word="รายจ่าย", example="ค่าข้าว 120 กสิกร")
+            text = GROUP_HELP.format(word="รายจ่าย", example="ค่าข้าว 120 กสิกร", page=page_names.name("company"))
         _send_quietly(client, reply_token, group_id, text)
         return
     if kind is None or event.get("type") != "message":

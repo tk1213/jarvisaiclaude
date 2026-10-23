@@ -118,6 +118,10 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
   "TKรับจ่าย" needs `personal` edit and the two company slip groups `company` edit. `can_control_devices`/`can_issue_documents` follow home/flowaccount "edit". Members are
   added, re-permissioned, given a new password (`POST /users/{id}/password`) or removed (`DELETE /users/{id}`: soft delete,
   `deleted_at`, username renamed so it can be reused, chats deleted, documents_log kept); admins can't be removed or narrowed.
+- Page names: an admin renames tabs with the ✏️ after them (`PageNamesEditor.tsx`, `PUT /page-names`); stored in jarvis.db
+  `app_settings` (`app/page_names.py`, `DEFAULTS` mirrored in `frontend/src/pageNames.ts`, `PageNamesContext`). Use the current name
+  wherever a page is named (tabs, money-page headings, member ticks, `permissions.denied_text`, LINE replies via `page_names.name()`);
+  page ids (`#company` ...) never change.
 - Account page (tab "💰 Account ภาษี", members with the "account" page level): `app/services/accounting.py`, `app/api/account.py`,
   `account_models.py` in a separate SQLite file `backend/data/account/account.db` (`ACCOUNT_DATABASE_URL`, `AccountSession`),
   amounts in satang. Income = FlowAccount `/tax-invoices` + `/cash-invoices`, expenses = `/purchases` (ใบรับสินค้า; not `/expenses` or purchase orders; rows from a path no longer read are removed on sync),
