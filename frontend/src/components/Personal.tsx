@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, type BankAccount, type PersonalEntry, type PersonalSummary } from '../api'
+import { api, type BankAccount, type Book, type PersonalEntry, type PersonalSummary } from '../api'
+import { BookContext, useBook } from '../book'
 import { baht, thaiDate, thaiMonth, thisMonth } from '../months'
 import { MonthPicker } from './MonthPicker'
 import { PersonalAccountForm, PersonalEntryForm, SlipViewer } from './PersonalForms'
@@ -13,10 +14,23 @@ const TABS: { id: Tab; label: string }[] = [
 ]
 
 const SOURCE: Record<PersonalEntry['source'], string> = { slip: 'สลิป LINE', text: 'พิมพ์ใน LINE', manual: 'เพิ่มเอง' }
+const TITLE: Record<Book, string> = { personal: 'การเงินส่วนตัว', company: 'การเงินบริษัท' }
+/** Where LINE entries for each book come from. */
+const GROUPS: Record<Book, string> = { personal: '"TKรับจ่าย"', company: '"สลิปรายรับ" / "สลิปรายจ่าย"' }
 
-/** 💳 Personal money: balances per bank or fund account, income and expenses (also from the LINE group "tk รับจ่าย"), and the accounts. */
-/** canEdit false = view only: balances, entries and slips can be looked at but nothing added, changed or deleted. */
-export function Personal({ canEdit }: { canEdit: boolean }) {
+/** 💳 Personal money (LINE group "TKรับจ่าย") or 🏢 company money ("สลิปรายรับ" / "สลิปรายจ่าย"): balances per bank or
+ * fund account, income and expenses, and the accounts. canEdit false = view only. canMove: personal entries can be
+ * ticked and moved to company money (for entries the slip groups recorded here before the company page existed). */
+export function Personal({ book, canEdit, canMove = false }: { book: Book; canEdit: boolean; canMove?: boolean }) {
+  return (
+    <BookContext.Provider value={book}>
+      <MoneyPage key={book} canEdit={canEdit} canMove={canMove} />
+    </BookContext.Provider>
+  )
+}
+
+function MoneyPage({ canEdit, canMove }: { canEdit: boolean; canMove: boolean }) {
+  const book = useBook()
   const [tab, setTab] = useState<Tab>('balance')
   const [month, setMonth] = useState(thisMonth)
   const [accounts, setAccounts] = useState<BankAccount[] | null>(null)
@@ -24,15 +38,18 @@ export function Personal({ canEdit }: { canEdit: boolean }) {
   const [version, setVersion] = useState(0)
 
   useEffect(() => {
-    api.bankAccounts().then(setAccounts, (e) => setError((e as Error).message))
-  }, [version])
+    api.bankAccounts(book).then(setAccounts, (e) => setError((e as Error).message))
+  }, [book, version])
 
   const changed = () => setVersion((v) => v + 1)
 
   return (
     <main className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold">การเงินส่วนตัว</h2>
+        <div>
+          <h2 className="text-lg font-semibold">{TITLE[book]}</h2>
+          <p className="text-xs text-slate-500">รายการจาก LINE มาจากกลุ่ม {GROUPS[book]}</p>
+        </div>
         {tab !== 'accounts' && <MonthPicker month={month} onChange={setMonth} />}
       </div>
       {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-300">{error}</p>}
@@ -59,7 +76,7 @@ export function Personal({ canEdit }: { canEdit: boolean }) {
               <button onClick={() => setTab('accounts')} className="text-sky-700 underline dark:text-sky-300">
                 เพิ่มบัญชีธนาคาร
               </button>{' '}
-              พร้อมเงินต้นก่อน แล้วค่อยส่งสลิปในกลุ่ม LINE "tk รับจ่าย"
+              พร้อมเงินต้นก่อน แล้วค่อยส่งสลิปในกลุ่ม LINE {GROUPS[book]}
             </>
           )}
         </div>
@@ -68,19 +85,20 @@ export function Personal({ canEdit }: { canEdit: boolean }) {
       ) : tab === 'accounts' ? (
         <Accounts accounts={accounts} canEdit={canEdit} onChange={changed} />
       ) : (
-        <Entries key={tab} kind={tab} month={month} accounts={accounts ?? []} version={version} canEdit={canEdit} onChange={changed} />
+        <Entries key={tab} kind={tab} month={month} accounts={accounts ?? []} version={version} canEdit={canEdit} canMove={canMove && book === 'personal'} onChange={changed} />
       )}
     </main>
   )
 }
 
 function Balances({ month, version }: { month: string; version: number }) {
+  const book = useBook()
   const [data, setData] = useState<PersonalSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    api.personalSummary(month).then(setData, (e) => setError((e as Error).message))
-  }, [month, version])
+    api.personalSummary(book, month).then(setData, (e) => setError((e as Error).message))
+  }, [book, month, version])
 
   if (error) return <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-300">{error}</p>
   if (!data) return <p className="text-sm text-slate-500">กำลังโหลด…</p>
@@ -129,6 +147,7 @@ function Entries({
   accounts,
   version,
   canEdit,
+  canMove,
   onChange,
 }: {
   kind: 'income' | 'expense'
@@ -136,8 +155,10 @@ function Entries({
   accounts: BankAccount[]
   version: number
   canEdit: boolean
+  canMove: boolean
   onChange: () => void
 }) {
+  const book = useBook()
   const [accountId, setAccountId] = useState(0)
   const [rows, setRows] = useState<PersonalEntry[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -145,19 +166,28 @@ function Entries({
   const [slip, setSlip] = useState<PersonalEntry | null>(null)
 
   const load = useCallback(() => {
-    api.personalEntries(kind, month, accountId || undefined).then(setRows, (e) => setError((e as Error).message))
-  }, [kind, month, accountId])
+    api.personalEntries(book, kind, month, accountId || undefined).then(setRows, (e) => setError((e as Error).message))
+  }, [book, kind, month, accountId])
   useEffect(load, [load, version])
 
   async function remove(e: PersonalEntry) {
     if (!window.confirm(`ลบรายการ ${baht.format(e.amount)} บาท วันที่ ${thaiDate(e.date)} ?${e.has_slip ? ' (รูปสลิปจะถูกลบด้วย)' : ''}`)) return
     try {
-      await api.deletePersonalEntry(e.id)
+      await api.deletePersonalEntry(book, e.id)
       onChange()
     } catch (err) {
       setError((err as Error).message)
     }
   }
+
+  const [picked, setPicked] = useState<Set<number>>(new Set())
+  const toggle = (id: number, on: boolean) =>
+    setPicked((prev) => {
+      const next = new Set(prev)
+      if (on) next.add(id)
+      else next.delete(id)
+      return next
+    })
 
   const income = kind === 'income'
   const word = income ? 'รายรับ' : 'รายจ่าย'
@@ -193,11 +223,16 @@ function Entries({
         )}
       </div>
       {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-300">{error}</p>}
+      {canMove && <MoveBar picked={picked} onMoved={() => {
+        setPicked(new Set())
+        onChange()
+      }} />}
 
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
         <table className="w-full min-w-[48rem] text-sm">
           <thead className="bg-slate-50 text-xs text-slate-500 dark:bg-slate-800/60">
             <tr>
+              {canMove && <th className="w-8 px-3 py-2" aria-label="เลือก" />}
               <th className="px-3 py-2 text-left font-medium">วันที่</th>
               <th className="px-3 py-2 text-left font-medium">บัญชี</th>
               <th className="px-3 py-2 text-left font-medium">{income ? 'ผู้โอนให้' : 'จ่ายให้'}</th>
@@ -214,6 +249,19 @@ function Entries({
               const other = transfer ? (income ? `จาก ${r.account}` : `ไป ${r.to_account}`) : r.counterparty
               return (
                 <tr key={r.id} className={transfer ? 'text-slate-500' : ''}>
+                  {canMove && (
+                    <td className="px-3 py-2">
+                      {!transfer && (
+                        <input
+                          type="checkbox"
+                          checked={picked.has(r.id)}
+                          onChange={(e) => toggle(r.id, e.target.checked)}
+                          aria-label="เลือกเพื่อย้ายไปการเงินบริษัท"
+                          className="size-4 accent-sky-600"
+                        />
+                      )}
+                    </td>
+                  )}
                   <td className="px-3 py-2 whitespace-nowrap">
                     {thaiDate(r.date)}
                     {r.time && <span className="ml-1 text-xs text-slate-500">{r.time}</span>}
@@ -257,8 +305,8 @@ function Entries({
             })}
             {rows?.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-3 py-8 text-center text-slate-500">
-                  ยังไม่มี{word}ในเดือนนี้ ส่งสลิปในกลุ่ม LINE "tk รับจ่าย" หรือกด "+ เพิ่ม{word}"
+                <td colSpan={canMove ? 7 : 6} className="px-3 py-8 text-center text-slate-500">
+                  ยังไม่มี{word}ในเดือนนี้ ส่งสลิปในกลุ่ม LINE {GROUPS[book]} หรือกด "+ เพิ่ม{word}"
                 </td>
               </tr>
             )}
@@ -284,7 +332,69 @@ function Entries({
   )
 }
 
+/** Move ticked personal entries to company money, into one of its accounts. */
+function MoveBar({ picked, onMoved }: { picked: Set<number>; onMoved: () => void }) {
+  const [targets, setTargets] = useState<BankAccount[] | null>(null)
+  const [target, setTarget] = useState(0)
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
+
+  useEffect(() => {
+    api.bankAccounts('company').then(
+      (accs) => {
+        setTargets(accs)
+        setTarget((t) => t || accs.find((a) => a.is_default)?.id || accs[0]?.id || 0)
+      },
+      (e) => setNote((e as Error).message),
+    )
+  }, [])
+
+  async function move() {
+    if (!window.confirm(`ย้าย ${picked.size} รายการไปหน้า 🏢 การเงินบริษัท ?`)) return
+    setBusy(true)
+    setNote(null)
+    try {
+      const r = await api.moveToCompany([...picked], target)
+      setNote(`ย้ายไปการเงินบริษัทแล้ว ${r.moved} รายการ`)
+      onMoved()
+    } catch (e) {
+      setNote((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-xl bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:bg-sky-950/40 dark:text-sky-100">
+      <span>ติ๊กรายการของบริษัท (เช่น ที่เคยมาจากกลุ่มสลิปรายรับ/สลิปรายจ่าย) แล้วย้ายไปหน้า 🏢 การเงินบริษัท</span>
+      {targets && targets.length === 0 ? (
+        <span className="text-amber-700 dark:text-amber-300">เพิ่มบัญชีธนาคารในหน้า 🏢 การเงินบริษัทก่อน</span>
+      ) : (
+        <>
+          <select
+            value={target}
+            onChange={(e) => setTarget(Number(e.target.value))}
+            aria-label="บัญชีบริษัทปลายทาง"
+            className="rounded-lg border border-slate-300 bg-white px-2 py-1 dark:border-slate-700 dark:bg-slate-900"
+          >
+            {targets?.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.label}
+              </option>
+            ))}
+          </select>
+          <button onClick={() => void move()} disabled={busy || picked.size === 0 || !target} className="rounded-lg bg-sky-600 px-3 py-1 font-medium text-white hover:bg-sky-700 disabled:opacity-50">
+            ย้าย {picked.size} รายการไปการเงินบริษัท
+          </button>
+        </>
+      )}
+      {note && <span>{note}</span>}
+    </div>
+  )
+}
+
 function Accounts({ accounts, canEdit, onChange }: { accounts: BankAccount[] | null; canEdit: boolean; onChange: () => void }) {
+  const book = useBook()
   const [editing, setEditing] = useState<BankAccount | 'new' | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -292,7 +402,7 @@ function Accounts({ accounts, canEdit, onChange }: { accounts: BankAccount[] | n
     if (!window.confirm(`ลบบัญชี ${a.label} ?`)) return
     setError(null)
     try {
-      await api.deleteBankAccount(a.id)
+      await api.deleteBankAccount(book, a.id)
       onChange()
     } catch (err) {
       setError((err as Error).message)
@@ -346,7 +456,7 @@ function Accounts({ accounts, canEdit, onChange }: { accounts: BankAccount[] | n
         </div>
       )}
       <p className="text-xs text-slate-500">
-        บัญชีหลัก: ใช้เมื่อพิมพ์ในกลุ่ม LINE "tk รับจ่าย" โดยไม่บอกธนาคาร เช่น "จ่าย ค่าข้าว 120" (ถ้าบอก เช่น "จ่าย ค่าข้าว 120 กสิกร" จะใช้บัญชีของธนาคารนั้น)
+        บัญชีหลัก: ใช้เมื่อพิมพ์ในกลุ่ม LINE {GROUPS[book]} โดยไม่บอกธนาคาร เช่น "{book === 'personal' ? 'จ่าย ' : ''}ค่าข้าว 120" (ถ้าบอก เช่น "{book === 'personal' ? 'จ่าย ' : ''}ค่าข้าว 120 กสิกร" จะใช้บัญชีของธนาคารนั้น)
       </p>
       {editing && (
         <PersonalAccountForm

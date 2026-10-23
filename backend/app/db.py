@@ -50,6 +50,9 @@ account_engine = _file_engine(get_settings().account_database_url)
 AccountSession = sessionmaker(bind=account_engine, autoflush=False, expire_on_commit=False)
 personal_engine = _file_engine(get_settings().personal_database_url)
 PersonalSession = sessionmaker(bind=personal_engine, autoflush=False, expire_on_commit=False)
+# Company money uses the personal-money tables in a separate file, so the two books never mix.
+company_engine = _file_engine(get_settings().company_database_url)
+CompanySession = sessionmaker(bind=company_engine, autoflush=False, expire_on_commit=False)
 
 
 def init_db() -> None:
@@ -67,6 +70,8 @@ def init_personal_db() -> None:
 
     PersonalBase.metadata.create_all(personal_engine)
     _add_missing_columns(PersonalBase, personal_engine)
+    PersonalBase.metadata.create_all(company_engine)
+    _add_missing_columns(PersonalBase, company_engine)
 
 
 def init_account_db() -> None:
@@ -154,6 +159,14 @@ def get_account_db() -> Iterator[Session]:
 
 def get_personal_db() -> Iterator[Session]:
     db = PersonalSession()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def get_company_db() -> Iterator[Session]:
+    db = CompanySession()
     try:
         yield db
     finally:

@@ -26,7 +26,7 @@ def member(client, owner_headers, name="staff", **levels):
 
 def test_new_member_starts_with_no_pages(client, owner_headers):
     body, staff = member(client, owner_headers)
-    assert body["permissions"] == {"home": "none", "flowaccount": "none", "account": "none", "personal": "none", "chat": "none"}
+    assert body["permissions"] == {"home": "none", "flowaccount": "none", "account": "none", "personal": "none", "company": "none", "chat": "none"}
     assert client.get("/auth/me", headers=staff).status_code == 200
     assert client.get("/devices", headers=staff).status_code == 403
     assert client.get("/documents", headers=staff).status_code == 403
@@ -100,7 +100,7 @@ def test_reset_password_and_delete(client, owner_headers):
 
 def test_older_accounts_keep_their_access(db):
     old = User(username="old", password_hash="x", can_control_devices=True, can_issue_documents=False)
-    assert permissions.levels(old) == {"home": "edit", "flowaccount": "view", "account": "none", "personal": "none", "chat": "edit"}
+    assert permissions.levels(old) == {"home": "edit", "flowaccount": "view", "account": "none", "personal": "none", "company": "none", "chat": "edit"}
     permissions.set_levels(old, {"home": "view", "flowaccount": "edit", "account": "bogus"})
     assert (old.can_control_devices, old.can_issue_documents) == (False, True)
     assert json.loads(old.permissions)["account"] == "none"

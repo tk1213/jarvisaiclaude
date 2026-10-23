@@ -110,15 +110,15 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
   never overwriting existing data): apt packages, Node 22, Chrome, cloudflared, `jarvis.service` (systemd, port 8765),
   cron backups, no sleep, Chrome autostart. Idempotent. `.gitattributes` keeps `*.sh` LF.
 - Page permissions (👥 สมาชิก `#members`, admin only, `Members.tsx`): each member has a level per page, "none" / "view" /
-  "edit", for `home`, `flowaccount`, `account`, `personal`, and `chat` ("none"/"edit" only), stored as JSON in `users.permissions`
+  "edit", for `home`, `flowaccount`, `account`, `personal`, `company`, and `chat` ("none"/"edit" only), stored as JSON in `users.permissions`
   (`app/permissions.py`; NULL = an account from before this, which keeps home/FlowAccount/chat from its old flags; admins always "edit").
   New members start with nothing ticked. `permissions.require(page, level)` guards every router (GET = view, changes = edit);
   `run_tool` checks `_TOOL_PAGES` (device control = home edit, documents/sets = flowaccount edit) so the tool list stays byte-identical;
   the chat's device snapshot and `/ws/devices` device events go only to members who can see home; LINE one-to-one chat needs `chat`,
-  the slip groups need `personal` edit. `can_control_devices`/`can_issue_documents` follow home/flowaccount "edit". Members are
+  "TKรับจ่าย" needs `personal` edit and the two company slip groups `company` edit. `can_control_devices`/`can_issue_documents` follow home/flowaccount "edit". Members are
   added, re-permissioned, given a new password (`POST /users/{id}/password`) or removed (`DELETE /users/{id}`: soft delete,
   `deleted_at`, username renamed so it can be reused, chats deleted, documents_log kept); admins can't be removed or narrowed.
-- Account page (💰, members with the "account" page level): `app/services/accounting.py`, `app/api/account.py`,
+- Account page (tab "💰 Account ภาษี", members with the "account" page level): `app/services/accounting.py`, `app/api/account.py`,
   `account_models.py` in a separate SQLite file `backend/data/account/account.db` (`ACCOUNT_DATABASE_URL`, `AccountSession`),
   amounts in satang. Income = FlowAccount `/tax-invoices` + `/cash-invoices`, expenses = `/purchases` (ใบรับสินค้า; not `/expenses` or purchase orders; rows from a path no longer read are removed on sync),
   read daily in live mode or by the button; imported rows keep FlowAccount's amounts (only category/payee type/excluded/claimable
@@ -127,16 +127,22 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
   Next: receipt photos and voice.
 - Personal money (💳 `#personal`, members with the "personal" page level): `app/services/personal.py`, `app/api/personal.py`, `personal_models.py` in
   `backend/data/personal/personal.db` (`PERSONAL_DATABASE_URL`, `PersonalSession`), slip pictures in `PERSONAL_SLIP_DIR`; both are
-  in the backup. Balance = opening balance + entries on/after its date. Recording is the main OA's LINE **group "tk รับจ่าย"**
-  (any group whose name has "รับจ่าย", `group_kind` "both"; a plain group, not a separate OA), answering linked admins only and
-  staying quiet on ordinary chat. Slips (`app/services/slip_reader.py`, Claude JSON-schema output) work out
+  in the backup. Balance = opening balance + entries on/after its date. Recording is the main OA's LINE **group "TKรับจ่าย"**
+  only (`group_kind` "both": name contains "tkรับจ่าย" ignoring spaces/case; a plain group, not a separate OA), answering linked
+  members with personal edit and staying quiet on ordinary chat. Slips (`app/services/slip_reader.py`, Claude JSON-schema output) work out
   the kind themselves (`guess_kind`: owner's receiver side = income, sender side = expense, both = transfer, else ask "1) รายรับ
   2) รายจ่าย"); typed lines carry รับ / จ่าย / โอน anywhere (`split_kind`: a separate word, or stuck to the front or back of any word, "kbank หูฟังจ่าย 620"; never inside a word; โอน only in front; nickname words exempt) ("จ่าย ค่าข้าว 120 กสิกร", no bank = default account, "โอน 5000 กสิกร ไป
   K-SET50"), without one JARVIS asks. "ยอด" = every balance; "ยอด กรุงศรี เหลือเท่าไร" / "ยอดคงเหลือ K-SET50" = that bank or fund only. Duplicate reference = refused; unclear account = numbered question. The older groups named
-  "รายรับ"/"รายจ่าย" still record with a fixed kind. Funds are accounts with bank
+  "สลิปรายรับ"/"สลิปรายจ่าย" record with a fixed kind into **company money** instead (below). Funds are accounts with bank
   `FUND_A`..`FUND_F` (real name in the nickname, matched in slips and typed lines; balance = money put in, no NAV). A transfer is
   one row but shows as รับโอน/โอนออก per account and in each account's month in/out, never in the month totals. No expense
   categories yet.
+- Company money (🏢 `#company`, "company" page level): the same code as personal money (`make_router` in `app/api/personal.py`,
+  `app/services/personal.py`, `Personal.tsx` with `book="company"` via `BookContext`) on its own file `backend/data/company/company.db`
+  (`COMPANY_DATABASE_URL`, `CompanySession`; slip pictures share `PERSONAL_SLIP_DIR`; in the backup and `install-ubuntu.sh`). LINE groups
+  "สลิปรายรับ" (income) / "สลิปรายจ่าย" (expense) record here. Old entries the slip groups left in personal money can't be told apart
+  from "TKรับจ่าย" ones (same `origin`), so the owner ticks them on the personal page and moves them (`POST /personal/entries/move-to-company`,
+  needs edit on both pages; transfers can't move). `page_name(db)` picks the page named in LINE replies.
 - Server health: "สถานะระบบ" / "เช็คระบบ" / "server" on LINE answers from `app/services/system_status.py` without Claude
   (uptime, CPU, RAM, disk, CPU temp from /proc and /sys, Tuya/Pulsar, `orchestrator.claude_status` last ok/error, last backup
   folder, git version; ⚠️ headline on problems). The `get_system_status` tool returns the same data for free-form questions.

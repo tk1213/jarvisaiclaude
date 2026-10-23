@@ -6,7 +6,7 @@ import pytest
 from PIL import Image
 
 from app.api import line as line_api
-from app.db import PersonalSession
+from app.db import CompanySession, PersonalSession
 from app.personal_models import PersonalEntry
 from app.services import personal
 from tests.test_line import FakeLine, link, post_event, text_event  # noqa: F401  (the line fixture)
@@ -185,8 +185,9 @@ def groups(line):  # noqa: F811
 
 
 def test_line_slip_group(client, owner_headers, groups, monkeypatch):
+    """"สลิปรายรับ" / "สลิปรายจ่าย" record into company money, never personal money."""
     link(client, owner_headers, groups)
-    with PersonalSession() as db:
+    with CompanySession() as db:
         add(db)
     monkeypatch.setattr(line_api, "read_slip", lambda jpeg: slip())
     groups.contents["m1"] = picture()
@@ -195,8 +196,10 @@ def test_line_slip_group(client, owner_headers, groups, monkeypatch):
     assert groups.sent[-1][2][0]["text"].startswith("บันทึกรายรับ 500.00 บาท")
     post_event(client, group_event({"type": "text", "id": "t1", "text": "ค่าข้าว 120"}, group="Gout"))
     assert groups.sent[-1][2][0]["text"].startswith("บันทึกรายจ่าย 120.00 บาท")
-    with PersonalSession() as db:
+    with CompanySession() as db:
         assert personal.balance(db, personal.accounts(db)[0]) == 100000 + 50000 - 12000
+    with PersonalSession() as db:
+        assert db.query(PersonalEntry).count() == 0
 
 
 def test_line_groups_ignore_others(client, owner_headers, groups, monkeypatch):
@@ -444,9 +447,39 @@ def test_rabjai_group(client, owner_headers, groups, monkeypatch):
 
 def test_group_kind():
     assert line_api.group_kind("tk รับจ่าย") == "both"
+    assert line_api.group_kind("TKรับจ่าย") == "both"
     assert line_api.group_kind("สลิปรายรับ") == "income"
     assert line_api.group_kind("สลิปรายจ่าย") == "expense"
     assert line_api.group_kind("ครอบครัว") is None
+    # Only "TKรับจ่าย" is personal money now; other names with รับจ่าย / รายรับ are ignored.
+    assert line_api.group_kind("บ้านรับจ่าย") is None
+    assert line_api.group_kind("รายรับ") is None
+
+
+def test_company_page_and_moving_old_entries(client, owner_headers, groups, monkeypatch):
+    h = owner_headers
+    mine = client.post("/personal/accounts", headers=h, json={"bank": "KBANK", "opening_date": "2026-10-01", "is_default": True}).json()
+    a = client.post("/personal/entries", headers=h, json={"kind": "income", "date": "2026-10-03", "amount": 500, "account_id": mine["id"], "note": "ลูกค้า"}).json()
+    b = client.post("/personal/entries", headers=h, json={"kind": "expense", "date": "2026-10-04", "amount": 80, "account_id": mine["id"], "note": "ข้าว"}).json()
+    # The company page has its own accounts and entries.
+    assert client.get("/company/accounts", headers=h).json() == []
+    company = client.post("/company/accounts", headers=h, json={"bank": "SCB", "nickname": "บริษัท", "opening": 1000, "opening_date": "2026-10-01"}).json()
+    assert client.get("/personal/accounts", headers=h).json()[0]["id"] == mine["id"]
+
+    r = client.post("/personal/entries/move-to-company", headers=h, json={"entry_ids": [a["id"]], "account_id": company["id"]})
+    assert r.status_code == 200 and r.json() == {"moved": 1}
+    assert [e["note"] for e in client.get("/company/entries", headers=h, params={"kind": "income", "month": "2026-10"}).json()] == ["ลูกค้า"]
+    assert client.get("/personal/entries", headers=h, params={"kind": "income", "month": "2026-10"}).json() == []
+    assert client.get("/company/accounts", headers=h).json()[0]["balance"] == 1500
+    assert [e["id"] for e in client.get("/personal/entries", headers=h, params={"kind": "expense", "month": "2026-10"}).json()] == [b["id"]]
+    assert client.post("/personal/entries/move-to-company", headers=h, json={"entry_ids": [b["id"]], "account_id": 999}).status_code == 400
+
+    # Moving needs edit on both pages.
+    client.post("/users", headers=h, json={"username": "staff", "password": "password123", "permissions": {"personal": "edit", "company": "view"}})
+    staff = {"Authorization": "Bearer " + client.post("/auth/login", json={"username": "staff", "password": "password123"}).json()["access_token"]}
+    assert client.get("/company/accounts", headers=staff).status_code == 200
+    assert client.post("/company/accounts", headers=staff, json={"bank": "SCB", "opening_date": "2026-10-01"}).status_code == 403
+    assert client.post("/personal/entries/move-to-company", headers=staff, json={"entry_ids": [b["id"]], "account_id": company["id"]}).status_code == 403
 
 
 def test_banks_include_funds(client, owner_headers):

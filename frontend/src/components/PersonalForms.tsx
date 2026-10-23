@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { api, fetchBlob, type BankAccount, type PersonalEntry, type PersonalKind } from '../api'
+import { useBook } from '../book'
 import { baht, defaultDate, thaiDate, thisMonth } from '../months'
 
 const field =
@@ -58,6 +59,7 @@ export function PersonalEntryForm({
   onSaved: () => void
   onClose: () => void
 }) {
+  const book = useBook()
   const fallback = accounts.find((a) => a.is_default) ?? accounts[0]
   const [kind, setKind] = useState<PersonalKind>(entry?.kind ?? pageKind)
   const [accountId, setAccountId] = useState(entry?.account_id ?? fallback?.id ?? 0)
@@ -76,8 +78,8 @@ export function PersonalEntryForm({
     setSaving(true)
     try {
       const body = { kind, date, time, amount: Number(amount), account_id: accountId, to_account_id: kind === 'transfer' ? toAccountId : null, counterparty, note }
-      if (entry) await api.editPersonalEntry(entry.id, body)
-      else await api.addPersonalEntry(body)
+      if (entry) await api.editPersonalEntry(book, entry.id, body)
+      else await api.addPersonalEntry(book, body)
       onSaved()
     } catch (err) {
       setError((err as Error).message)
@@ -158,6 +160,7 @@ export function PersonalEntryForm({
 
 /** Add or edit a bank or fund account: bank (or กองทุน A–F), nickname, number, opening balance and its date, default for typed LINE entries. */
 export function PersonalAccountForm({ account, onSaved, onClose }: { account: BankAccount | null; onSaved: () => void; onClose: () => void }) {
+  const book = useBook()
   const [banks, setBanks] = useState<{ code: string; name: string }[]>([])
   const [bank, setBank] = useState(account?.bank ?? 'KBANK')
   const [nickname, setNickname] = useState(account?.nickname ?? '')
@@ -170,8 +173,8 @@ export function PersonalAccountForm({ account, onSaved, onClose }: { account: Ba
   const fund = bank.startsWith('FUND_')
 
   useEffect(() => {
-    api.banks().then(setBanks, (e) => setError((e as Error).message))
-  }, [])
+    api.banks(book).then(setBanks, (e) => setError((e as Error).message))
+  }, [book])
 
   async function save(e: FormEvent) {
     e.preventDefault()
@@ -179,8 +182,8 @@ export function PersonalAccountForm({ account, onSaved, onClose }: { account: Ba
     setSaving(true)
     try {
       const body = { bank, nickname, account_no: accountNo, opening: Number(opening) || 0, opening_date: openingDate, is_default: isDefault }
-      if (account) await api.editBankAccount(account.id, body)
-      else await api.addBankAccount(body)
+      if (account) await api.editBankAccount(book, account.id, body)
+      else await api.addBankAccount(book, body)
       onSaved()
     } catch (err) {
       setError((err as Error).message)
@@ -231,13 +234,14 @@ export function PersonalAccountForm({ account, onSaved, onClose }: { account: Ba
 
 /** The slip picture kept from LINE, fetched with the login token. */
 export function SlipViewer({ entry, onClose }: { entry: PersonalEntry; onClose: () => void }) {
+  const book = useBook()
   const [url, setUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   useEscape(onClose)
 
   useEffect(() => {
     let objectUrl: string | null = null
-    fetchBlob(`/personal/entries/${entry.id}/slip`).then(
+    fetchBlob(`/${book}/entries/${entry.id}/slip`).then(
       (blob) => {
         objectUrl = URL.createObjectURL(blob)
         setUrl(objectUrl)
@@ -247,7 +251,7 @@ export function SlipViewer({ entry, onClose }: { entry: PersonalEntry; onClose: 
     return () => {
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [entry.id])
+  }, [book, entry.id])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>

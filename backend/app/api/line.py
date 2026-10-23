@@ -7,6 +7,7 @@ and sends it to the OA once. Anyone else who adds the OA can't reach the house.
 import base64
 import json
 import logging
+import re
 import secrets
 import threading
 import time
@@ -17,14 +18,14 @@ import anthropic
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app import permissions
 from app.config import get_settings
 from app.core import images as image_utils
 from app.core.messages import Channel, InboundMessage
 from app.core.orchestrator import CoreNotConfigured, get_orchestrator
-from app.db import PersonalSession, SessionLocal, get_db
+from app.db import CompanySession, PersonalSession, SessionLocal, get_db
 from app.deps import get_current_user
 from app.integrations import line as line_integration
 from app.integrations.line import (
@@ -298,7 +299,7 @@ def _ask_jarvis(db: Session, user: User, text: str, images: list[str] | None = N
     return reply_message(reply.text, devices, confirm_choices(reply.tool_calls))
 
 
-# --- Slip groups ("tk รับจ่าย", "สลิปรายรับ" / "สลิปรายจ่าย") ---------------------------------------------------------
+# --- Slip groups ("TKรับจ่าย" -> personal money, "สลิปรายรับ" / "สลิปรายจ่าย" -> company money) ----------------------
 
 
 def _group_name(client: LineClient, group_id: str) -> str:
@@ -314,19 +315,26 @@ def _group_name(client: LineClient, group_id: str) -> str:
 
 
 def group_kind(name: str) -> str | None:
-    """Which slip group this is, from its name: "both" ("tk รับจ่าย": works out income or expense itself),
-    "income", "expense" or None (any other group)."""
-    if "รับจ่าย" in name:
+    """Which slip group this is, from its name (spaces and letter case don't matter): "both" ("TKรับจ่าย", personal
+    money: works out income or expense itself), "income" ("สลิปรายรับ") or "expense" ("สลิปรายจ่าย"), both company
+    money, or None (any other group)."""
+    squashed = re.sub(r"\s+", "", name).lower()
+    if "tkรับจ่าย" in squashed:
         return "both"
-    if "รายรับ" in name:
+    if "สลิปรายรับ" in squashed:
         return "income"
-    if "รายจ่าย" in name:
+    if "สลิปรายจ่าย" in squashed:
         return "expense"
     return None
 
 
+def _book(kind: str) -> tuple[str, sessionmaker]:
+    """The money page a slip group records into, and that page's database."""
+    return ("personal", PersonalSession) if kind == "both" else ("company", CompanySession)
+
+
 GROUP_HELP = (
-    "สวัสดีค่ะ TK กลุ่มนี้จาร์วิสจะบันทึก{word}ให้ในหน้า 💳 การเงินส่วนตัว\n"
+    "สวัสดีค่ะ TK กลุ่มนี้จาร์วิสจะบันทึก{word}ของบริษัทให้ในหน้า 🏢 การเงินบริษัท\n"
     "- ส่งรูปสลิปมาได้เลย\n"
     "- หรือพิมพ์เอง เช่น \"{example}\" (ไม่บอกธนาคารจะใช้บัญชีหลัก)\n"
     "- \"ลบล่าสุด\" ลบรายการล่าสุดของกลุ่มนี้ / \"ยอด\" ดูยอดคงเหลือ"
@@ -334,7 +342,8 @@ GROUP_HELP = (
 
 
 def handle_group_event(event: dict) -> None:
-    """A message in a LINE group. Only the slip groups answer, and only to linked accounts that may edit personal money."""
+    """A message in a LINE group. Only the slip groups answer, and only to linked accounts that may edit that group's
+    money page (personal for "TKรับจ่าย", company for the two slip groups)."""
     source = event.get("source") or {}
     group_id = source.get("groupId")
     reply_token = event.get("replyToken")
@@ -350,7 +359,7 @@ def handle_group_event(event: dict) -> None:
         if kind == "both":
             text = "สวัสดีค่ะ TK " + personal.CHAT_HELP
         elif kind is None:
-            text = "สวัสดีค่ะ จาร์วิสทำงานในกลุ่มชื่อ \"tk รับจ่าย\" \"สลิปรายรับ\" หรือ \"สลิปรายจ่าย\" เท่านั้นนะคะ ส่วนเรื่องอื่นคุยกับจาร์วิสในแชทส่วนตัวได้เลยค่ะ"
+            text = "สวัสดีค่ะ จาร์วิสทำงานในกลุ่มชื่อ \"TKรับจ่าย\" \"สลิปรายรับ\" หรือ \"สลิปรายจ่าย\" เท่านั้นนะคะ ส่วนเรื่องอื่นคุยกับจาร์วิสในแชทส่วนตัวได้เลยค่ะ"
         elif kind == "income":
             text = GROUP_HELP.format(word="รายรับ", example="ค่าจ้าง 5000 กสิกร")
         else:
@@ -359,15 +368,16 @@ def handle_group_event(event: dict) -> None:
         return
     if kind is None or event.get("type") != "message":
         return
+    page, Book = _book(kind)
     with SessionLocal() as db:
         user = db.scalar(select(User).where(User.line_user_id == source.get("userId"))) if source.get("userId") else None
-        if user is None or not permissions.allowed(user, "personal", "edit"):
+        if user is None or not permissions.allowed(user, page, "edit"):
             return  # other members' chat in the group is not for JARVIS
     message = event.get("message") or {}
     if message.get("type") == "image":
         text = _record_slip(client, group_id, kind, message)
     elif message.get("type") == "text":
-        with PersonalSession() as db:
+        with Book() as db:
             if kind == "both":
                 text = personal.handle_chat_text(db, group_id, message.get("text") or "")
             else:
@@ -401,7 +411,7 @@ def _record_slip(client: LineClient, group_id: str, kind: str, message: dict) ->
     read = _read_slip_picture(client, message)
     if isinstance(read, str):
         return read
-    with PersonalSession() as db:
+    with _book(kind)[1]() as db:
         if kind == "both":
             return personal.record_chat_slip(db, group_id, *read)
         return personal.record_slip(db, group_id, kind, *read)
