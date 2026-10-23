@@ -55,7 +55,9 @@ export type ChatEvent =
 
 /** What a member may do on a page: nothing (hidden), look only, or also change things. */
 export type PageLevel = 'none' | 'view' | 'edit'
-export type PageId = 'home' | 'flowaccount' | 'account' | 'personal' | 'chat'
+export type PageId = 'home' | 'flowaccount' | 'account' | 'personal' | 'company' | 'chat'
+/** The two money pages: same screens and API, separate data (/personal, /company). */
+export type Book = 'personal' | 'company'
 export type Permissions = Record<PageId, PageLevel>
 
 export interface User {
@@ -360,17 +362,20 @@ export const api = {
   deleteAccountEntry: (id: number) => request<void>('DELETE', `/account/entries/${id}`),
   syncAccount: () => request<{ added: number; updated: number; removed: number; last_sync: string }>('POST', '/account/sync'),
   accountSummary: (month: string) => request<AccountSummary>('GET', `/account/summary?month=${month}`),
-  banks: () => request<{ code: string; name: string }[]>('GET', '/personal/banks'),
-  bankAccounts: () => request<BankAccount[]>('GET', '/personal/accounts'),
-  addBankAccount: (body: BankAccountInput) => request<BankAccount>('POST', '/personal/accounts', body),
-  editBankAccount: (id: number, body: BankAccountInput) => request<BankAccount>('PUT', `/personal/accounts/${id}`, body),
-  deleteBankAccount: (id: number) => request<void>('DELETE', `/personal/accounts/${id}`),
-  personalSummary: (month: string) => request<PersonalSummary>('GET', `/personal/summary?month=${month}`),
-  personalEntries: (kind: 'income' | 'expense', month: string, accountId?: number) =>
-    request<PersonalEntry[]>('GET', `/personal/entries?kind=${kind}&month=${month}${accountId ? `&account_id=${accountId}` : ''}`),
-  addPersonalEntry: (body: PersonalEntryInput) => request<PersonalEntry>('POST', '/personal/entries', body),
-  editPersonalEntry: (id: number, body: PersonalEntryInput) => request<PersonalEntry>('PUT', `/personal/entries/${id}`, body),
-  deletePersonalEntry: (id: number) => request<void>('DELETE', `/personal/entries/${id}`),
+  banks: (book: Book) => request<{ code: string; name: string }[]>('GET', `/${book}/banks`),
+  bankAccounts: (book: Book) => request<BankAccount[]>('GET', `/${book}/accounts`),
+  addBankAccount: (book: Book, body: BankAccountInput) => request<BankAccount>('POST', `/${book}/accounts`, body),
+  editBankAccount: (book: Book, id: number, body: BankAccountInput) => request<BankAccount>('PUT', `/${book}/accounts/${id}`, body),
+  deleteBankAccount: (book: Book, id: number) => request<void>('DELETE', `/${book}/accounts/${id}`),
+  personalSummary: (book: Book, month: string) => request<PersonalSummary>('GET', `/${book}/summary?month=${month}`),
+  personalEntries: (book: Book, kind: 'income' | 'expense', month: string, accountId?: number) =>
+    request<PersonalEntry[]>('GET', `/${book}/entries?kind=${kind}&month=${month}${accountId ? `&account_id=${accountId}` : ''}`),
+  addPersonalEntry: (book: Book, body: PersonalEntryInput) => request<PersonalEntry>('POST', `/${book}/entries`, body),
+  editPersonalEntry: (book: Book, id: number, body: PersonalEntryInput) => request<PersonalEntry>('PUT', `/${book}/entries/${id}`, body),
+  deletePersonalEntry: (book: Book, id: number) => request<void>('DELETE', `/${book}/entries/${id}`),
+  /** Move personal entries (e.g. from the old slip groups) to company money, into one of its accounts. */
+  moveToCompany: (entryIds: number[], accountId: number) =>
+    request<{ moved: number }>('POST', '/personal/entries/move-to-company', { entry_ids: entryIds, account_id: accountId }),
   lineStatus: () => request<LineStatus>('GET', '/line/status'),
   lineLinkCode: () => request<{ code: string; expires_in: number }>('POST', '/line/link-code'),
   lineUnlink: () => request<void>('DELETE', '/line/link'),

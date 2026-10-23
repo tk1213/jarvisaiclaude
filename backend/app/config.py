@@ -89,6 +89,9 @@ class Settings(BaseSettings):
     # Personal money (💳): bank accounts, income/expense from LINE slips, and the slip pictures.
     personal_database_url: str = "sqlite:///./data/personal/personal.db"
     personal_slip_dir: str = "./data/personal/slips"
+    # Company money (🏢): the same tables as personal money in their own file, fed by the "สลิปรายรับ" / "สลิปรายจ่าย"
+    # LINE groups. Slip pictures share PERSONAL_SLIP_DIR (unique file names).
+    company_database_url: str = "sqlite:///./data/company/company.db"
     # Printed at the top of the sales/purchase tax reports (รายงานภาษีขาย/ภาษีซื้อ).
     company_name: str = ""
     company_tax_id: str = ""

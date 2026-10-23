@@ -5,11 +5,12 @@ import { api, type PageId, type PageLevel, type Permissions, type User } from '.
 const PAGES: { id: PageId; label: string; viewOnly: boolean }[] = [
   { id: 'home', label: '🏠 บ้าน', viewOnly: true },
   { id: 'flowaccount', label: '📄 FlowAccount', viewOnly: true },
-  { id: 'account', label: '💰 Account', viewOnly: true },
+  { id: 'account', label: '💰 Account ภาษี', viewOnly: true },
   { id: 'personal', label: '💳 การเงินส่วนตัว', viewOnly: true },
+  { id: 'company', label: '🏢 การเงินบริษัท', viewOnly: true },
   { id: 'chat', label: '💬 แชทกับจาร์วิส', viewOnly: false },
 ]
-const NONE: Permissions = { home: 'none', flowaccount: 'none', account: 'none', personal: 'none', chat: 'none' }
+const NONE: Permissions = { home: 'none', flowaccount: 'none', account: 'none', personal: 'none', company: 'none', chat: 'none' }
 
 const field =
   'w-full rounded-lg border border-slate-300 bg-transparent px-2.5 py-1.5 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/30 dark:border-slate-700'

@@ -19,6 +19,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.db import company_engine
 from app.personal_models import BankAccount, PersonalEntry
 
 log = logging.getLogger(__name__)
@@ -307,6 +308,49 @@ def save_entry(db: Session, data: dict, entry: PersonalEntry | None = None) -> P
     return e
 
 
+def page_name(db: Session) -> str:
+    """The dashboard page this book shows on: the same code serves personal and company money (separate files)."""
+    return "🏢 การเงินบริษัท" if db.get_bind() is company_engine else "💳 การเงินส่วนตัว"
+
+
+def no_accounts(db: Session) -> str:
+    return f"ยังไม่มีบัญชีธนาคารในระบบค่ะ เพิ่มที่หน้า {page_name(db)} บน Dashboard ก่อนนะคะ"
+
+
+def move_entries(src: Session, dst: Session, entry_ids: list[int], account_id: int) -> int:
+    """Move income/expense entries to the other book (personal -> company), into one of its accounts. The slip
+    picture stays where it is (both books share the slip folder). Transfers can't move: both sides are accounts of
+    this book."""
+    acc = dst.get(BankAccount, account_id)
+    if acc is None:
+        raise PersonalError("ไม่พบบัญชีปลายทาง")
+    rows = [e for e in (src.get(PersonalEntry, i) for i in dict.fromkeys(entry_ids)) if e is not None]
+    if any(e.kind == "transfer" for e in rows):
+        raise PersonalError("รายการโอนระหว่างบัญชีย้ายไม่ได้ ให้เลือกเฉพาะรายรับ/รายจ่าย")
+    for e in rows:
+        dst.add(
+            PersonalEntry(
+                kind=e.kind,
+                entry_date=e.entry_date,
+                entry_time=e.entry_time,
+                amount_satang=e.amount_satang,
+                account_id=acc.id,
+                counterparty=e.counterparty,
+                note=e.note,
+                ref_no=e.ref_no,
+                source=e.source,
+                origin=e.origin,
+                slip_file=e.slip_file,
+                created_at=e.created_at,
+            )
+        )
+    dst.commit()
+    for e in rows:
+        src.delete(e)
+    src.commit()
+    return len(rows)
+
+
 def delete_entry(db: Session, entry: PersonalEntry) -> None:
     if entry.slip_file:
         try:
@@ -521,7 +565,7 @@ def _check_slip(db: Session, slip: dict) -> str | tuple[int, date, str | None]:
     if dup:
         return f"สลิปนี้บันทึกไปแล้วค่ะ ({dup.entry_date:%d/%m/%Y} {money(dup.amount_satang)} บาท)"
     if not accounts(db):
-        return "ยังไม่มีบัญชีธนาคารในระบบค่ะ เพิ่มที่หน้า 💳 การเงินส่วนตัว บน Dashboard ก่อนนะคะ"
+        return no_accounts(db)
     return amount, entry_date, ref
 
 
@@ -619,7 +663,7 @@ def _typed_entry(db: Session, key: str, kind: str, text: str) -> str | None:
         return "จำนวนเงินต้องมากกว่า 0 ค่ะ"
     p = Pending(kind=kind, amount=amount, entry_date=today(), note=note)
     if not accs:
-        return "ยังไม่มีบัญชีธนาคารในระบบค่ะ เพิ่มที่หน้า 💳 การเงินส่วนตัว บน Dashboard ก่อนนะคะ"
+        return no_accounts(db)
     if len(named) == 1:
         return _record(db, p, named[0])
     if code:
@@ -716,7 +760,7 @@ def handle_text(db: Session, group: str, kind: str, text: str) -> str | None:
 
 
 CHAT_HELP = (
-    "กลุ่มนี้จาร์วิสบันทึกรายรับรายจ่ายให้ในหน้า 💳 การเงินส่วนตัวค่ะ\n"
+    "กลุ่มนี้จาร์วิสบันทึกรายรับรายจ่ายให้ในหน้า 💳 การเงินส่วนตัวค่ะ (รายการของบริษัทส่งในกลุ่ม \"สลิปรายรับ\" / \"สลิปรายจ่าย\")\n"
     "- ส่งรูปสลิปมาได้เลย (ดูเองว่ารับหรือจ่าย)\n"
     "- หรือพิมพ์เอง เช่น \"รับ ค่าจ้าง 5000 กสิกร\" / \"จ่าย ค่าข้าว 120\" (ไม่บอกธนาคารจะใช้บัญชีหลัก)\n"
     "- โอนระหว่างบัญชี เช่น \"โอน 5000 กสิกร ไป กองทุน A\"\n"

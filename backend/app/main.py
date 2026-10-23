@@ -100,6 +100,7 @@ app.include_router(documents.router)
 app.include_router(catalog.router)
 app.include_router(account.router)
 app.include_router(personal.router)
+app.include_router(personal.company_router)
 
 
 @app.exception_handler(TuyaError)

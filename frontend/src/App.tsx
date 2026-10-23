@@ -13,12 +13,13 @@ import { Scenes } from './components/Scenes'
 import { powerCode } from './readings'
 import { useDevices, type LinkState } from './useDevices'
 
-type Page = 'home' | 'flowaccount' | 'account' | 'personal' | 'members'
+type Page = 'home' | 'flowaccount' | 'account' | 'personal' | 'company' | 'members'
 const PAGES: { id: Page; label: string }[] = [
   { id: 'home', label: '🏠 บ้าน' },
   { id: 'flowaccount', label: '📄 FlowAccount' },
-  { id: 'account', label: '💰 Account' },
+  { id: 'account', label: '💰 Account ภาษี' },
   { id: 'personal', label: '💳 การเงินส่วนตัว' },
+  { id: 'company', label: '🏢 การเงินบริษัท' },
   { id: 'members', label: '👥 สมาชิก' },
 ]
 
@@ -28,7 +29,7 @@ function mayOpen(user: User | null, page: Page): boolean {
   return page === 'members' ? user.is_admin : can(user, page)
 }
 
-/** The page from the address (#flowaccount, #account, #personal, #members), so a refresh or bookmark lands on the same page. */
+/** The page from the address (#flowaccount, #account, #personal, #company, #members), so a refresh or bookmark lands on the same page. */
 function pageFromHash(): Page {
   const page = location.hash.slice(1)
   return PAGES.find((p) => p.id === page)?.id ?? 'home'
@@ -178,7 +179,9 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       ) : shown === 'account' ? (
         <Account canEdit={can(user, 'account', 'edit')} />
       ) : shown === 'personal' ? (
-        <Personal canEdit={can(user, 'personal', 'edit')} />
+        <Personal book="personal" canEdit={can(user, 'personal', 'edit')} canMove={can(user, 'personal', 'edit') && can(user, 'company', 'edit')} />
+      ) : shown === 'company' ? (
+        <Personal book="company" canEdit={can(user, 'company', 'edit')} />
       ) : (
         <div className={`grid flex-1 gap-6 ${chat ? 'lg:grid-cols-[minmax(0,1fr)_24rem]' : ''}`}>
           {shown === 'flowaccount' ? (

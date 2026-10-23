@@ -101,6 +101,7 @@ def backup(root: Path, keep: int, auto: bool = False, today: date | None = None)
         ("catalog.db", s.catalog_database_url),
         ("account.db", s.account_database_url),
         ("personal.db", s.personal_database_url),
+        ("company.db", s.company_database_url),
     )
     for name, url in databases:
         path = sqlite_path(url)
@@ -160,8 +161,9 @@ def _readme(day: str, commit: str, places: list[tuple[str, Path]], remarks: list
         "- jarvis.db   ข้อมูลหลัก: ผู้ใช้ การเชื่อม LINE อุปกรณ์ ลูกค้า ประวัติเอกสารและแชท",
         "- catalog.db  สินค้าและชุดสินค้า FlowAccount (ชุด A/B/C หมายเหตุ ราคาพิเศษ)",
         "- account.db  บัญชีรายรับ-รายจ่ายของหน้า Account (สำหรับสรุปภาษี)",
-        "- personal.db การเงินส่วนตัว: บัญชีธนาคาร รายรับ รายจ่าย",
-        f"- {SLIPS}  รูปสลิปจากกลุ่ม LINE สลิปรายรับ/สลิปรายจ่าย (ทั้งโฟลเดอร์)",
+        "- personal.db การเงินส่วนตัว: บัญชีธนาคาร รายรับ รายจ่าย (กลุ่ม LINE TKรับจ่าย)",
+        "- company.db  การเงินบริษัท: บัญชีธนาคาร รายรับ รายจ่าย (กลุ่ม LINE สลิปรายรับ/สลิปรายจ่าย)",
+        f"- {SLIPS}  รูปสลิปจากกลุ่ม LINE ทั้งหมด (ทั้งโฟลเดอร์)",
         "",
     ]
     if remarks:
@@ -189,10 +191,11 @@ def _readme(day: str, commit: str, places: list[tuple[str, Path]], remarks: list
         "   cd ..\\frontend",
         "   npm install",
         "   npm run build",
-        f"3. ก๊อป .env, jarvis.db, catalog.db, account.db, personal.db และโฟลเดอร์ {SLIPS} ไปไว้ที่เดียวกับข้อ 2 ของ \"กู้คืนแค่ข้อมูล\" ด้านบน",
+        f"3. ก๊อป .env, jarvis.db, catalog.db, account.db, personal.db, company.db และโฟลเดอร์ {SLIPS} ไปไว้ที่เดียวกับข้อ 2 ของ \"กู้คืนแค่ข้อมูล\" ด้านบน",
         "   (ถ้าโฟลเดอร์ใหม่ไม่ใช่ D:\\Claude\\jarvisclaude ให้วางในโฟลเดอร์ backend ของที่ใหม่แทน)",
         "   (catalog.db อยู่ใน backend\\data\\flowaccount, account.db อยู่ใน backend\\data\\account,",
-        "    personal.db อยู่ใน backend\\data\\personal และรูปสลิปคือ backend\\data\\personal\\slips ถ้ายังไม่มีโฟลเดอร์ให้สร้างก่อน)",
+        "    personal.db อยู่ใน backend\\data\\personal, company.db อยู่ใน backend\\data\\company",
+        "    และรูปสลิปคือ backend\\data\\personal\\slips ถ้ายังไม่มีโฟลเดอร์ให้สร้างก่อน)",
         "4. ย้าย Cloudflare tunnel: เครื่องเก่ารัน cloudflared.exe service uninstall (Run as Administrator)",
         "   เครื่องใหม่รันคำสั่ง cloudflared.exe service install <token> จากหน้า Tunnels ใน Cloudflare Zero Trust",
         "5. ดับเบิลคลิก start.bat แล้วดับเบิลคลิก backup-schedule.bat เพื่อตั้งสำรองอัตโนมัติบนเครื่องใหม่",

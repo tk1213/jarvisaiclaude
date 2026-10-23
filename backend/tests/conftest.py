@@ -8,6 +8,7 @@ os.environ["DATABASE_URL"] = f"sqlite:///{_db_dir}/test.db"
 os.environ["CATALOG_DATABASE_URL"] = f"sqlite:///{_db_dir}/catalog/catalog.db"
 os.environ["ACCOUNT_DATABASE_URL"] = f"sqlite:///{_db_dir}/account/account.db"
 os.environ["PERSONAL_DATABASE_URL"] = f"sqlite:///{_db_dir}/personal/personal.db"
+os.environ["COMPANY_DATABASE_URL"] = f"sqlite:///{_db_dir}/company/company.db"
 os.environ["PERSONAL_SLIP_DIR"] = f"{_db_dir}/personal/slips"
 os.environ["JWT_SECRET"] = "test-secret-that-is-at-least-32-bytes-long"
 os.environ["ENCRYPTION_KEY"] = Fernet.generate_key().decode()
@@ -22,7 +23,7 @@ import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app import account_models, catalog_models, personal_models  # noqa: E402,F401  (register the other databases' tables)
-from app.db import AccountBase, Base, CatalogBase, PersonalBase, account_engine, catalog_engine, engine, personal_engine  # noqa: E402
+from app.db import AccountBase, Base, CatalogBase, PersonalBase, account_engine, catalog_engine, company_engine, engine, personal_engine  # noqa: E402
 from app.integrations.tuya import get_tuya_client  # noqa: E402
 from app.main import app  # noqa: E402
 from app.ratelimit import limiter  # noqa: E402
@@ -39,6 +40,8 @@ def fresh_state():
     AccountBase.metadata.create_all(account_engine)
     PersonalBase.metadata.drop_all(personal_engine)
     PersonalBase.metadata.create_all(personal_engine)
+    PersonalBase.metadata.drop_all(company_engine)
+    PersonalBase.metadata.create_all(company_engine)
     personal.clear_pending()
     get_tuya_client.cache_clear()
     limiter.reset()

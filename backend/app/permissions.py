@@ -14,12 +14,13 @@ from app.deps import get_current_user
 from app.models import User
 
 Level = Literal["none", "view", "edit"]
-PAGES = ("home", "flowaccount", "account", "personal", "chat")
+PAGES = ("home", "flowaccount", "account", "personal", "company", "chat")
 PAGE_NAMES = {
     "home": "บ้าน",
     "flowaccount": "FlowAccount",
-    "account": "Account",
+    "account": "Account ภาษี",
     "personal": "การเงินส่วนตัว",
+    "company": "การเงินบริษัท",
     "chat": "แชทกับจาร์วิส",
 }
 _RANK = {"none": 0, "view": 1, "edit": 2}

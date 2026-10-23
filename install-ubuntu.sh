@@ -101,6 +101,7 @@ restore jarvis.db "$BACKEND/jarvis.db"
 restore catalog.db "$BACKEND/data/flowaccount/catalog.db"
 restore account.db "$BACKEND/data/account/account.db" optional # backups made before the Account page have none
 restore personal.db "$BACKEND/data/personal/personal.db" optional
+restore company.db "$BACKEND/data/company/company.db" optional
 restore personal-slips "$BACKEND/data/personal/slips" optional
 chmod 600 "$BACKEND/.env" 2>/dev/null || true
 

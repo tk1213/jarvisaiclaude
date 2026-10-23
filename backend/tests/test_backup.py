@@ -44,7 +44,7 @@ def test_backup_has_everything_needed_to_restore(setup, tmp_path):
     slip.write_bytes(b"slip")
     folder, problems = backup_mod.backup(root, keep=15, today=date(2026, 10, 1))
     assert problems == [] and folder == root / "2026-10-01"
-    names = [".env", "account.db", "backup-ok.txt", "catalog.db", "jarvis-code.bundle", "jarvis.db", "personal-slips", "personal.db", "อ่านก่อน.txt"]
+    names = [".env", "account.db", "backup-ok.txt", "catalog.db", "company.db", "jarvis-code.bundle", "jarvis.db", "personal-slips", "personal.db", "อ่านก่อน.txt"]
     assert sorted(p.name for p in folder.iterdir()) == names
     assert (folder / "personal-slips" / "2026-10" / "a.jpg").read_bytes() == b"slip"
     assert (folder / ".env").read_text() == "ANTHROPIC_API_KEY=x\n"
