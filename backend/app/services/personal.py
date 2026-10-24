@@ -345,6 +345,7 @@ def move_entries(src: Session, dst: Session, entry_ids: list[int], account_id: i
                 origin=e.origin,
                 slip_file=e.slip_file,
                 sent_by=e.sent_by,
+                line_message_id=e.line_message_id,
                 created_at=e.created_at,
             )
         )
@@ -499,6 +500,7 @@ class Pending:
     jpeg: bytes = b""
     raw: str = ""  # asking income or expense: the typed line
     sent_by: str = ""  # LINE display name of who sent it (shown on the dashboard)
+    message_id: str = ""  # the LINE message, so unsending it deletes the entry
     at: float = field(default_factory=time.monotonic)
 
 
@@ -533,8 +535,8 @@ def _answer_pending(db: Session, key: str, text: str) -> str | None:
         kind = "income" if n == 1 else "expense"
         if p.slip is not None:
             checked = _check_slip(db, p.slip)
-            return checked if isinstance(checked, str) else _slip_as(db, key, kind, p.slip, p.jpeg, checked, in_group=False, sent_by=p.sent_by)
-        return _typed_entry(db, key, kind, p.raw, p.sent_by)
+            return checked if isinstance(checked, str) else _slip_as(db, key, kind, p.slip, p.jpeg, checked, in_group=False, sent_by=p.sent_by, message_id=p.message_id)
+        return _typed_entry(db, key, kind, p.raw, p.sent_by, p.message_id)
     if not 1 <= n <= len(p.choices):
         return None
     _pending.pop(key, None)
@@ -558,6 +560,7 @@ def _record(db: Session, p: Pending, acc: BankAccount, to_acc: BankAccount | Non
         origin=p.kind,
         slip_file=p.slip_file,
         sent_by=p.sent_by or None,
+        line_message_id=p.message_id or None,
     )
     db.add(e)
     db.commit()
@@ -596,15 +599,15 @@ def _check_slip(db: Session, slip: dict) -> str | tuple[int, date, str | None]:
     return amount, entry_date, ref
 
 
-def record_slip(db: Session, group: str, kind: str, slip: dict, jpeg: bytes, sent_by: str = "") -> str:
+def record_slip(db: Session, group: str, kind: str, slip: dict, jpeg: bytes, sent_by: str = "", message_id: str = "") -> str:
     """A slip picture sent to "สลิปรายรับ" (kind income) or "สลิปรายจ่าย" (kind expense), already read by Claude."""
     checked = _check_slip(db, slip)
     if isinstance(checked, str):
         return checked
-    return _slip_as(db, group, kind, slip, jpeg, checked, in_group=True, sent_by=sent_by)
+    return _slip_as(db, group, kind, slip, jpeg, checked, in_group=True, sent_by=sent_by, message_id=message_id)
 
 
-def record_chat_slip(db: Session, chat: str, slip: dict, jpeg: bytes, sent_by: str = "") -> str:
+def record_chat_slip(db: Session, chat: str, slip: dict, jpeg: bytes, sent_by: str = "", message_id: str = "") -> str:
     """A slip picture sent to the "tk รับจ่าย" group: income, expense or a transfer, from whose accounts its two
     sides are. When that can't be told, it asks."""
     checked = _check_slip(db, slip)
@@ -612,12 +615,12 @@ def record_chat_slip(db: Session, chat: str, slip: dict, jpeg: bytes, sent_by: s
         return checked
     kind = guess_kind(accounts(db), slip)
     if kind is None:
-        return _ask_kind(chat, Pending(kind="", amount=checked[0], entry_date=checked[1], slip=slip, jpeg=jpeg, sent_by=sent_by), "สลิป")
-    return _slip_as(db, chat, kind, slip, jpeg, checked, in_group=False, sent_by=sent_by)
+        return _ask_kind(chat, Pending(kind="", amount=checked[0], entry_date=checked[1], slip=slip, jpeg=jpeg, sent_by=sent_by, message_id=message_id), "สลิป")
+    return _slip_as(db, chat, kind, slip, jpeg, checked, in_group=False, sent_by=sent_by, message_id=message_id)
 
 
 def _slip_as(
-    db: Session, key: str, kind: str, slip: dict, jpeg: bytes, checked: tuple[int, date, str | None], in_group: bool, sent_by: str = ""
+    db: Session, key: str, kind: str, slip: dict, jpeg: bytes, checked: tuple[int, date, str | None], in_group: bool, sent_by: str = "", message_id: str = ""
 ) -> str:
     """Record a slip as income or expense (or a transfer, when the other side is the owner's too). This book's side
     must be checked twice, bank and account number (verified_matches); otherwise JARVIS asks which account."""
@@ -647,6 +650,7 @@ def _slip_as(
         source="slip",
         slip_file=save_slip_picture(jpeg, entry_date),
         sent_by=sent_by,
+        message_id=message_id,
     )
     if len(mine) == 1:
         # Both ends are the owner's own accounts: a transfer, not income or expense.
@@ -679,7 +683,7 @@ def parse_text(text: str) -> tuple[int | None, str | None, str]:
     return amount, code, rest
 
 
-def _typed_entry(db: Session, key: str, kind: str, text: str, sent_by: str = "") -> str | None:
+def _typed_entry(db: Session, key: str, kind: str, text: str, sent_by: str = "", message_id: str = "") -> str | None:
     """"ค่าข้าว 120 กสิกร" as income or expense; None when there's no amount in it (ordinary chat)."""
     accs = accounts(db)
     named = named_accounts(accs, text)
@@ -691,7 +695,7 @@ def _typed_entry(db: Session, key: str, kind: str, text: str, sent_by: str = "")
         return "พิมพ์รายละเอียดกับจำนวนเงินด้วยนะคะ เช่น \"ค่าข้าว 120\" หรือ \"ค่าข้าว 120 กสิกร\""
     if amount <= 0:
         return "จำนวนเงินต้องมากกว่า 0 ค่ะ"
-    p = Pending(kind=kind, amount=amount, entry_date=today(), note=note, sent_by=sent_by)
+    p = Pending(kind=kind, amount=amount, entry_date=today(), note=note, sent_by=sent_by, message_id=message_id)
     if not accs:
         return no_accounts(db)
     if len(named) == 1:
@@ -714,7 +718,7 @@ def _default_account(accs: list[BankAccount]) -> BankAccount | None:
 TRANSFER_HELP = "บอกจำนวนเงิน บัญชีต้นทาง และปลายทางด้วยนะคะ เช่น \"โอน 5000 กสิกร ไป กองทุน A\""
 
 
-def _typed_transfer(db: Session, text: str, sent_by: str = "") -> str:
+def _typed_transfer(db: Session, text: str, sent_by: str = "", message_id: str = "") -> str:
     """"5000 กสิกร ไป K-SET50" (after "โอน"): money moved between two of the owner's accounts or funds."""
     accs = accounts(db)
     m = re.search(r"\s*(?:ไปยัง|ไปที่|ไป|เข้า)\s*", text)
@@ -729,7 +733,21 @@ def _typed_transfer(db: Session, text: str, sent_by: str = "") -> str:
     amount = to_satang(numbers[0][0])
     if amount <= 0:
         return "จำนวนเงินต้องมากกว่า 0 ค่ะ"
-    return _record(db, Pending(kind="expense", amount=amount, entry_date=today(), sent_by=sent_by), src, to)
+    return _record(db, Pending(kind="expense", amount=amount, entry_date=today(), sent_by=sent_by, message_id=message_id), src, to)
+
+
+def delete_unsent(db: Session, message_id: str) -> str | None:
+    """Someone unsent a LINE message JARVIS had recorded: delete that entry (and its slip picture). None when no entry
+    came from that message (ordinary chat, or a question still waiting for an answer, which is simply dropped)."""
+    for key, p in list(_pending.items()):
+        if p.message_id == message_id:
+            _pending.pop(key, None)
+    entry = db.scalar(select(PersonalEntry).where(PersonalEntry.line_message_id == message_id)) if message_id else None
+    if entry is None:
+        return None
+    info = f"{money(entry.amount_satang)} บาท ({entry.entry_date:%d/%m/%Y})"
+    delete_entry(db, entry)
+    return f"ลบรายการ {info} ตามที่ยกเลิกข้อความแล้วค่ะ"
 
 
 def _delete_latest(db: Session, kind: str | None) -> str:
@@ -775,7 +793,7 @@ def _balance_question(db: Session, text: str) -> str | None:
     return _balances(db) if text.startswith(("ยอด", "คงเหลือ", "เหลือ")) else None
 
 
-def handle_text(db: Session, group: str, kind: str, text: str, sent_by: str = "") -> str | None:
+def handle_text(db: Session, group: str, kind: str, text: str, sent_by: str = "", message_id: str = "") -> str | None:
     """A typed line in a slip group: an answer to a pending question, a command, or an entry like "ค่าข้าว 120 กสิกร"."""
     text = text.strip()
     answer = _answer_pending(db, group, text)
@@ -786,7 +804,7 @@ def handle_text(db: Session, group: str, kind: str, text: str, sent_by: str = ""
     balance_answer = _balance_question(db, text)
     if balance_answer is not None:
         return balance_answer
-    return _typed_entry(db, group, kind, text, sent_by)
+    return _typed_entry(db, group, kind, text, sent_by, message_id)
 
 
 CHAT_HELP = (
@@ -831,7 +849,7 @@ def split_kind(text: str, keep: set[str] = frozenset()) -> tuple[str | None, str
     return kinds[0], " ".join(kept)
 
 
-def handle_chat_text(db: Session, chat: str, text: str, sent_by: str = "") -> str | None:
+def handle_chat_text(db: Session, chat: str, text: str, sent_by: str = "", message_id: str = "") -> str | None:
     """A typed line in the "tk รับจ่าย" group, with รับ / จ่าย / โอน anywhere in it ("Kbank จ่าย 20 บาท"); without
     one, JARVIS asks which. None for ordinary chat (no amount): stay quiet."""
     text = text.strip()
@@ -845,10 +863,10 @@ def handle_chat_text(db: Session, chat: str, text: str, sent_by: str = "") -> st
         return balance_answer
     kind, rest = split_kind(text, {w.lower() for a in accounts(db) for w in a.nickname.split()})
     if kind == "transfer":
-        return _typed_transfer(db, rest, sent_by)
+        return _typed_transfer(db, rest, sent_by, message_id)
     if kind:
         word = "รับ ค่าจ้าง 5000" if kind == "income" else "จ่าย ค่าข้าว 120"
-        return _typed_entry(db, chat, kind, rest, sent_by) or f"พิมพ์รายละเอียดกับจำนวนเงินด้วยนะคะ เช่น \"{word}\""
+        return _typed_entry(db, chat, kind, rest, sent_by, message_id) or f"พิมพ์รายละเอียดกับจำนวนเงินด้วยนะคะ เช่น \"{word}\""
     accs = accounts(db)
     amount, code, note = parse_text(_drop_nicknames(accs, text))
     if amount is None:
@@ -857,7 +875,7 @@ def handle_chat_text(db: Session, chat: str, text: str, sent_by: str = "") -> st
         return "พิมพ์รายละเอียดกับจำนวนเงินด้วยนะคะ เช่น \"จ่าย ค่าข้าว 120\" หรือ \"รับ ค่าจ้าง 5000 กสิกร\""
     if amount <= 0:
         return "จำนวนเงินต้องมากกว่า 0 ค่ะ"
-    return _ask_kind(chat, Pending(kind="", amount=amount, entry_date=today(), raw=text, sent_by=sent_by), f"\"{note or text}\"")
+    return _ask_kind(chat, Pending(kind="", amount=amount, entry_date=today(), raw=text, sent_by=sent_by, message_id=message_id), f"\"{note or text}\"")
 
 
 def clear_pending() -> None:
