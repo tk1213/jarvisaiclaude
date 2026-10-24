@@ -157,6 +157,11 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
   (uptime, CPU, RAM, disk, CPU temp from /proc and /sys, Tuya/Pulsar, `orchestrator.claude_status` last ok/error, last backup
   folder, git version; ⚠️ headline on problems). The `get_system_status` tool returns the same data for free-form questions.
   Down-time alerts are external (Healthchecks.io pinged from the mini PC's cron), since a dead server can't report itself.
+- Tuya API calls are paid from a tiny free monthly quota (0.2 USD, "Cloud Develop Base Resource Trial"; out of quota =
+  error 28841004 on every call until it refreshes). Keep calls rare: `IR_AC_POLL_SECONDS` defaults to 0 (30 s used the quota up),
+  no status re-read after a command or in `get_device_status` while Pulsar is connected, scenes cached 6 h (`devices.scenes`,
+  cleared by sync). Tuya errors return **424** (a 502 lost its body through the Cloudflare tunnel) and a quota error reads
+  "โควตา Tuya ของเดือนนี้หมดแล้ว …" (`is_quota_error`).
 - New devices are added only by the "อัปเดตอุปกรณ์" button, never automatically.
 - The IR air conditioner (Air PANASONIC via the Temp Smart Jarvis hub) can't report changes made in the
   Tuya app or with its physical remote; the dashboard/JARVIS side is the source of truth.

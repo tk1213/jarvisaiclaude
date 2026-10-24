@@ -24,9 +24,17 @@ _TOKEN_INVALID_CODES = {1010, 1011}
 
 class TuyaError(RuntimeError):
     def __init__(self, code: Any, msg: str):
-        super().__init__(f"Tuya API error {code}: {msg}")
+        text = f"Tuya API error {code}: {msg}"
+        if is_quota_error(code, msg):
+            text = f"โควตา Tuya ของเดือนนี้หมดแล้ว สั่งอุปกรณ์ไม่ได้จนกว่าโควตาจะรีเซ็ต หรือซื้อแพ็กเพิ่มที่ platform.tuya.com ({text})"
+        super().__init__(text)
         self.code = code
         self.msg = msg
+
+
+def is_quota_error(code: Any, msg: str) -> bool:
+    """Tuya refused because the account's API quota is used up (e.g. 28841004 "IoT Core trial quota is exhausted")."""
+    return str(code) == "28841004" or "quota" in (msg or "").lower()
 
 
 @dataclass

@@ -85,7 +85,8 @@ def get_devices(ctx: ToolContext, room: str | None = None) -> Any:
 
 def get_device_status(ctx: ToolContext, device_id: int) -> Any:
     device = _get_device(ctx, device_id)
-    return _device_summary(svc.refresh_status(ctx.db, ctx.tuya, device))
+    # While the Pulsar stream is up the stored status is current; asking Tuya again would use up API quota.
+    return _device_summary(device if pulsar.is_connected() else svc.refresh_status(ctx.db, ctx.tuya, device))
 
 
 def control_device(ctx: ToolContext, device_id: int, commands: list[dict]) -> Any:
@@ -116,7 +117,7 @@ def control_air_conditioner(
 
 
 def list_scenes(ctx: ToolContext) -> Any:
-    return [{"scene_id": str(s["scene_id"]), "name": s["name"]} for s in ctx.tuya.list_scenes()]
+    return [{"scene_id": str(s["scene_id"]), "name": s["name"]} for s in svc.scenes(ctx.tuya)]
 
 
 def set_scene(ctx: ToolContext, scene_id: str) -> Any:

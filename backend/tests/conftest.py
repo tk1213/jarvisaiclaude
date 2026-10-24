@@ -27,6 +27,7 @@ from app.db import AccountBase, Base, CatalogBase, PersonalBase, account_engine,
 from app.integrations.tuya import get_tuya_client  # noqa: E402
 from app.main import app  # noqa: E402
 from app.ratelimit import limiter  # noqa: E402
+from app.services import devices as devices_svc  # noqa: E402
 from app.services import personal  # noqa: E402
 
 
@@ -43,6 +44,7 @@ def fresh_state():
     PersonalBase.metadata.drop_all(company_engine)
     PersonalBase.metadata.create_all(company_engine)
     personal.clear_pending()
+    devices_svc.forget_scenes()
     get_tuya_client.cache_clear()
     limiter.reset()
     yield
