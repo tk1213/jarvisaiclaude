@@ -106,7 +106,9 @@ app.include_router(settings.router)
 
 @app.exception_handler(TuyaError)
 async def tuya_error_handler(_: Request, exc: TuyaError):
-    return JSONResponse(status_code=502, content={"detail": str(exc), "tuya_code": exc.code})
+    # 424, not 502: through the Cloudflare tunnel a 502 reached the dashboard without this body (it only showed
+    # "HTTP 502"), so the reason (e.g. Tuya's quota) never got through.
+    return JSONResponse(status_code=424, content={"detail": str(exc), "tuya_code": exc.code})
 
 
 @app.get("/health")

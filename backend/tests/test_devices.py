@@ -56,14 +56,14 @@ def test_raw_commands(client, owner_headers):
     assert r.json()["status"] == {"switch": True, "temp_set": 23, "mode": "cold"}
 
 
-def test_unsupported_command_is_502(client, owner_headers):
+def test_unsupported_command_is_424(client, owner_headers):
     light = _sync(client, owner_headers)["ไฟห้องนั่งเล่น"]
     r = client.post(
         f"/devices/{light['id']}/commands",
         json={"commands": [{"code": "temp_set", "value": 20}]},
         headers=owner_headers,
     )
-    assert r.status_code == 502
+    assert r.status_code == 424
 
 
 def test_rename_and_unknown_device(client, owner_headers):
@@ -127,7 +127,7 @@ def test_permission_denied_is_flagged_then_cleared(client, owner_headers):
 
     tuya.send_commands = denied
     r = client.post(f"/devices/{plug['id']}/power", json={"on": True}, headers=owner_headers)
-    assert r.status_code == 502
+    assert r.status_code == 424
     assert client.get(f"/devices/{plug['id']}", headers=owner_headers).json()["control_denied"] is True
 
     tuya.send_commands = real_send  # permission fixed in the Tuya console
@@ -151,3 +151,47 @@ def test_sensor_readings_survive_sync_when_listing_is_empty(client, owner_header
     after = _sync(client, owner_headers)["แอร์ห้องนอน"]
     assert after["status"]["temp_current"] == 287  # from shadow properties
     assert after["status"]["temp_set"] == ac["status"]["temp_set"]  # earlier value kept
+
+
+def test_tuya_quota_error_is_readable_and_not_502(client, owner_headers):
+    from app.integrations.tuya import TuyaError, get_tuya_client
+
+    plug = _sync(client, owner_headers)["ปลั๊กกาต้มน้ำ"]
+    tuya = get_tuya_client()
+
+    def out_of_quota(device_id, commands):
+        raise TuyaError(28841004, "IoT Core trial quota is exhausted.")
+
+    tuya.send_commands = out_of_quota
+    r = client.post(f"/devices/{plug['id']}/power", json={"on": True}, headers=owner_headers)
+    assert r.status_code == 424
+    assert r.json()["detail"].startswith("โควตา Tuya ของเดือนนี้หมดแล้ว") and "28841004" in r.json()["detail"]
+
+
+def test_saving_tuya_calls(client, owner_headers, monkeypatch):
+    """Every Tuya call uses up the monthly API quota: no polling by default, no status re-read after a command while
+    Pulsar keeps the table current, and scenes are remembered until the next sync."""
+    from app.config import Settings
+    from app.integrations.tuya import get_tuya_client, pulsar
+
+    assert Settings.model_fields["ir_ac_poll_seconds"].default == 0
+    plug = _sync(client, owner_headers)["ปลั๊กกาต้มน้ำ"]
+    tuya = get_tuya_client()
+    calls = []
+    for name in ("get_device_status", "list_scenes"):
+        real = getattr(tuya, name)
+        monkeypatch.setattr(tuya, name, lambda *a, _real=real, _name=name: calls.append(_name) or _real(*a))
+
+    monkeypatch.setattr(pulsar, "_connected", True)
+    r = client.post(f"/devices/{plug['id']}/power", json={"on": True}, headers=owner_headers)
+    assert r.status_code == 200 and calls == []
+    monkeypatch.setattr(pulsar, "_connected", False)
+    client.post(f"/devices/{plug['id']}/power", json={"on": False}, headers=owner_headers)
+    assert calls == ["get_device_status"]
+
+    calls.clear()
+    first = client.get("/scenes", headers=owner_headers).json()
+    assert client.get("/scenes", headers=owner_headers).json() == first and calls == ["list_scenes"]
+    client.post("/devices/sync", headers=owner_headers)
+    client.get("/scenes", headers=owner_headers)
+    assert calls == ["list_scenes", "list_scenes"]

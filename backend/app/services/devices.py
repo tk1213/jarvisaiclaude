@@ -1,11 +1,12 @@
 """Device operations shared by the REST API and (from phase 1) the LLM tools."""
 
 import logging
+import time
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.integrations.tuya import TuyaError
+from app.integrations.tuya import TuyaError, pulsar
 from app.models import Device
 
 log = logging.getLogger(__name__)
@@ -83,8 +84,27 @@ def refresh_ir_acs(db: Session, tuya) -> list[Device]:
     return changed
 
 
+SCENES_CACHE_SECONDS = 6 * 3600
+_scenes: tuple[float, list[dict]] | None = None
+
+
+def scenes(tuya) -> list[dict]:
+    """Tuya's scenes ("tap-to-run"), kept for a few hours: they rarely change and every dashboard load asked for them
+    (a paid Tuya call each time). "อัปเดตอุปกรณ์" (sync_devices) reads them again."""
+    global _scenes
+    if _scenes is None or time.monotonic() - _scenes[0] > SCENES_CACHE_SECONDS:
+        _scenes = (time.monotonic(), tuya.list_scenes())
+    return _scenes[1]
+
+
+def forget_scenes() -> None:
+    global _scenes
+    _scenes = None
+
+
 def sync_devices(db: Session, tuya) -> list[Device]:
     """Pull the device list (and room assignment) from Tuya into the database."""
+    forget_scenes()
     room_of: dict[str, str] = {}
     try:
         for room in tuya.list_rooms():
@@ -189,11 +209,11 @@ def control_device(db: Session, tuya, device: Device, commands: list[dict]) -> D
             db.commit()
         raise
     device.control_denied = False
-    # Tuya accepted the commands, but the device may not have reported its new
-    # state to the cloud yet, so overlay what we sent on top of the fetched
-    # status. Pulsar corrects it if the device ends up in a different state.
-    fetched = _status_dict(tuya.get_device_status(device.tuya_device_id))
-    device.status = {**fetched, **_status_dict(commands)}
+    # Tuya accepted the commands, but the device may not have reported its new state to the cloud yet, so overlay
+    # what we sent. While Pulsar is up the stored status is current (and Pulsar corrects it if the device ends up
+    # elsewhere), so skip the extra status call: every Tuya call uses up the monthly API quota.
+    current = (device.status or {}) if pulsar.is_connected() else _status_dict(tuya.get_device_status(device.tuya_device_id))
+    device.status = {**current, **_status_dict(commands)}
     db.commit()
     return device
 

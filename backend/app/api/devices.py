@@ -98,7 +98,7 @@ def set_ac(
 
 @router.get("/scenes", response_model=list[SceneOut])
 def list_scenes(tuya=Depends(get_tuya)):
-    return [SceneOut(scene_id=str(s["scene_id"]), name=s["name"]) for s in tuya.list_scenes()]
+    return [SceneOut(scene_id=str(s["scene_id"]), name=s["name"]) for s in svc.scenes(tuya)]
 
 
 @router.post("/scenes/{scene_id}/trigger", status_code=204)
