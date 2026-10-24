@@ -35,13 +35,24 @@ log = logging.getLogger(__name__)
 # When Claude last answered and last failed (e.g. no credit left), for the "สถานะระบบ" report.
 claude_status: dict = {"ok_at": None, "error_at": None, "error": None}
 
-BETAS = [
-    # Re-run a declined request on a fallback model instead of just stopping.
-    "server-side-fallback-2026-07-01",
-    # Explicit preserved-thinking behavior: drop, rather than 400 on, a thinking
-    # block whose prefix no longer matches (append-only history avoids this anyway).
-    "thinking-binding-controls-2026-08-01",
-]
+# Explicit preserved-thinking behavior: drop, rather than 400 on, a thinking block whose prefix no longer matches
+# (append-only history avoids this anyway).
+BETAS = ["thinking-binding-controls-2026-08-01"]
+# Models that can re-run a declined request on a fallback model (server-side fallback). Haiku 5.5 has none: a list of
+# fallbacks is a 400 there, so it gets neither the beta nor the parameter.
+_FALLBACK_MODELS = ("claude-opus-5", "claude-sonnet-5-5", "claude-fable-5", "claude-mythos-5")
+
+
+def fallback_options(model: str) -> dict:
+    """The server-side fallback part of a request, for the models that have it."""
+    if model.startswith(_FALLBACK_MODELS):
+        return {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
+    return {}
+
+
+def web_search_type(model: str) -> str:
+    """The dynamic-filtering web search runs on Opus / Sonnet; other models (Haiku) take the basic tool."""
+    return "web_search_20260209" if model.startswith(("claude-opus", "claude-sonnet", "claude-fable", "claude-mythos")) else "web_search_20250305"
 
 _THINKING = {"type": "adaptive", "block_binding": {"prefix_mismatch_behavior": "drop_block"}}
 
@@ -146,6 +157,7 @@ class Orchestrator:
         return response
 
     def _request(self, messages: list[dict]):
+        fallback = fallback_options(self.model)
         return self.client.beta.messages.create(
             model=self.model,
             max_tokens=16000,
@@ -154,8 +166,8 @@ class Orchestrator:
             messages=messages,
             thinking=_THINKING,
             output_config={"effort": self.effort},
-            betas=BETAS,
-            fallbacks="default",
+            betas=BETAS + fallback.get("betas", []),
+            **({"fallbacks": fallback["fallbacks"]} if fallback else {}),
             # Every call re-sends the same tools, system prompt and (append-only) history; caching that prefix
             # bills the repeat at the cache-read rate instead of full input price. The breakpoint moves to the
             # end of each request, so the next tool round or turn within 5 minutes reads everything before it.
@@ -268,7 +280,7 @@ def get_orchestrator() -> Orchestrator:
             timezone=s.timezone,
             web_search=(
                 {
-                    "type": "web_search_20260209",
+                    "type": web_search_type(s.claude_model),
                     "name": "web_search",
                     "max_uses": s.web_search_max_uses,
                     "user_location": {"type": "approximate", "timezone": s.timezone}
