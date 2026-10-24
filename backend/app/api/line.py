@@ -345,17 +345,20 @@ def handle_group_event(event: dict) -> None:
     """A message in a LINE group. Only the slip groups answer. "TKรับจ่าย" (personal money) answers only linked accounts
     that may edit personal money. The company groups ("สลิปรายรับ" / "สลิปรายจ่าย") take slips, typed entries and "ยอด"
     from anyone in the group (staff without a JARVIS account), but "ลบล่าสุด" only from linked accounts that may edit
-    company money. Each entry keeps the sender's LINE name."""
+    company money. Each entry keeps the sender's LINE name and message, so unsending that message deletes it."""
     source = event.get("source") or {}
     group_id = source.get("groupId")
     reply_token = event.get("replyToken")
-    if not group_id or not reply_token:
+    if not group_id or not (reply_token or event.get("type") == "unsend"):
         return
     client = get_line_client()
     try:
         kind = group_kind(_group_name(client, group_id))
     except LineError as e:
         log.warning("could not read a LINE group's name: %s", e)
+        return
+    if event.get("type") == "unsend":
+        _unsend(client, group_id, kind, source.get("userId") or "", (event.get("unsend") or {}).get("messageId") or "")
         return
     if event.get("type") == "join":
         if kind == "both":
@@ -383,14 +386,15 @@ def handle_group_event(event: dict) -> None:
         _send_quietly(client, reply_token, group_id, "คำสั่งลบใช้ได้เฉพาะผู้ดูแลที่เชื่อม LINE กับจาร์วิสแล้วค่ะ ถ้าส่งผิด ให้แจ้งผู้ดูแลลบให้นะคะ")
         return
     sent_by = (client.member_name(group_id, line_user) if line_user else "") or (user.display_name if user else "")
+    message_id = str(message.get("id") or "")
     if message.get("type") == "image":
         text = _record_slip(client, group_id, kind, message, sent_by)
     elif message.get("type") == "text":
         with Book() as db:
             if kind == "both":
-                text = personal.handle_chat_text(db, group_id, typed, sent_by)
+                text = personal.handle_chat_text(db, group_id, typed, sent_by, message_id)
             else:
-                text = personal.handle_text(db, group_id, kind, typed, sent_by)
+                text = personal.handle_text(db, group_id, kind, typed, sent_by, message_id)
     else:
         return
     if text:
@@ -420,10 +424,32 @@ def _record_slip(client: LineClient, group_id: str, kind: str, message: dict, se
     read = _read_slip_picture(client, message)
     if isinstance(read, str):
         return read
+    message_id = str(message.get("id") or "")
     with _book(kind)[1]() as db:
         if kind == "both":
-            return personal.record_chat_slip(db, group_id, *read, sent_by=sent_by)
-        return personal.record_slip(db, group_id, kind, *read, sent_by=sent_by)
+            return personal.record_chat_slip(db, group_id, *read, sent_by=sent_by, message_id=message_id)
+        return personal.record_slip(db, group_id, kind, *read, sent_by=sent_by, message_id=message_id)
+
+
+def _unsend(client: LineClient, group_id: str, kind: str | None, line_user: str, message_id: str) -> None:
+    """A message was unsent in a slip group: delete the entry recorded from it. In the company groups that's anyone's
+    own message (LINE only lets people unsend their own); in "TKรับจ่าย" only a linked account with personal edit counts.
+    An unsend event has no reply token, so the note is pushed."""
+    if kind is None or not message_id:
+        return
+    page, Book = _book(kind)
+    if kind == "both":
+        with SessionLocal() as db:
+            user = db.scalar(select(User).where(User.line_user_id == line_user)) if line_user else None
+            if user is None or not permissions.allowed(user, page, "edit"):
+                return
+    with Book() as db:
+        text = personal.delete_unsent(db, message_id)
+    if text:
+        try:
+            client.push(group_id, [text_message(text)])
+        except LineError:
+            log.exception("could not tell a LINE group about an unsent entry")
 
 
 def _send_quietly(client: LineClient, reply_token: str, to: str, text: str) -> None:

@@ -148,7 +148,9 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
   (`COMPANY_DATABASE_URL`, `CompanySession`; slip pictures share `PERSONAL_SLIP_DIR`; in the backup and `install-ubuntu.sh`). LINE groups
   "สลิปรายรับ" (income) / "สลิปรายจ่าย" (expense) record here, from **anyone in the group** (staff need no JARVIS account; slips,
   typed entries and "ยอด"); "ลบล่าสุด" there needs a linked account with company edit. Entries keep the sender's LINE name
-  (`sent_by`, `LineClient.member_name`, shown as "ส่งโดย …"). Old entries the slip groups left in personal money can't be told apart
+  (`sent_by`, `LineClient.member_name`, shown as "ส่งโดย …") and LINE message id (`line_message_id`): **unsending** that message
+  in LINE (an `unsend` event, no reply token, so the note is pushed) deletes the entry and its slip (`personal.delete_unsent`);
+  anyone in the company groups, only a linked account with personal edit in "TKรับจ่าย". LINE's plain "delete" sends no event. Old entries the slip groups left in personal money can't be told apart
   from "TKรับจ่าย" ones (same `origin`), so the owner ticks them on the personal page and moves them (`POST /personal/entries/move-to-company`,
   needs edit on both pages; transfers can't move). `page_name(db)` picks the page named in LINE replies.
 - Server health: "สถานะระบบ" / "เช็คระบบ" / "server" on LINE answers from `app/services/system_status.py` without Claude

@@ -47,4 +47,6 @@ class PersonalEntry(PersonalBase):
     origin: Mapped[str] = mapped_column(String(16), default="")  # LINE group it came from: "income" | "expense"
     slip_file: Mapped[str] = mapped_column(String(256), default="")  # relative to PERSONAL_SLIP_DIR
     sent_by: Mapped[str | None] = mapped_column(String(128), nullable=True)  # LINE display name of who sent it
+    # The LINE message it was recorded from, so unsending that message in LINE deletes the entry too.
+    line_message_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

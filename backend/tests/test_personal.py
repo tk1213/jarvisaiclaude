@@ -528,3 +528,46 @@ def test_company_page_and_moving_old_entries(client, owner_headers, groups, monk
 def test_banks_include_funds(client, owner_headers):
     banks = {b["code"]: b["name"] for b in client.get("/personal/banks", headers=owner_headers).json()}
     assert [banks[f"FUND_{x}"] for x in "ABCDEF"] == ["กองทุน A", "กองทุน B", "กองทุน C", "กองทุน D", "กองทุน E", "กองทุน F"]
+
+
+def unsend_event(message_id: str, user="Uowner", group="Gin") -> dict:
+    ev = text_event("")
+    ev.pop("replyToken", None)
+    return ev | {"type": "unsend", "source": {"type": "group", "groupId": group, "userId": user}, "unsend": {"messageId": message_id}}
+
+
+def test_unsending_in_line_deletes_the_entry(client, owner_headers, groups, monkeypatch):
+    """Unsending a slip or typed line in a company group deletes its entry (anyone's own message); in TKรับจ่าย only
+    a linked account with personal edit counts."""
+    link(client, owner_headers, groups)
+    groups.groups["Grj"] = "TKรับจ่าย"
+    with CompanySession() as db:
+        add(db, default=True)
+    with PersonalSession() as db:
+        add(db, default=True)
+    monkeypatch.setattr(line_api, "read_slip", lambda jpeg: slip())
+    groups.contents["m1"] = picture()
+    post_event(client, group_event({"type": "image", "id": "m1"}, user="Ustaff"))
+    post_event(client, group_event({"type": "text", "id": "m2", "text": "ค่าขนส่ง 120"}, user="Ustaff", group="Gout"))
+    with CompanySession() as db:
+        assert db.query(PersonalEntry).count() == 2
+        slip_file = db.query(PersonalEntry).filter_by(line_message_id="m1").one().slip_file
+    assert (personal.slip_dir() / slip_file).exists()
+
+    post_event(client, unsend_event("m1", user="Ustaff"))
+    assert groups.sent[-1][0] is None and groups.sent[-1][2][0]["text"].startswith("ลบรายการ 500.00 บาท")
+    assert not (personal.slip_dir() / slip_file).exists()
+    count = len(groups.sent)
+    post_event(client, unsend_event("zz", user="Ustaff", group="Gout"))  # nothing recorded from it: quiet
+    assert len(groups.sent) == count
+    with CompanySession() as db:
+        assert [e.line_message_id for e in db.query(PersonalEntry)] == ["m2"]
+
+    # TKรับจ่าย: only the owner's unsend counts.
+    post_event(client, group_event({"type": "text", "id": "m3", "text": "จ่าย ค่าข้าว 50"}, group="Grj"))
+    post_event(client, unsend_event("m3", user="Ufriend", group="Grj"))
+    with PersonalSession() as db:
+        assert db.query(PersonalEntry).count() == 1
+    post_event(client, unsend_event("m3", group="Grj"))
+    with PersonalSession() as db:
+        assert db.query(PersonalEntry).count() == 0

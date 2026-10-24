@@ -30,6 +30,9 @@ class FakeLine:
     def group_name(self, group_id):
         return self.groups.get(group_id, "ครอบครัว")
 
+    def push(self, to, messages):
+        self.sent.append((None, to, messages))
+
     def member_name(self, group_id, user_id):
         return {"Uowner": "TK", "Ustaff": "สมชาย"}.get(user_id, "")
 
