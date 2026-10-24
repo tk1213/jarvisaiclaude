@@ -94,6 +94,14 @@ class LineClient:
             raise LineError(f"LINE group summary {r.status_code}: {r.text[:300]}")
         return r.json().get("groupName") or ""
 
+    def member_name(self, group_id: str, user_id: str) -> str:
+        """A group member's LINE display name ("" when LINE won't say, e.g. they left or blocked the OA)."""
+        try:
+            r = self.http.get(f"/group/{group_id}/member/{user_id}")
+        except httpx.HTTPError:
+            return ""
+        return (r.json().get("displayName") or "") if r.status_code < 400 else ""
+
     def show_loading(self, chat_id: str, seconds: int = 20) -> None:
         """The "..." typing animation while JARVIS thinks; purely cosmetic, so failures are ignored."""
         try:

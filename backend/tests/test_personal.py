@@ -204,15 +204,56 @@ def test_line_slip_group(client, owner_headers, groups, monkeypatch):
 
 def test_line_groups_ignore_others(client, owner_headers, groups, monkeypatch):
     link(client, owner_headers, groups)
+    groups.groups["Grj"] = "TKรับจ่าย"
     with PersonalSession() as db:
         add(db, default=True)
+    with CompanySession() as db:
+        add(db, default=True)
     count = len(groups.sent)
-    post_event(client, group_event({"type": "text", "id": "t1", "text": "ค่าข้าว 120"}, user="Ufriend"))  # not linked
+    post_event(client, group_event({"type": "text", "id": "t1", "text": "จ่าย ค่าข้าว 120"}, user="Ufriend", group="Grj"))  # personal: not linked
     post_event(client, group_event({"type": "text", "id": "t2", "text": "ค่าข้าว 120"}, group="Gfam"))  # not a slip group
     post_event(client, group_event({"type": "text", "id": "t3", "text": "กินข้าวยัง"}))  # ordinary chat
     assert len(groups.sent) == count
     with PersonalSession() as db:
         assert db.query(PersonalEntry).count() == 0
+
+
+def test_company_groups_take_entries_from_anyone(client, owner_headers, groups, monkeypatch):
+    """Staff without a JARVIS account can record company income/expenses and ask "ยอด", but not delete."""
+    link(client, owner_headers, groups)
+    with CompanySession() as db:
+        add(db, default=True)
+    post_event(client, group_event({"type": "text", "id": "t1", "text": "ค่าขนส่ง 120"}, user="Ustaff", group="Gout"))
+    assert groups.sent[-1][2][0]["text"].startswith("บันทึกรายจ่าย 120.00 บาท")
+    post_event(client, group_event({"type": "text", "id": "t2", "text": "ยอด"}, user="Ustaff", group="Gout"))
+    assert "คงเหลือ" in groups.sent[-1][2][0]["text"]
+    post_event(client, group_event({"type": "text", "id": "t3", "text": "ลบล่าสุด"}, user="Ustaff", group="Gout"))
+    assert "เฉพาะผู้ดูแล" in groups.sent[-1][2][0]["text"]
+    with CompanySession() as db:
+        e = db.query(PersonalEntry).one()
+        assert (e.note, e.sent_by) == ("ค่าขนส่ง", "สมชาย")
+    rows = client.get("/company/entries", headers=owner_headers, params={"kind": "expense", "month": e.entry_date.strftime("%Y-%m")}).json()
+    assert rows[0]["sent_by"] == "สมชาย"
+    # A linked admin may delete.
+    post_event(client, group_event({"type": "text", "id": "t4", "text": "ลบล่าสุด"}, group="Gout"))
+    assert groups.sent[-1][2][0]["text"].startswith("ลบรายการล่าสุด")
+
+
+def test_slip_account_is_checked_by_bank_and_number():
+    """A slip goes straight into the account whose bank and number (last 4 digits, or 3 when the slip hides one) fit;
+    anything less makes JARVIS ask."""
+    with CompanySession() as db:
+        kb = add(db, no="1112278905")
+        kb2 = add(db, no="9998881234")
+        scb = add(db, bank="SCB", no="4445556789")
+        assert personal.verified_matches([kb, kb2, scb], "กสิกรไทย", "xxx-x-x7890-x") == [kb]  # KBank hides the last digit: 3 fit
+        assert personal.verified_matches([kb, kb2, scb], "กสิกรไทย", "xxx-x-x8905-x") == [kb]  # all 4
+        assert personal.verified_matches([kb, kb2, scb], "ไทยพาณิชย์", "xxx-x-x8905-x") == []  # number fits, bank doesn't
+        assert personal.verified_matches([kb, kb2, scb], "กสิกรไทย", "xxx-x-x5555-x") == []
+        assert personal.verified_matches([kb, kb2, scb], None, "xxx-x-x8905-x") == []
+        reply = personal.record_slip(db, "Gin", "income", slip(receiver_account="xxx-x-x0000-x"), JPEG)
+        assert "ใช้บัญชีไหนคะ" in reply and db.query(PersonalEntry).count() == 0
+        assert personal.record_slip(db, "Gin2", "income", slip(reference="REF002"), JPEG).startswith("บันทึกรายรับ 500.00 บาท เข้า กสิกรไทย (…8905)")
 
 
 def test_line_group_join_explains(client, groups):
@@ -302,7 +343,9 @@ def test_chat_slip_that_cant_tell_asks_income_or_expense():
         reply = personal.record_chat_slip(db, "U1", s, JPEG)
         assert "เป็นรายรับหรือรายจ่ายคะ" in reply and "1) รายรับ" in reply and "2) รายจ่าย" in reply
         assert db.query(PersonalEntry).count() == 0
-        assert personal.handle_chat_text(db, "U1", "2").startswith("บันทึกรายจ่าย 500.00 บาท จาก กสิกรไทย")
+        # The slip shows no bank or number to check, so JARVIS also asks which account.
+        assert "ใช้บัญชีไหนคะ" in personal.handle_chat_text(db, "U1", "2")
+        assert personal.handle_chat_text(db, "U1", "1").startswith("บันทึกรายจ่าย 500.00 บาท จาก กสิกรไทย")
         e = db.query(PersonalEntry).one()
         assert (e.kind, e.source, e.ref_no) == ("expense", "slip", "REF001")
 

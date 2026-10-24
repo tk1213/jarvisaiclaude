@@ -264,6 +264,7 @@ def entry_out(e: PersonalEntry, names: dict[int, str]) -> dict:
         "ref_no": e.ref_no or "",
         "source": e.source,
         "has_slip": bool(e.slip_file),
+        "sent_by": e.sent_by or "",
     }
 
 
@@ -343,6 +344,7 @@ def move_entries(src: Session, dst: Session, entry_ids: list[int], account_id: i
                 source=e.source,
                 origin=e.origin,
                 slip_file=e.slip_file,
+                sent_by=e.sent_by,
                 created_at=e.created_at,
             )
         )
@@ -416,6 +418,27 @@ def match_accounts(accs: list[BankAccount], bank: str | None, printed: str | Non
 
 
 
+def verified_matches(accs: list[BankAccount], bank: str | None, printed: str | None) -> list[BankAccount]:
+    """This book's accounts a slip side surely is, checked twice: the same bank, and the account number's last 4 digits
+    among the digits the slip shows (KBank and others hide the very last digit, "xxx-x-x1234-x", so when no account fits
+    all 4, 3 of them in a row are enough). One account, or several that fit equally well; [] when none does (then
+    JARVIS asks). Accounts without a saved number can't be checked, so they never match here."""
+    code = bank_code(bank)
+    visible = _digits(printed)
+    if code is None or len(visible) < 3:
+        return []
+    by_score: dict[int, list[BankAccount]] = {4: [], 3: []}
+    for a in accs:
+        last4 = _digits(a.account_no)[-4:]
+        if a.bank != code or len(last4) < 3:
+            continue
+        if len(last4) == 4 and last4 in visible:
+            by_score[4].append(a)
+        elif last4[:3] in visible or last4[-3:] in visible:
+            by_score[3].append(a)
+    return by_score[4] or by_score[3]
+
+
 def fund_matches(accs: list[BankAccount], name: str | None, bank: str | None, printed: str | None) -> list[BankAccount]:
     """Fund accounts a slip side can be: the side's name or bank names the fund (its nickname, e.g. "K-SET50"),
     or the fund has a number saved and the printed one fits it."""
@@ -475,6 +498,7 @@ class Pending:
     slip: dict | None = None  # asking income or expense: the slip as read, and its picture
     jpeg: bytes = b""
     raw: str = ""  # asking income or expense: the typed line
+    sent_by: str = ""  # LINE display name of who sent it (shown on the dashboard)
     at: float = field(default_factory=time.monotonic)
 
 
@@ -509,8 +533,8 @@ def _answer_pending(db: Session, key: str, text: str) -> str | None:
         kind = "income" if n == 1 else "expense"
         if p.slip is not None:
             checked = _check_slip(db, p.slip)
-            return checked if isinstance(checked, str) else _slip_as(db, key, kind, p.slip, p.jpeg, checked, in_group=False)
-        return _typed_entry(db, key, kind, p.raw)
+            return checked if isinstance(checked, str) else _slip_as(db, key, kind, p.slip, p.jpeg, checked, in_group=False, sent_by=p.sent_by)
+        return _typed_entry(db, key, kind, p.raw, p.sent_by)
     if not 1 <= n <= len(p.choices):
         return None
     _pending.pop(key, None)
@@ -533,6 +557,7 @@ def _record(db: Session, p: Pending, acc: BankAccount, to_acc: BankAccount | Non
         source=p.source,
         origin=p.kind,
         slip_file=p.slip_file,
+        sent_by=p.sent_by or None,
     )
     db.add(e)
     db.commit()
@@ -571,15 +596,15 @@ def _check_slip(db: Session, slip: dict) -> str | tuple[int, date, str | None]:
     return amount, entry_date, ref
 
 
-def record_slip(db: Session, group: str, kind: str, slip: dict, jpeg: bytes) -> str:
+def record_slip(db: Session, group: str, kind: str, slip: dict, jpeg: bytes, sent_by: str = "") -> str:
     """A slip picture sent to "สลิปรายรับ" (kind income) or "สลิปรายจ่าย" (kind expense), already read by Claude."""
     checked = _check_slip(db, slip)
     if isinstance(checked, str):
         return checked
-    return _slip_as(db, group, kind, slip, jpeg, checked, in_group=True)
+    return _slip_as(db, group, kind, slip, jpeg, checked, in_group=True, sent_by=sent_by)
 
 
-def record_chat_slip(db: Session, chat: str, slip: dict, jpeg: bytes) -> str:
+def record_chat_slip(db: Session, chat: str, slip: dict, jpeg: bytes, sent_by: str = "") -> str:
     """A slip picture sent to the "tk รับจ่าย" group: income, expense or a transfer, from whose accounts its two
     sides are. When that can't be told, it asks."""
     checked = _check_slip(db, slip)
@@ -587,16 +612,20 @@ def record_chat_slip(db: Session, chat: str, slip: dict, jpeg: bytes) -> str:
         return checked
     kind = guess_kind(accounts(db), slip)
     if kind is None:
-        return _ask_kind(chat, Pending(kind="", amount=checked[0], entry_date=checked[1], slip=slip, jpeg=jpeg), "สลิป")
-    return _slip_as(db, chat, kind, slip, jpeg, checked, in_group=False)
+        return _ask_kind(chat, Pending(kind="", amount=checked[0], entry_date=checked[1], slip=slip, jpeg=jpeg, sent_by=sent_by), "สลิป")
+    return _slip_as(db, chat, kind, slip, jpeg, checked, in_group=False, sent_by=sent_by)
 
 
-def _slip_as(db: Session, key: str, kind: str, slip: dict, jpeg: bytes, checked: tuple[int, date, str | None], in_group: bool) -> str:
-    """Record a slip as income or expense (or a transfer, when the other side is the owner's too)."""
+def _slip_as(
+    db: Session, key: str, kind: str, slip: dict, jpeg: bytes, checked: tuple[int, date, str | None], in_group: bool, sent_by: str = ""
+) -> str:
+    """Record a slip as income or expense (or a transfer, when the other side is the owner's too). This book's side
+    must be checked twice, bank and account number (verified_matches); otherwise JARVIS asks which account."""
     amount, entry_date, ref = checked
     accs = accounts(db)
     mine_side, other_side = ("receiver", "sender") if kind == "income" else ("sender", "receiver")
-    mine = side_matches(accs, slip, mine_side)
+    mine = verified_matches(accs, slip.get(f"{mine_side}_bank"), slip.get(f"{mine_side}_account"))
+    mine += [a for a in fund_matches(accs, slip.get(f"{mine_side}_name"), slip.get(f"{mine_side}_bank"), slip.get(f"{mine_side}_account")) if a not in mine]
     other = side_matches(accs, slip, other_side, strict=True)
     if len(other) == 1:
         # The other side is surely this account (its digits fit), so it can't be this side too.
@@ -617,9 +646,8 @@ def _slip_as(db: Session, key: str, kind: str, slip: dict, jpeg: bytes, checked:
         ref_no=ref,
         source="slip",
         slip_file=save_slip_picture(jpeg, entry_date),
+        sent_by=sent_by,
     )
-    if not mine and len(accs) == 1:
-        mine = accs  # nothing to choose from
     if len(mine) == 1:
         # Both ends are the owner's own accounts: a transfer, not income or expense.
         if len(other) == 1 and other[0].id != mine[0].id:
@@ -651,7 +679,7 @@ def parse_text(text: str) -> tuple[int | None, str | None, str]:
     return amount, code, rest
 
 
-def _typed_entry(db: Session, key: str, kind: str, text: str) -> str | None:
+def _typed_entry(db: Session, key: str, kind: str, text: str, sent_by: str = "") -> str | None:
     """"ค่าข้าว 120 กสิกร" as income or expense; None when there's no amount in it (ordinary chat)."""
     accs = accounts(db)
     named = named_accounts(accs, text)
@@ -663,7 +691,7 @@ def _typed_entry(db: Session, key: str, kind: str, text: str) -> str | None:
         return "พิมพ์รายละเอียดกับจำนวนเงินด้วยนะคะ เช่น \"ค่าข้าว 120\" หรือ \"ค่าข้าว 120 กสิกร\""
     if amount <= 0:
         return "จำนวนเงินต้องมากกว่า 0 ค่ะ"
-    p = Pending(kind=kind, amount=amount, entry_date=today(), note=note)
+    p = Pending(kind=kind, amount=amount, entry_date=today(), note=note, sent_by=sent_by)
     if not accs:
         return no_accounts(db)
     if len(named) == 1:
@@ -686,7 +714,7 @@ def _default_account(accs: list[BankAccount]) -> BankAccount | None:
 TRANSFER_HELP = "บอกจำนวนเงิน บัญชีต้นทาง และปลายทางด้วยนะคะ เช่น \"โอน 5000 กสิกร ไป กองทุน A\""
 
 
-def _typed_transfer(db: Session, text: str) -> str:
+def _typed_transfer(db: Session, text: str, sent_by: str = "") -> str:
     """"5000 กสิกร ไป K-SET50" (after "โอน"): money moved between two of the owner's accounts or funds."""
     accs = accounts(db)
     m = re.search(r"\s*(?:ไปยัง|ไปที่|ไป|เข้า)\s*", text)
@@ -701,7 +729,7 @@ def _typed_transfer(db: Session, text: str) -> str:
     amount = to_satang(numbers[0][0])
     if amount <= 0:
         return "จำนวนเงินต้องมากกว่า 0 ค่ะ"
-    return _record(db, Pending(kind="expense", amount=amount, entry_date=today()), src, to)
+    return _record(db, Pending(kind="expense", amount=amount, entry_date=today(), sent_by=sent_by), src, to)
 
 
 def _delete_latest(db: Session, kind: str | None) -> str:
@@ -747,7 +775,7 @@ def _balance_question(db: Session, text: str) -> str | None:
     return _balances(db) if text.startswith(("ยอด", "คงเหลือ", "เหลือ")) else None
 
 
-def handle_text(db: Session, group: str, kind: str, text: str) -> str | None:
+def handle_text(db: Session, group: str, kind: str, text: str, sent_by: str = "") -> str | None:
     """A typed line in a slip group: an answer to a pending question, a command, or an entry like "ค่าข้าว 120 กสิกร"."""
     text = text.strip()
     answer = _answer_pending(db, group, text)
@@ -758,7 +786,7 @@ def handle_text(db: Session, group: str, kind: str, text: str) -> str | None:
     balance_answer = _balance_question(db, text)
     if balance_answer is not None:
         return balance_answer
-    return _typed_entry(db, group, kind, text)
+    return _typed_entry(db, group, kind, text, sent_by)
 
 
 CHAT_HELP = (
@@ -803,7 +831,7 @@ def split_kind(text: str, keep: set[str] = frozenset()) -> tuple[str | None, str
     return kinds[0], " ".join(kept)
 
 
-def handle_chat_text(db: Session, chat: str, text: str) -> str | None:
+def handle_chat_text(db: Session, chat: str, text: str, sent_by: str = "") -> str | None:
     """A typed line in the "tk รับจ่าย" group, with รับ / จ่าย / โอน anywhere in it ("Kbank จ่าย 20 บาท"); without
     one, JARVIS asks which. None for ordinary chat (no amount): stay quiet."""
     text = text.strip()
@@ -817,10 +845,10 @@ def handle_chat_text(db: Session, chat: str, text: str) -> str | None:
         return balance_answer
     kind, rest = split_kind(text, {w.lower() for a in accounts(db) for w in a.nickname.split()})
     if kind == "transfer":
-        return _typed_transfer(db, rest)
+        return _typed_transfer(db, rest, sent_by)
     if kind:
         word = "รับ ค่าจ้าง 5000" if kind == "income" else "จ่าย ค่าข้าว 120"
-        return _typed_entry(db, chat, kind, rest) or f"พิมพ์รายละเอียดกับจำนวนเงินด้วยนะคะ เช่น \"{word}\""
+        return _typed_entry(db, chat, kind, rest, sent_by) or f"พิมพ์รายละเอียดกับจำนวนเงินด้วยนะคะ เช่น \"{word}\""
     accs = accounts(db)
     amount, code, note = parse_text(_drop_nicknames(accs, text))
     if amount is None:
@@ -829,7 +857,7 @@ def handle_chat_text(db: Session, chat: str, text: str) -> str | None:
         return "พิมพ์รายละเอียดกับจำนวนเงินด้วยนะคะ เช่น \"จ่าย ค่าข้าว 120\" หรือ \"รับ ค่าจ้าง 5000 กสิกร\""
     if amount <= 0:
         return "จำนวนเงินต้องมากกว่า 0 ค่ะ"
-    return _ask_kind(chat, Pending(kind="", amount=amount, entry_date=today(), raw=text), f"\"{note or text}\"")
+    return _ask_kind(chat, Pending(kind="", amount=amount, entry_date=today(), raw=text, sent_by=sent_by), f"\"{note or text}\"")
 
 
 def clear_pending() -> None:

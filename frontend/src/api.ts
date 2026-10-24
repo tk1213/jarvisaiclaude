@@ -302,6 +302,8 @@ export interface PersonalEntry {
   ref_no: string
   source: 'slip' | 'text' | 'manual'
   has_slip: boolean
+  /** LINE display name of who sent it ("" for entries added on the dashboard). */
+  sent_by: string
 }
 
 export type PersonalEntryInput = Pick<PersonalEntry, 'kind' | 'date' | 'time' | 'amount' | 'account_id' | 'to_account_id' | 'counterparty' | 'note'>

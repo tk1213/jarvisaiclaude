@@ -133,7 +133,9 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
   `backend/data/personal/personal.db` (`PERSONAL_DATABASE_URL`, `PersonalSession`), slip pictures in `PERSONAL_SLIP_DIR`; both are
   in the backup. Balance = opening balance + entries on/after its date. Recording is the main OA's LINE **group "TKรับจ่าย"**
   only (`group_kind` "both": name contains "tkรับจ่าย" ignoring spaces/case; a plain group, not a separate OA), answering linked
-  members with personal edit and staying quiet on ordinary chat. Slips (`app/services/slip_reader.py`, Claude JSON-schema output) work out
+  members with personal edit and staying quiet on ordinary chat. A slip's own side is matched twice (`verified_matches`): same bank
+  AND the saved number's last 4 digits among the slip's digits (3 in a row when none fits all 4, since KBank hides the last digit);
+  one account = record, otherwise ask; accounts without a number never auto-match. Slips (`app/services/slip_reader.py`, Claude JSON-schema output) work out
   the kind themselves (`guess_kind`: owner's receiver side = income, sender side = expense, both = transfer, else ask "1) รายรับ
   2) รายจ่าย"); typed lines carry รับ / จ่าย / โอน anywhere (`split_kind`: a separate word, or stuck to the front or back of any word, "kbank หูฟังจ่าย 620"; never inside a word; โอน only in front; nickname words exempt) ("จ่าย ค่าข้าว 120 กสิกร", no bank = default account, "โอน 5000 กสิกร ไป
   K-SET50"), without one JARVIS asks. "ยอด" = every balance; "ยอด กรุงศรี เหลือเท่าไร" / "ยอดคงเหลือ K-SET50" = that bank or fund only. Duplicate reference = refused; unclear account = numbered question. The older groups named
@@ -144,7 +146,9 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
 - Company money (🏢 `#company`, "company" page level): the same code as personal money (`make_router` in `app/api/personal.py`,
   `app/services/personal.py`, `Personal.tsx` with `book="company"` via `BookContext`) on its own file `backend/data/company/company.db`
   (`COMPANY_DATABASE_URL`, `CompanySession`; slip pictures share `PERSONAL_SLIP_DIR`; in the backup and `install-ubuntu.sh`). LINE groups
-  "สลิปรายรับ" (income) / "สลิปรายจ่าย" (expense) record here. Old entries the slip groups left in personal money can't be told apart
+  "สลิปรายรับ" (income) / "สลิปรายจ่าย" (expense) record here, from **anyone in the group** (staff need no JARVIS account; slips,
+  typed entries and "ยอด"); "ลบล่าสุด" there needs a linked account with company edit. Entries keep the sender's LINE name
+  (`sent_by`, `LineClient.member_name`, shown as "ส่งโดย …"). Old entries the slip groups left in personal money can't be told apart
   from "TKรับจ่าย" ones (same `origin`), so the owner ticks them on the personal page and moves them (`POST /personal/entries/move-to-company`,
   needs edit on both pages; transfers can't move). `page_name(db)` picks the page named in LINE replies.
 - Server health: "สถานะระบบ" / "เช็คระบบ" / "server" on LINE answers from `app/services/system_status.py` without Claude

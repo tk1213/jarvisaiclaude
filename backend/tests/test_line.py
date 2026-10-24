@@ -30,6 +30,9 @@ class FakeLine:
     def group_name(self, group_id):
         return self.groups.get(group_id, "ครอบครัว")
 
+    def member_name(self, group_id, user_id):
+        return {"Uowner": "TK", "Ustaff": "สมชาย"}.get(user_id, "")
+
     def get_content(self, message_id):
         if message_id not in self.contents:
             raise line_int.LineError("gone")
