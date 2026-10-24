@@ -206,7 +206,10 @@ python -m app.scripts.chat <username>      # คุยใน terminal
 - เงียบเกิน 30 นาที (`DASHBOARD_SESSION_IDLE_MINUTES`) เริ่มบทสนทนาใหม่เอง หรือกดปุ่มเริ่มใหม่ ทุกจอจะเริ่มใหม่พร้อมกัน
 - แชท LINE แยกจาก Dashboard
 
-- ใช้โมเดล `claude-opus-5-5` (เปลี่ยนได้ที่ `CLAUDE_MODEL`) effort `low` เพื่อให้ตอบเร็ว
+- ใช้โมเดล `claude-haiku-5-5` ทั้งแชท (`CLAUDE_MODEL`) และอ่านสลิป (`CLAUDE_SLIP_MODEL`) effort `low` ถูกกว่า Opus 5.5 ราว 40 เท่าต่อ token
+  ถ้าต้องการความฉลาดมากขึ้นตั้งเป็น `claude-opus-5-5` ได้ (รองรับ fallback อัตโนมัติเมื่อถูกปฏิเสธ ส่วน Haiku ไม่มี)
+- เทียบความแม่นยำของโมเดลก่อนเปลี่ยน: `cd ~/jarvisclaude/backend && .venv/bin/python -m app.scripts.compare_models`
+  (อ่านสลิปที่บันทึกไว้ซ้ำด้วยทั้ง 2 โมเดลเทียบกับยอดที่บันทึกจริง และลองคำสั่งแชทกับบ้านจำลอง ไม่ใช้โควตา Tuya ค่าใช้จ่ายประมาณไม่กี่บาท)
 - เปิด server-side fallback ไว้: ถ้าโมเดลหลักปฏิเสธคำขอ ระบบจะลองโมเดลสำรองให้อัตโนมัติ
 - ประวัติการคุยเก็บแบบเพิ่มต่อท้ายอย่างเดียว (append-only) ในตาราง `chat_sessions` ห้ามแก้แถวเก่า
   เพราะ Claude ผูก thinking กับบทสนทนาที่ส่งไปแบบตรงทุกไบต์

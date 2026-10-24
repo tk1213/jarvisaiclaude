@@ -47,15 +47,19 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
 
 ## Claude API usage (keep these when editing the orchestrator)
 
-- Model `claude-opus-5-5`, `client.beta.messages.create` with betas `server-side-fallback-2026-07-01`
-  and `thinking-binding-controls-2026-08-01`, `fallbacks="default"`, adaptive thinking with
-  `block_binding.prefix_mismatch_behavior="drop_block"`, effort `low`.
+- Models (owner's choice, to cut cost): chat `CLAUDE_MODEL` and slip reading `CLAUDE_SLIP_MODEL` default to
+  `claude-haiku-5-5` (~1/40 of Opus 5.5's price); `app.scripts.compare_models` checks a model's accuracy against Opus 5.5
+  on the saved slips and on sample commands in the mock home. `client.beta.messages.create` with beta
+  `thinking-binding-controls-2026-08-01`, adaptive thinking with `block_binding.prefix_mismatch_behavior="drop_block"`,
+  effort `low`. Server-side fallback (beta `server-side-fallback-2026-07-01` + `fallbacks="default"`) only on models that
+  have it (`fallback_options`: Opus 5.x / Sonnet 5.5 / Fable); Haiku 5.5 has none (a fallback list is a 400).
 - The system prompt and tool list must stay byte-identical across a conversation; per-turn data (time,
   device snapshot, voice hint) goes in the user turn. History is append-only (preserved thinking).
 - Automatic prompt caching: top-level `cache_control={"type": "ephemeral"}` on every orchestrator call, so tool rounds and
   turns within 5 minutes read the repeated prefix at the cache rate. Each round logs `cache_read=` / `cache_write=` tokens
   (`journalctl -u jarvis | grep cache_read` on the mini PC) to check it's hitting.
-- Server-side web search `web_search_20260209` (no `country` in `user_location`: "TH" is rejected);
+- Server-side web search (`web_search_type`: `web_search_20260209` on Opus/Sonnet, basic `web_search_20250305` on Haiku;
+  no `country` in `user_location`: "TH" is rejected);
   the loop resumes `pause_turn`.
 - Weather/rain/PM2.5 questions use the `get_weather` tool (`app/integrations/weather.py`, Open-Meteo forecast +
   air-quality APIs, free, no key), never web search, which only finds stale snapshots of weather pages. No place =
