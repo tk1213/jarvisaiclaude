@@ -342,8 +342,10 @@ GROUP_HELP = (
 
 
 def handle_group_event(event: dict) -> None:
-    """A message in a LINE group. Only the slip groups answer, and only to linked accounts that may edit that group's
-    money page (personal for "TKรับจ่าย", company for the two slip groups)."""
+    """A message in a LINE group. Only the slip groups answer. "TKรับจ่าย" (personal money) answers only linked accounts
+    that may edit personal money. The company groups ("สลิปรายรับ" / "สลิปรายจ่าย") take slips, typed entries and "ยอด"
+    from anyone in the group (staff without a JARVIS account), but "ลบล่าสุด" only from linked accounts that may edit
+    company money. Each entry keeps the sender's LINE name."""
     source = event.get("source") or {}
     group_id = source.get("groupId")
     reply_token = event.get("replyToken")
@@ -369,19 +371,26 @@ def handle_group_event(event: dict) -> None:
     if kind is None or event.get("type") != "message":
         return
     page, Book = _book(kind)
+    line_user = source.get("userId") or ""
     with SessionLocal() as db:
-        user = db.scalar(select(User).where(User.line_user_id == source.get("userId"))) if source.get("userId") else None
-        if user is None or not permissions.allowed(user, page, "edit"):
-            return  # other members' chat in the group is not for JARVIS
+        user = db.scalar(select(User).where(User.line_user_id == line_user)) if line_user else None
+        may_edit = user is not None and permissions.allowed(user, page, "edit")
+    if not may_edit and kind == "both":
+        return  # other members' chat in the personal group is not for JARVIS
     message = event.get("message") or {}
+    typed = (message.get("text") or "").strip()
+    if message.get("type") == "text" and typed in personal.DELETE_WORDS and not may_edit:
+        _send_quietly(client, reply_token, group_id, "คำสั่งลบใช้ได้เฉพาะผู้ดูแลที่เชื่อม LINE กับจาร์วิสแล้วค่ะ ถ้าส่งผิด ให้แจ้งผู้ดูแลลบให้นะคะ")
+        return
+    sent_by = (client.member_name(group_id, line_user) if line_user else "") or (user.display_name if user else "")
     if message.get("type") == "image":
-        text = _record_slip(client, group_id, kind, message)
+        text = _record_slip(client, group_id, kind, message, sent_by)
     elif message.get("type") == "text":
         with Book() as db:
             if kind == "both":
-                text = personal.handle_chat_text(db, group_id, message.get("text") or "")
+                text = personal.handle_chat_text(db, group_id, typed, sent_by)
             else:
-                text = personal.handle_text(db, group_id, kind, message.get("text") or "")
+                text = personal.handle_text(db, group_id, kind, typed, sent_by)
     else:
         return
     if text:
@@ -407,14 +416,14 @@ def _read_slip_picture(client: LineClient, message: dict) -> tuple[dict, bytes] 
     return slip, base64.b64decode(jpeg)
 
 
-def _record_slip(client: LineClient, group_id: str, kind: str, message: dict) -> str:
+def _record_slip(client: LineClient, group_id: str, kind: str, message: dict, sent_by: str = "") -> str:
     read = _read_slip_picture(client, message)
     if isinstance(read, str):
         return read
     with _book(kind)[1]() as db:
         if kind == "both":
-            return personal.record_chat_slip(db, group_id, *read)
-        return personal.record_slip(db, group_id, kind, *read)
+            return personal.record_chat_slip(db, group_id, *read, sent_by=sent_by)
+        return personal.record_slip(db, group_id, kind, *read, sent_by=sent_by)
 
 
 def _send_quietly(client: LineClient, reply_token: str, to: str, text: str) -> None:

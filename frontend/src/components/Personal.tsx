@@ -276,6 +276,7 @@ function Entries({
                     <span className="line-clamp-1">{r.note}</span>
                     <span className="text-[10px] text-slate-400">
                       {SOURCE[r.source]}
+                      {r.sent_by && ` · ส่งโดย ${r.sent_by}`}
                       {r.ref_no && ` · อ้างอิง ${r.ref_no}`}
                     </span>
                   </td>
