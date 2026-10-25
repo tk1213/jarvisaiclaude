@@ -501,6 +501,7 @@ class Pending:
     raw: str = ""  # asking income or expense: the typed line
     sent_by: str = ""  # LINE display name of who sent it (shown on the dashboard)
     message_id: str = ""  # the LINE message, so unsending it deletes the entry
+    items: list[tuple[int, str]] = field(default_factory=list)  # several entries typed in one line: (amount, note)
     at: float = field(default_factory=time.monotonic)
 
 
@@ -544,17 +545,16 @@ def _answer_pending(db: Session, key: str, text: str) -> str | None:
     return _record(db, p, acc) if acc else "ไม่พบบัญชีนั้นแล้วค่ะ"
 
 
-def _record(db: Session, p: Pending, acc: BankAccount, to_acc: BankAccount | None = None) -> str:
-    kind = "transfer" if to_acc else p.kind
-    e = PersonalEntry(
+def _entry(p: Pending, kind: str, acc: BankAccount, to_acc: BankAccount | None, amount: int, note: str) -> PersonalEntry:
+    return PersonalEntry(
         kind=kind,
         entry_date=p.entry_date,
         entry_time=p.entry_time,
-        amount_satang=p.amount,
+        amount_satang=amount,
         account_id=acc.id,
         to_account_id=to_acc.id if to_acc else None,
         counterparty=p.counterparty[:256],
-        note=p.note[:2000],
+        note=note[:2000],
         ref_no=p.ref_no,
         source=p.source,
         origin=p.kind,
@@ -562,14 +562,26 @@ def _record(db: Session, p: Pending, acc: BankAccount, to_acc: BankAccount | Non
         sent_by=p.sent_by or None,
         line_message_id=p.message_id or None,
     )
-    db.add(e)
+
+
+def _record(db: Session, p: Pending, acc: BankAccount, to_acc: BankAccount | None = None) -> str:
+    kind = "transfer" if to_acc else p.kind
+    word, way = ("รายรับ", "เข้า") if kind == "income" else ("รายจ่าย", "จาก")
+    if p.items and not to_acc:
+        db.add_all(_entry(p, kind, acc, None, amount, note) for amount, note in p.items)
+        db.commit()
+        lines = "\n".join(f"- {note} {money(amount)}" for amount, note in p.items)
+        return (
+            f"บันทึก{word} {len(p.items)} รายการ รวม {money(p.amount)} บาท {way} {label(acc)} แล้วค่ะ TK\n{lines}\n"
+            f"คงเหลือ {money(balance(db, acc))} บาท"
+        )
+    db.add(_entry(p, kind, acc, to_acc, p.amount, p.note))
     db.commit()
     if kind == "transfer":
         return (
             f"บันทึกโอนระหว่างบัญชี {money(p.amount)} บาท จาก {label(acc)} ไป {label(to_acc)} แล้วค่ะ TK\n"
             f"คงเหลือ {label(acc)} {money(balance(db, acc))} บาท / {label(to_acc)} {money(balance(db, to_acc))} บาท"
         )
-    word, way = ("รายรับ", "เข้า") if kind == "income" else ("รายจ่าย", "จาก")
     return f"บันทึก{word} {money(p.amount)} บาท {way} {label(acc)} แล้วค่ะ TK\nคงเหลือ {money(balance(db, acc))} บาท"
 
 
@@ -671,31 +683,65 @@ def parse_text(text: str) -> tuple[int | None, str | None, str]:
     if not numbers:
         return None, None, text.strip()
     m = numbers[-1]
-    amount = to_satang(m[0])
-    rest = (text[: m.start()] + " " + text[m.end() :]).strip()
+    code, rest = _bank_and_note(text[: m.start()] + " " + text[m.end() :])
+    return to_satang(m[0]), code, rest
+
+
+def _bank_and_note(text: str) -> tuple[str | None, str]:
+    """The bank a piece of typed text names, and the text without the bank's name and "บาท"."""
+    rest = text.strip()
     code = bank_code(rest)
     if code:
         for alias, c in _ALIASES:
             if c == code:
                 rest = re.sub(re.escape(alias), " ", rest, flags=re.IGNORECASE) if alias.isascii() else rest.replace(alias, " ")
         rest = re.sub(r"\b(ธนาคาร|ธ\.|บาท)\b", " ", rest)
-    rest = re.sub(r"\s+", " ", rest.replace("บาท", " ")).strip(" -:,")
-    return amount, code, rest
+    return code, re.sub(r"\s+", " ", rest.replace("บาท", " ")).strip(" -:,")
+
+
+def parse_items(text: str) -> tuple[list[tuple[int, str]], str | None] | None:
+    """"Kbank เข้า E wallet 120 บาท ค่าน้ำ 20 บาท" -> ([(12000, "เข้า E wallet"), (2000, "ค่าน้ำ")], "KBANK"): several
+    entries typed in one line. An amount ends an item when "บาท" or a new line follows it (the last one always does),
+    so a number inside a note stays in it ("ค่าข้าว 2 จาน 120 บาท"). None unless there are two or more items, each
+    with its own note, and at most one bank."""
+    numbers = list(_AMOUNT.finditer(text))
+    cuts = [m.end() for m in numbers[:-1] if re.match(r"[ \t]*(บาท|\n)", text[m.end() :])] + [numbers[-1].end()] if numbers else []
+    if len(cuts) < 2:
+        return None
+    items, codes, start = [], set(), 0
+    for cut in cuts:
+        amount, code, note = parse_text(text[start:cut])
+        if not note:
+            return None
+        items.append((amount, note))
+        codes.add(code)
+        start = cut
+    code, tail = _bank_and_note(text[start:])
+    codes.add(code)
+    if tail:
+        items[-1] = (items[-1][0], f"{items[-1][1]} {tail}")
+    codes.discard(None)
+    return (items, codes.pop() if codes else None) if len(codes) <= 1 else None
 
 
 def _typed_entry(db: Session, key: str, kind: str, text: str, sent_by: str = "", message_id: str = "") -> str | None:
     """"ค่าข้าว 120 กสิกร" as income or expense; None when there's no amount in it (ordinary chat)."""
     accs = accounts(db)
     named = named_accounts(accs, text)
-    amount, code, note = parse_text(_drop_nicknames(accs, text))
+    plain = _drop_nicknames(accs, text)
+    amount, code, note = parse_text(plain)
     if amount is None:
         return None
     if not note and not code and not named:
         # A bare number is more likely a late answer to an expired question than an entry.
         return "พิมพ์รายละเอียดกับจำนวนเงินด้วยนะคะ เช่น \"ค่าข้าว 120\" หรือ \"ค่าข้าว 120 กสิกร\""
-    if amount <= 0:
+    several = parse_items(plain)
+    items = several[0] if several else []
+    if several:
+        amount, code, note = sum(a for a, _ in items), several[1], ", ".join(n for _, n in items)
+    if amount <= 0 or any(a <= 0 for a, _ in items):
         return "จำนวนเงินต้องมากกว่า 0 ค่ะ"
-    p = Pending(kind=kind, amount=amount, entry_date=today(), note=note, sent_by=sent_by, message_id=message_id)
+    p = Pending(kind=kind, amount=amount, entry_date=today(), note=note, sent_by=sent_by, message_id=message_id, items=items)
     if not accs:
         return no_accounts(db)
     if len(named) == 1:
@@ -742,11 +788,14 @@ def delete_unsent(db: Session, message_id: str) -> str | None:
     for key, p in list(_pending.items()):
         if p.message_id == message_id:
             _pending.pop(key, None)
-    entry = db.scalar(select(PersonalEntry).where(PersonalEntry.line_message_id == message_id)) if message_id else None
-    if entry is None:
+    entries = list(db.scalars(select(PersonalEntry).where(PersonalEntry.line_message_id == message_id))) if message_id else []
+    if not entries:
         return None
-    info = f"{money(entry.amount_satang)} บาท ({entry.entry_date:%d/%m/%Y})"
-    delete_entry(db, entry)
+    total = money(sum(e.amount_satang for e in entries))
+    info = f"{total} บาท" if len(entries) == 1 else f"{len(entries)} รายการ รวม {total} บาท"
+    info += f" ({entries[0].entry_date:%d/%m/%Y})"
+    for e in entries:
+        delete_entry(db, e)
     return f"ลบรายการ {info} ตามที่ยกเลิกข้อความแล้วค่ะ"
 
 
@@ -828,25 +877,34 @@ def split_kind(text: str, keep: set[str] = frozenset()) -> tuple[str | None, str
     """("income" | "expense" | "transfer" | None, the text without that word). None when the line has no such word,
     or both รับ and จ่าย (then JARVIS asks). Words in `keep` (parts of account nicknames like "กสิกร ใช้จ่าย") are
     left alone."""
-    kinds, kept = [], []
-    for token in text.split():
-        if token.lower() in keep:
-            kept.append(token)
-        elif m := _KIND_TOKEN.match(token):
-            kinds.append(_KIND_WORDS[m[1]])
-            if m[2]:
-                kept.append(m[2])
-        elif m := _KIND_FRONT.match(token):
-            kinds.append(_KIND_WORDS[m[1]])
-            kept.append(m[2])
-        elif m := _KIND_BACK.match(token):
-            kinds.append(_KIND_WORDS[m[2]])
-            kept.append(m[1])
-        else:
-            kept.append(token)
+    kinds, lines = [], []
+    for line in text.split("\n"):
+        kept: list[str] = []
+        lines.append(kept)
+        for token in line.split():
+            kinds.extend(_kind_of(token, keep, kept))
     if len(set(kinds)) != 1:
         return None, text
-    return kinds[0], " ".join(kept)
+    return kinds[0], "\n".join(" ".join(kept) for kept in lines if kept)
+
+
+def _kind_of(token: str, keep: set[str], kept: list[str]) -> list[str]:
+    """The kind word in one token of a typed line ([] when there's none), adding what's left of the token to `kept`."""
+    if token.lower() in keep:
+        kept.append(token)
+    elif m := _KIND_TOKEN.match(token):
+        if m[2]:
+            kept.append(m[2])
+        return [_KIND_WORDS[m[1]]]
+    elif m := _KIND_FRONT.match(token):
+        kept.append(m[2])
+        return [_KIND_WORDS[m[1]]]
+    elif m := _KIND_BACK.match(token):
+        kept.append(m[1])
+        return [_KIND_WORDS[m[2]]]
+    else:
+        kept.append(token)
+    return []
 
 
 def handle_chat_text(db: Session, chat: str, text: str, sent_by: str = "", message_id: str = "") -> str | None:
@@ -873,6 +931,9 @@ def handle_chat_text(db: Session, chat: str, text: str, sent_by: str = "", messa
         return None
     if not note and not code and not named_accounts(accs, text):
         return "พิมพ์รายละเอียดกับจำนวนเงินด้วยนะคะ เช่น \"จ่าย ค่าข้าว 120\" หรือ \"รับ ค่าจ้าง 5000 กสิกร\""
+    several = parse_items(_drop_nicknames(accs, text))
+    if several:
+        amount, note = sum(a for a, _ in several[0]), f"{len(several[0])} รายการ"
     if amount <= 0:
         return "จำนวนเงินต้องมากกว่า 0 ค่ะ"
     return _ask_kind(chat, Pending(kind="", amount=amount, entry_date=today(), raw=text, sent_by=sent_by, message_id=message_id), f"\"{note or text}\"")
