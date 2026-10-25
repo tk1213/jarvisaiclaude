@@ -142,7 +142,9 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
   one account = record, otherwise ask; accounts without a number never auto-match. Slips (`app/services/slip_reader.py`, Claude JSON-schema output) work out
   the kind themselves (`guess_kind`: owner's receiver side = income, sender side = expense, both = transfer, else ask "1) รายรับ
   2) รายจ่าย"); typed lines carry รับ / จ่าย / โอน anywhere (`split_kind`: a separate word, or stuck to the front or back of any word, "kbank หูฟังจ่าย 620"; never inside a word; โอน only in front; nickname words exempt) ("จ่าย ค่าข้าว 120 กสิกร", no bank = default account, "โอน 5000 กสิกร ไป
-  K-SET50"), without one JARVIS asks. "ยอด" = every balance; "ยอด กรุงศรี เหลือเท่าไร" / "ยอดคงเหลือ K-SET50" = that bank or fund only. Duplicate reference = refused; unclear account = numbered question. The older groups named
+  K-SET50"), without one JARVIS asks. Several items in one line ("Kbank จ่ายเข้า E wallet 120 บาท จ่ายค่าน้ำ 20 บาท", or one per line) become
+  one entry each (`parse_items`: an amount followed by "บาท" or a new line ends an item; each needs its own note; at most one bank;
+  one reply with the total; unsending the message deletes them all). "ยอด" = every balance; "ยอด กรุงศรี เหลือเท่าไร" / "ยอดคงเหลือ K-SET50" = that bank or fund only. Duplicate reference = refused; unclear account = numbered question. The older groups named
   "สลิปรายรับ"/"สลิปรายจ่าย" record with a fixed kind into **company money** instead (below). Funds are accounts with bank
   `FUND_A`..`FUND_F` (real name in the nickname, matched in slips and typed lines; balance = money put in, no NAV). A transfer is
   one row but shows as รับโอน/โอนออก per account and in each account's month in/out, never in the month totals. No expense

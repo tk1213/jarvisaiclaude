@@ -421,6 +421,43 @@ def test_kind_word_anywhere_in_the_line():
         assert db.query(PersonalEntry).order_by(PersonalEntry.id.desc()).first().note == "ข้าว"
 
 
+
+def test_parse_items():
+    assert personal.parse_items("Kbank เข้า E wallet 120 บาท ค่าน้ำ 20 บาท") == ([(12000, "เข้า E wallet"), (2000, "ค่าน้ำ")], "KBANK")
+    assert personal.parse_items("ค่าข้าว 120\nค่าน้ำ 20 กสิกร") == ([(12000, "ค่าข้าว"), (2000, "ค่าน้ำ")], "KBANK")
+    assert personal.parse_items("ค่าข้าว 120 บาท ค่าน้ำ 20 ร้านป้า") == ([(12000, "ค่าข้าว"), (2000, "ค่าน้ำ ร้านป้า")], None)
+    # A number inside a note isn't an item of its own; a single item or one without its own note is no split.
+    assert personal.parse_items("ค่าข้าว 2 จาน 120 บาท") is None
+    assert personal.parse_items("ค่าไฟ เดือน 10 1200") is None
+    assert personal.parse_items("ค่าข้าว 120 บาท 20 บาท") is None
+    assert personal.parse_items("ค่าข้าว 120 กสิกร") is None
+    assert personal.parse_items("ค่าข้าว 120 บาท scb ค่าน้ำ 20 กสิกร") is None  # two banks: one entry, as before
+
+
+def test_several_entries_in_one_line():
+    with PersonalSession() as db:
+        k = add(db, bank="KBANK", no="5531", nickname="TK Kbank", opening="1515.84")
+        add(db, bank="BAY", no="6165", default=True)
+        reply = personal.handle_chat_text(db, "G", "Kbank จ่ายเข้า E wallet 120 บาท จ่ายค่าน้ำ 20 บาท", message_id="m1")
+        assert reply == (
+            "บันทึกรายจ่าย 2 รายการ รวม 140.00 บาท จาก TK Kbank (…5531) แล้วค่ะ TK\n"
+            "- เข้า E wallet 120.00\n- ค่าน้ำ 20.00\nคงเหลือ 1,375.84 บาท"
+        )
+        rows = db.query(PersonalEntry).order_by(PersonalEntry.id).all()
+        assert [(e.note, e.amount_satang, e.kind, e.line_message_id) for e in rows] == [("เข้า E wallet", 12000, "expense", "m1"), ("ค่าน้ำ", 2000, "expense", "m1")]
+        # Unsending the message takes both away.
+        assert personal.delete_unsent(db, "m1").startswith("ลบรายการ 2 รายการ รวม 140.00 บาท")
+        assert personal.balance(db, k) == 151584
+        # No รับ/จ่าย: asked once for the total, then both are recorded; an unclear account is asked once too.
+        assert "\"2 รายการ\" 140.00 บาท เป็นรายรับหรือรายจ่ายคะ" in personal.handle_chat_text(db, "G", "ค่าข้าว 120\nค่าน้ำ 20")
+        assert personal.handle_chat_text(db, "G", "2").startswith("บันทึกรายจ่าย 2 รายการ รวม 140.00 บาท จาก กรุงศรี")
+    with CompanySession() as db:
+        add(db)
+        add(db, bank="SCB", no="5554")
+        assert "140.00 บาท ใช้บัญชีไหนคะ" in personal.handle_text(db, "Gout", "expense", "ค่าส่ง 120 บาท ค่าน้ำ 20 บาท")
+        assert personal.handle_text(db, "Gout", "expense", "2").startswith("บันทึกรายจ่าย 2 รายการ รวม 140.00 บาท จาก ไทยพาณิชย์")
+        assert db.query(PersonalEntry).count() == 2
+
 def test_balance_of_one_bank_or_fund():
     with PersonalSession() as db:
         add(db, bank="BAY", no="6165", nickname="TK กรุงศรี")
