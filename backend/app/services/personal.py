@@ -699,13 +699,29 @@ def _bank_and_note(text: str) -> tuple[str | None, str]:
     return code, re.sub(r"\s+", " ", rest.replace("บาท", " ")).strip(" -:,")
 
 
+# Words after a number that make it a count inside a note ("2 จาน"), not an amount ending an item.
+_UNITS = re.compile(
+    r"\s*(จาน|ชาม|ชิ้น|อัน|คน|ตัว|ขวด|แก้ว|กล่อง|ถุง|ห่อ|ใบ|ชุด|ลิตร|กิโล|กก|กรัม|เมตร|วัน|เดือน|ปี|ครั้ง|รอบ|ชั่วโมง|ชม|นาที"
+    r"|คืน|ที่|ลูก|ผล|แพ็ค|แพค|ลัง|โหล|เส้น|ม้วน|แผ่น|เล่ม|คู่|ดวง|หน่วย|เครื่อง|คัน|หลัง|ห้อง|แท่ง|ซอง|กระป๋อง|เม็ด|x|kg|g|ml|l)(?![a-z])",
+    re.IGNORECASE,
+)
+
+
+def _ends_item(text: str, m: re.Match) -> bool:
+    """Whether the amount `m` in a typed line ends an item, rather than being part of its note."""
+    before, after = text[: m.start()], text[m.end() :]
+    if re.search(r"[A-Za-z]$", before) or re.match(r"[^\sบ]", after):
+        return False
+    return not _UNITS.match(after)
+
+
 def parse_items(text: str) -> tuple[list[tuple[int, str]], str | None] | None:
-    """"Kbank เข้า E wallet 120 บาท ค่าน้ำ 20 บาท" -> ([(12000, "เข้า E wallet"), (2000, "ค่าน้ำ")], "KBANK"): several
-    entries typed in one line. An amount ends an item when "บาท" or a new line follows it (the last one always does),
-    so a number inside a note stays in it ("ค่าข้าว 2 จาน 120 บาท"). None unless there are two or more items, each
-    with its own note, and at most one bank."""
+    """"kbank ค่าข้าว 20 ค่าน้ำ 20" -> ([(2000, "ค่าข้าว"), (2000, "ค่าน้ำ")], "KBANK"): several entries typed in one
+    line. Each amount ends an item unless it's part of a note: a count with its unit ("ค่าข้าว 2 จาน 120"), or stuck to
+    letters ("3BB", "iPhone15"). None unless there are two or more items, each with its own note ("ค่าไฟ เดือน 10 1200"
+    stays one entry), and at most one bank."""
     numbers = list(_AMOUNT.finditer(text))
-    cuts = [m.end() for m in numbers[:-1] if re.match(r"[ \t]*(บาท|\n)", text[m.end() :])] + [numbers[-1].end()] if numbers else []
+    cuts = [m.end() for m in numbers[:-1] if _ends_item(text, m)] + [numbers[-1].end()] if numbers else []
     if len(cuts) < 2:
         return None
     items, codes, start = [], set(), 0

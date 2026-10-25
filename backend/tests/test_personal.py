@@ -426,8 +426,15 @@ def test_parse_items():
     assert personal.parse_items("Kbank เข้า E wallet 120 บาท ค่าน้ำ 20 บาท") == ([(12000, "เข้า E wallet"), (2000, "ค่าน้ำ")], "KBANK")
     assert personal.parse_items("ค่าข้าว 120\nค่าน้ำ 20 กสิกร") == ([(12000, "ค่าข้าว"), (2000, "ค่าน้ำ")], "KBANK")
     assert personal.parse_items("ค่าข้าว 120 บาท ค่าน้ำ 20 ร้านป้า") == ([(12000, "ค่าข้าว"), (2000, "ค่าน้ำ ร้านป้า")], None)
+    # No "บาท" needed (the owner's own line).
+    assert personal.parse_items("kbank ค่าข้าว 20 ค่าน้ำ 20") == ([(2000, "ค่าข้าว"), (2000, "ค่าน้ำ")], "KBANK")
+    assert personal.parse_items("ค่าข้าว 120 ค่าน้ำ 20 ค่าไฟ 300") == ([(12000, "ค่าข้าว"), (2000, "ค่าน้ำ"), (30000, "ค่าไฟ")], None)
     # A number inside a note isn't an item of its own; a single item or one without its own note is no split.
     assert personal.parse_items("ค่าข้าว 2 จาน 120 บาท") is None
+    assert personal.parse_items("ค่าข้าว 2 จาน 120") is None
+    assert personal.parse_items("น้ำ 6 ขวด 60 ค่าข้าว 3 กล่อง 150") == ([(6000, "น้ำ 6 ขวด"), (15000, "ค่าข้าว 3 กล่อง")], None)
+    assert personal.parse_items("ค่าเน็ต 3BB 599") is None
+    assert personal.parse_items("เคส iPhone15 390") is None
     assert personal.parse_items("ค่าไฟ เดือน 10 1200") is None
     assert personal.parse_items("ค่าข้าว 120 บาท 20 บาท") is None
     assert personal.parse_items("ค่าข้าว 120 กสิกร") is None
@@ -445,6 +452,10 @@ def test_several_entries_in_one_line():
         )
         rows = db.query(PersonalEntry).order_by(PersonalEntry.id).all()
         assert [(e.note, e.amount_satang, e.kind, e.line_message_id) for e in rows] == [("เข้า E wallet", 12000, "expense", "m1"), ("ค่าน้ำ", 2000, "expense", "m1")]
+        assert personal.handle_chat_text(db, "G", "kbank จ่ายค่าข้าว 20 ค่าน้ำ 20").startswith("บันทึกรายจ่าย 2 รายการ รวม 40.00 บาท จาก TK Kbank")
+        assert personal.delete_unsent(db, "") is None
+        db.query(PersonalEntry).filter(PersonalEntry.line_message_id.is_(None)).delete()
+        db.commit()
         # Unsending the message takes both away.
         assert personal.delete_unsent(db, "m1").startswith("ลบรายการ 2 รายการ รวม 140.00 บาท")
         assert personal.balance(db, k) == 151584
