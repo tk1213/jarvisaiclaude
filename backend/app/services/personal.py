@@ -741,7 +741,8 @@ def parse_items(text: str) -> tuple[list[tuple[int, str]], str | None] | None:
 
 
 def _typed_entry(db: Session, key: str, kind: str, text: str, sent_by: str = "", message_id: str = "") -> str | None:
-    """"ค่าข้าว 120 กสิกร" as income or expense; None when there's no amount in it (ordinary chat)."""
+    """"ค่าข้าว 120 กสิกร" as income or expense; None when there's no amount in it (ordinary chat) or nothing but one:
+    a bare number in a group is a running number ("3"), or a late answer to an expired question, not an entry."""
     accs = accounts(db)
     named = named_accounts(accs, text)
     plain = _drop_nicknames(accs, text)
@@ -749,8 +750,7 @@ def _typed_entry(db: Session, key: str, kind: str, text: str, sent_by: str = "",
     if amount is None:
         return None
     if not note and not code and not named:
-        # A bare number is more likely a late answer to an expired question than an entry.
-        return "พิมพ์รายละเอียดกับจำนวนเงินด้วยนะคะ เช่น \"ค่าข้าว 120\" หรือ \"ค่าข้าว 120 กสิกร\""
+        return None
     several = parse_items(plain)
     items = several[0] if several else []
     if several:
@@ -946,7 +946,7 @@ def handle_chat_text(db: Session, chat: str, text: str, sent_by: str = "", messa
     if amount is None:
         return None
     if not note and not code and not named_accounts(accs, text):
-        return "พิมพ์รายละเอียดกับจำนวนเงินด้วยนะคะ เช่น \"จ่าย ค่าข้าว 120\" หรือ \"รับ ค่าจ้าง 5000 กสิกร\""
+        return None  # a bare number: stay quiet, as in the slip groups
     several = parse_items(_drop_nicknames(accs, text))
     if several:
         amount, note = sum(a for a, _ in several[0]), f"{len(several[0])} รายการ"

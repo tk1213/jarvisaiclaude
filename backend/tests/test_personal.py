@@ -135,7 +135,7 @@ def test_unclear_slip_asks_which_account():
         assert db.query(PersonalEntry).count() == 0
         assert personal.handle_text(db, "G1", "income", "2").startswith("บันทึกรายรับ 500.00 บาท เข้า เก็บ")
         assert db.query(PersonalEntry).one().account_id == b.id
-        assert "รายละเอียด" in personal.handle_text(db, "G1", "income", "2")  # nothing is waiting: a bare number isn't an entry
+        assert personal.handle_text(db, "G1", "income", "2") is None  # nothing is waiting: a bare number isn't an entry, stay quiet
         assert db.query(PersonalEntry).count() == 1
 
 
@@ -379,6 +379,11 @@ def test_chat_typed_lines():
         assert personal.handle_chat_text(db, "U1", "ลบล่าสุด").startswith("ลบรายการล่าสุด 200.00 บาท")
         assert personal.handle_chat_text(db, "U1", "สวัสดี") is None
         assert "รายละเอียด" in personal.handle_chat_text(db, "U1", "จ่าย")
+        assert "รายละเอียด" in personal.handle_chat_text(db, "U1", "จ่าย 3")  # รับ/จ่าย says it's meant as an entry
+        # A running number ("3") or a bare amount says nothing, in TKรับจ่าย and in the slip groups.
+        assert personal.handle_chat_text(db, "U1", "3") is None
+        assert personal.handle_chat_text(db, "U1", "120 บาท") is None
+        assert personal.handle_text(db, "Gout", "expense", "3") is None
 
 
 def test_split_kind():
