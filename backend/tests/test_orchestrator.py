@@ -348,3 +348,32 @@ def test_match_voice():
     assert match_voice("ได้คะแนน 9 คะ", "male") == "ได้คะแนน 9 ครับ"  # คะ inside a word stays
     assert match_voice("เปิดแล้วครับ TK", "female") == "เปิดแล้วค่ะ TK"
     assert match_voice("เปิดแล้วค่ะ TK", "female") == "เปิดแล้วค่ะ TK"
+
+
+def test_model_specific_request_options(home):
+    """Haiku 5.5 (the default, ~1/40 of Opus 5.5's price) has no server-side fallback and takes the basic web search
+    tool; Opus keeps both."""
+    from app.config import Settings
+    from app.services import slip_reader
+
+    assert Settings.model_fields["claude_model"].default == "claude-haiku-5-5"
+    assert Settings.model_fields["claude_slip_model"].default == "claude-haiku-5-5"
+    assert orch_module.fallback_options("claude-haiku-5-5") == {}
+    assert orch_module.fallback_options("claude-opus-5-5")["fallbacks"] == "default"
+    assert orch_module.web_search_type("claude-haiku-5-5") == "web_search_20250305"
+    assert orch_module.web_search_type("claude-opus-5-5") == "web_search_20260209"
+
+    db, tuya, user, _ = home
+    for model, fallback in (("claude-haiku-5-5", False), ("claude-opus-5-5", True)):
+        fake = FakeClaude([message([text("เปิดให้แล้วค่ะ")], "end_turn")])
+        orch = Orchestrator(fake, model=model, effort="low", max_tool_rounds=4, timezone="Asia/Bangkok")
+        ask(orch, db, tuya, user, "เปิดปลั๊ก 1")
+        sent = fake.requests[-1]
+        assert sent["model"] == model
+        assert ("fallbacks" in sent) is fallback
+        assert ("server-side-fallback-2026-07-01" in sent["betas"]) is fallback
+        assert "thinking-binding-controls-2026-08-01" in sent["betas"]
+
+    fake = FakeClaude([message([text('{"is_slip": true, "amount": 120}')], "end_turn")])
+    assert slip_reader.read_slip_with(fake, "claude-haiku-5-5", "AAAA")["amount"] == 120
+    assert "fallbacks" not in fake.requests[-1] and "betas" not in fake.requests[-1]

@@ -37,7 +37,10 @@ class Settings(BaseSettings):
 
     # Claude (JARVIS Core, spec §4.1)
     anthropic_api_key: str = ""
-    claude_model: str = "claude-opus-5-5"
+    # Chat (dashboard + LINE). Haiku 5.5 costs ~1/40 of Opus 5.5 per token; set claude-opus-5-5 for harder reasoning.
+    claude_model: str = "claude-haiku-5-5"
+    # Reading slip pictures (amount, date, accounts) into JSON.
+    claude_slip_model: str = "claude-haiku-5-5"
     # low keeps replies fast for short home-control commands; raise for harder tasks
     claude_effort: Literal["low", "medium", "high", "xhigh", "max"] = "low"
     claude_max_tool_rounds: int = 8

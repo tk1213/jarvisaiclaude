@@ -7,7 +7,7 @@ import logging
 
 from app.config import get_settings
 from app.core import images
-from app.core.orchestrator import get_orchestrator
+from app.core.orchestrator import fallback_options, get_orchestrator
 
 log = logging.getLogger(__name__)
 
@@ -63,13 +63,18 @@ class SlipReadError(RuntimeError):
 def read_slip(jpeg_b64: str) -> dict:
     """What a slip picture says; {"is_slip": False, ...} when it isn't one. Raises SlipReadError."""
     s = get_settings()
-    response = get_orchestrator().client.beta.messages.create(
-        model=s.claude_model,
+    return read_slip_with(get_orchestrator().client, s.claude_slip_model, jpeg_b64)
+
+
+def read_slip_with(client, model: str, jpeg_b64: str) -> dict:
+    """read_slip on a given model (also used by app.scripts.compare_models to check a cheaper model's accuracy)."""
+    fallback = fallback_options(model)
+    response = client.beta.messages.create(
+        model=model,
         max_tokens=4000,
         messages=[{"role": "user", "content": [images.block(jpeg_b64), {"type": "text", "text": PROMPT}]}],
         output_config={"effort": "low", "format": {"type": "json_schema", "schema": SCHEMA}},
-        betas=["server-side-fallback-2026-07-01"],
-        fallbacks="default",
+        **({"betas": fallback["betas"], "fallbacks": fallback["fallbacks"]} if fallback else {}),
     )
     if response.stop_reason == "refusal":
         raise SlipReadError("Claude refused to read this picture")
