@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     claude_model: str = "claude-haiku-5-5"
     # Reading slip pictures (amount, date, accounts) into JSON.
     claude_slip_model: str = "claude-haiku-5-5"
+    # Reads the picture again when the slip model can't (not a slip, or no amount): only hard pictures pay its price.
+    # Empty = no second try.
+    claude_slip_retry_model: str = "claude-opus-5-5"
     # low keeps replies fast for short home-control commands; raise for harder tasks
     claude_effort: Literal["low", "medium", "high", "xhigh", "max"] = "low"
     claude_max_tool_rounds: int = 8

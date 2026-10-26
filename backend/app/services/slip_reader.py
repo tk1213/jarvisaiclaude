@@ -45,13 +45,15 @@ SCHEMA = {
     "additionalProperties": False,
 }
 
-PROMPT = """รูปนี้คือสลิปโอนเงิน/จ่ายเงินของธนาคารไทยหรือไม่ ถ้าใช่ อ่านข้อมูลตามที่พิมพ์ในสลิป:
-- is_slip: true ถ้าเป็นสลิปโอนเงิน/จ่ายบิล/เติมเงินที่สำเร็จแล้ว
-- amount: จำนวนเงินเป็นบาท (ตัวเลข ไม่มีจุลภาค)
+PROMPT = """รูปนี้คือหลักฐานการโอนเงิน/จ่ายเงินของธนาคารไทยหรือไม่ ถ้าใช่ อ่านข้อมูลตามที่พิมพ์ไว้:
+- is_slip: true ถ้าเป็นหลักฐานการโอนเงิน/จ่ายบิล/เติมเงินที่สำเร็จแล้ว ทั้งสลิปจากแอปมือถือ และเอกสารเต็มหน้าจากระบบธนาคารธุรกิจ
+  เช่น ใบแจ้งการชำระเงิน / Payment Advice / ใบยืนยันการโอนเงิน / Transfer Confirmation (SCB Business Net, K-BIZ, Krungthai Corporate ฯลฯ)
+- amount: จำนวนเงินที่โอนเป็นบาท (ตัวเลข ไม่มีจุลภาค) ถ้ามีหลายช่องให้ใช้ยอดสุทธิที่จ่ายจริง เช่น "จำนวนเงินรวมทั้งสิ้น / Grand Total Amount"
+  หรือ "Net Amount" ไม่ใช่ค่าธรรมเนียมหรือภาษี
 - date: วันที่ทำรายการ รูปแบบ YYYY-MM-DD เป็น ค.ศ. (ถ้าสลิปเป็น พ.ศ. ให้ลบ 543 เช่น 5 ต.ค. 69 = 2026-10-05)
 - time: เวลา HH:MM
 - sender_* และ receiver_*: ชื่อ ธนาคาร (เช่น กสิกรไทย ไทยพาณิชย์ หรือ พร้อมเพย์/ร้านค้า ถ้าไม่ใช่ธนาคาร) และเลขบัญชีตามที่พิมพ์ รวม x ที่ปิดไว้ เช่น xxx-x-x1234-x
-- reference: เลขที่รายการ/เลขอ้างอิงของสลิป
+- reference: เลขที่รายการ/เลขอ้างอิงของสลิป (ในใบแจ้งการชำระเงินคือ เลขที่อ้างอิงธนาคาร / Bank Reference หรือ Transaction Reference)
 - memo: บันทึกช่วยจำในสลิป ถ้ามี
 ช่องที่ไม่มีในสลิปให้เป็น null"""
 
@@ -61,9 +63,19 @@ class SlipReadError(RuntimeError):
 
 
 def read_slip(jpeg_b64: str) -> dict:
-    """What a slip picture says; {"is_slip": False, ...} when it isn't one. Raises SlipReadError."""
+    """What a slip picture says; {"is_slip": False, ...} when it isn't one. Raises SlipReadError. When the slip model
+    can't read it (not a slip, or no amount), the retry model reads it again, so only hard pictures cost more."""
     s = get_settings()
-    return read_slip_with(get_orchestrator().client, s.claude_slip_model, jpeg_b64)
+    client = get_orchestrator().client
+    slip = read_slip_with(client, s.claude_slip_model, jpeg_b64)
+    retry = s.claude_slip_retry_model
+    if (not slip.get("is_slip") or not slip.get("amount")) and retry and retry != s.claude_slip_model:
+        log.info("slip model %s could not read the picture; trying %s", s.claude_slip_model, retry)
+        try:
+            return read_slip_with(client, retry, jpeg_b64)
+        except SlipReadError as e:
+            log.warning("retry model could not read the slip either: %s", e)
+    return slip
 
 
 def read_slip_with(client, model: str, jpeg_b64: str) -> dict:

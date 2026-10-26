@@ -49,7 +49,9 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
 
 - Models (owner's choice, to cut cost): chat `CLAUDE_MODEL` and slip reading `CLAUDE_SLIP_MODEL` default to
   `claude-haiku-5-5` (~1/40 of Opus 5.5's price); `app.scripts.compare_models` checks a model's accuracy against Opus 5.5
-  on the saved slips and on sample commands in the mock home. `client.beta.messages.create` with beta
+  on the saved slips and on sample commands in the mock home. A slip the slip model can't read (not a slip, or no amount)
+  is read again by `CLAUDE_SLIP_RETRY_MODEL` (default `claude-opus-5-5`, empty = off), so only hard pictures cost Opus;
+  slips are shrunk to `images.SLIP_MAX_SIDE` (2000 px, a full-page "ใบแจ้งการชำระเงิน / Payment Advice" needs it), chat pictures 1024. `client.beta.messages.create` with beta
   `thinking-binding-controls-2026-08-01`, adaptive thinking with `block_binding.prefix_mismatch_behavior="drop_block"`,
   effort `low`. Server-side fallback (beta `server-side-fallback-2026-07-01` + `fallbacks="default"`) only on models that
   have it (`fallback_options`: Opus 5.x / Sonnet 5.5 / Fable); Haiku 5.5 has none (a fallback list is a 400).
