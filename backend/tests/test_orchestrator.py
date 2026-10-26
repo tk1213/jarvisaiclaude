@@ -377,3 +377,31 @@ def test_model_specific_request_options(home):
     fake = FakeClaude([message([text('{"is_slip": true, "amount": 120}')], "end_turn")])
     assert slip_reader.read_slip_with(fake, "claude-haiku-5-5", "AAAA")["amount"] == 120
     assert "fallbacks" not in fake.requests[-1] and "betas" not in fake.requests[-1]
+
+
+def test_slip_the_cheap_model_cant_read_is_read_again(monkeypatch):
+    """A picture Haiku can't read (a full-page payment advice) goes to the retry model; an ordinary slip doesn't."""
+    from types import SimpleNamespace
+
+    from app.config import get_settings
+    from app.services import slip_reader
+
+    def reader(*replies):
+        fake = FakeClaude([message([text(r)], "end_turn") for r in replies])
+        monkeypatch.setattr(slip_reader, "get_orchestrator", lambda: SimpleNamespace(client=fake))
+        return fake
+
+    fake = reader('{"is_slip": false, "amount": null}', '{"is_slip": true, "amount": 500}')
+    assert slip_reader.read_slip("AAAA")["amount"] == 500
+    assert [r["model"] for r in fake.requests] == ["claude-haiku-5-5", "claude-opus-5-5"]
+
+    fake = reader('{"is_slip": true, "amount": 120}')
+    assert slip_reader.read_slip("AAAA")["amount"] == 120
+    assert len(fake.requests) == 1
+
+    monkeypatch.setenv("CLAUDE_SLIP_RETRY_MODEL", "")
+    get_settings.cache_clear()
+    fake = reader('{"is_slip": false, "amount": null}')
+    assert slip_reader.read_slip("AAAA")["is_slip"] is False
+    assert len(fake.requests) == 1
+    get_settings.cache_clear()

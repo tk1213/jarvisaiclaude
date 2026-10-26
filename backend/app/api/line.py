@@ -404,7 +404,7 @@ def handle_group_event(event: dict) -> None:
 def _read_slip_picture(client: LineClient, message: dict) -> tuple[dict, bytes] | str:
     """A LINE picture read as a slip: (what Claude read, the JPEG), or the reply saying what went wrong."""
     try:
-        jpeg = image_utils.to_jpeg(client.get_content(message.get("id", "")))
+        jpeg = image_utils.to_jpeg(client.get_content(message.get("id", "")), image_utils.SLIP_MAX_SIDE)
     except image_utils.ImageError:
         return "เปิดรูปนี้ไม่ได้ค่ะ ลองส่งใหม่อีกครั้งนะคะ"
     except LineError as e:

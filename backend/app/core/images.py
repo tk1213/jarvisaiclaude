@@ -10,6 +10,7 @@ import io
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 MAX_SIDE = 1024
+SLIP_MAX_SIDE = 2000  # slips: a full A4 payment advice needs this for its small print
 MAX_IMAGES = 4
 MAX_BYTES = 15 * 1024 * 1024  # before shrinking
 
@@ -18,14 +19,14 @@ class ImageError(ValueError):
     pass
 
 
-def to_jpeg(data: bytes) -> str:
-    """Base64 JPEG no larger than MAX_SIDE on its long side."""
+def to_jpeg(data: bytes, max_side: int = MAX_SIDE) -> str:
+    """Base64 JPEG no larger than max_side on its long side."""
     if len(data) > MAX_BYTES:
         raise ImageError("รูปใหญ่เกิน 15 MB")
     try:
         img = Image.open(io.BytesIO(data))
         img = ImageOps.exif_transpose(img)  # phone photos: honour the rotation flag
-        img.thumbnail((MAX_SIDE, MAX_SIDE))
+        img.thumbnail((max_side, max_side))
         img = img.convert("RGB")
     except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as e:
         raise ImageError("เปิดรูปไม่ได้ ไฟล์อาจไม่ใช่รูปภาพ") from e
