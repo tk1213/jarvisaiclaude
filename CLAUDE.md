@@ -146,7 +146,8 @@ run Prettier use `--no-semi --single-quote --print-width 180`). `TUYA_MODE=mock`
   one entry each (`parse_items`: every amount ends an item unless a unit follows it, "2 จาน", or it's stuck to letters, "3BB"
   (`_ends_item`, `_UNITS`); each item needs its own note; at most one bank;
   one reply with the total; unsending the message deletes them all). A bare number ("3", the staff's running number) is no entry and gets no reply,
-  unless it answers a pending question; "จ่าย 3" still gets the how-to. "ยอด" = every balance; "ยอด กรุงศรี เหลือเท่าไร" / "ยอดคงเหลือ K-SET50" = that bank or fund only. Duplicate reference = refused; unclear account = numbered question. The older groups named
+  unless it answers a pending question; "จ่าย 3" still gets the how-to. Dates and times ("26/10/69", "26/10", "8:20 น.";
+  `_DATE_TIME`) are never amounts, so a date alone gets no reply; "26.10" alone is still 26.10 baht. The entry date stays today. "ยอด" = every balance; "ยอด กรุงศรี เหลือเท่าไร" / "ยอดคงเหลือ K-SET50" = that bank or fund only. Duplicate reference = refused; unclear account = numbered question. The older groups named
   "สลิปรายรับ"/"สลิปรายจ่าย" record with a fixed kind into **company money** instead (below). Funds are accounts with bank
   `FUND_A`..`FUND_F` (real name in the nickname, matched in slips and typed lines; balance = money put in, no NAV). A transfer is
   one row but shows as รับโอน/โอนออก per account and in each account's month in/out, never in the month totals. No expense
