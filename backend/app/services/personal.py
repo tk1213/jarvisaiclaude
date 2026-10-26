@@ -51,6 +51,11 @@ BANKS: dict[str, tuple[str, list[str]]] = {
 # Longest first, so "กรุงศรีอยุธยา" wins over "กรุงศรี" and "ทหารไทย" never reads as "ไทย…".
 _ALIASES = sorted(((a.replace(" ", "").lower(), code) for code, (_, words) in BANKS.items() for a in words), key=lambda x: -len(x[0]))
 _AMOUNT = re.compile(r"(?<![\d.])(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?(?![\d,])")
+# Dates and times typed in a line ("26/10/69", "26-10-2569", "26.10.69", "26/10", "8:20", "14.30 น."): never an amount.
+# "26.10" alone stays an amount (baht and satang).
+_DATE_TIME = re.compile(
+    r"(?<![\d.,/:-])(?:\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?|\d{1,2}\.\d{1,2}\.\d{2,4}|\d{1,2}:\d{2}(?:\s*น\.)?|\d{1,2}\.\d{2}\s*น\.)(?![\d/.:-])"
+)
 DELETE_WORDS = {"ลบล่าสุด", "ลบรายการล่าสุด", "ยกเลิกล่าสุด"}
 BALANCE_WORDS = {"ยอด", "ยอดคงเหลือ", "ยอดเงิน", "เหลือเท่าไหร่", "คงเหลือ"}
 PENDING_SECONDS = 600
@@ -678,7 +683,9 @@ def _slip_as(
 
 
 def parse_text(text: str) -> tuple[int | None, str | None, str]:
-    """"ค่าข้าว 120 กสิกร" -> (12000 satang, "KBANK", "ค่าข้าว"); the last number is the amount."""
+    """"ค่าข้าว 120 กสิกร" -> (12000 satang, "KBANK", "ค่าข้าว"); the last number is the amount. Dates and times are
+    left out ("26/10/69" alone has no amount)."""
+    text = _DATE_TIME.sub(" ", text)
     numbers = list(_AMOUNT.finditer(text))
     if not numbers:
         return None, None, text.strip()
@@ -720,6 +727,7 @@ def parse_items(text: str) -> tuple[list[tuple[int, str]], str | None] | None:
     line. Each amount ends an item unless it's part of a note: a count with its unit ("ค่าข้าว 2 จาน 120"), or stuck to
     letters ("3BB", "iPhone15"). None unless there are two or more items, each with its own note ("ค่าไฟ เดือน 10 1200"
     stays one entry), and at most one bank."""
+    text = _DATE_TIME.sub(" ", text)
     numbers = list(_AMOUNT.finditer(text))
     cuts = [m.end() for m in numbers[:-1] if _ends_item(text, m)] + [numbers[-1].end()] if numbers else []
     if len(cuts) < 2:
@@ -788,7 +796,10 @@ def _typed_transfer(db: Session, text: str, sent_by: str = "", message_id: str =
         return TRANSFER_HELP
     left, right = text[: m.start()], text[m.end() :]
     to = one_account(accs, right)
-    numbers = list(_AMOUNT.finditer(_drop_nicknames(accs, left))) or list(_AMOUNT.finditer(_drop_nicknames(accs, right)))
+    def amounts(side: str) -> list[re.Match]:
+        return list(_AMOUNT.finditer(_DATE_TIME.sub(" ", _drop_nicknames(accs, side))))
+
+    numbers = amounts(left) or amounts(right)
     src = one_account(accs, left) or _default_account(accs)
     if not numbers or to is None or src is None or src.id == to.id:
         return TRANSFER_HELP

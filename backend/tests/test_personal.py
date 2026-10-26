@@ -55,6 +55,14 @@ def test_bank_code_and_parse_text():
     assert personal.parse_text("ค่าข้าว 120 กสิกร") == (12000, "KBANK", "ค่าข้าว")
     assert personal.parse_text("ค่าเช่า 5,000.50 บาท scb") == (500050, "SCB", "ค่าเช่า")
     assert personal.parse_text("สวัสดีค่ะ") == (None, None, "สวัสดีค่ะ")
+    # Dates and times aren't amounts.
+    for date_only in ("26/10/69", "26/10/2569", "26-10-69", "26.10.69", "26/10", "8:20", "14.30 น."):
+        assert personal.parse_text(date_only)[0] is None, date_only
+    assert personal.parse_text("26/10/69 ค่าส่ง 120") == (12000, None, "ค่าส่ง")
+    assert personal.parse_text("ค่าส่ง 120 26/10/69") == (12000, None, "ค่าส่ง")
+    assert personal.parse_text("ค่าส่ง 8:20 น. 50") == (5000, None, "ค่าส่ง")
+    assert personal.parse_text("ค่าน้ำ 26.10")[0] == 2610  # baht and satang, not a date
+    assert personal.parse_items("26/10/69 ค่าข้าว 20 ค่าน้ำ 20") == ([(2000, "ค่าข้าว"), (2000, "ค่าน้ำ")], None)
 
 
 def test_number_fits_masked_slips():
@@ -384,6 +392,8 @@ def test_chat_typed_lines():
         assert personal.handle_chat_text(db, "U1", "3") is None
         assert personal.handle_chat_text(db, "U1", "120 บาท") is None
         assert personal.handle_text(db, "Gout", "expense", "3") is None
+        assert personal.handle_text(db, "Gout", "expense", "26/10/69") is None  # a date: stay quiet
+        assert personal.handle_chat_text(db, "U1", "26/10/69") is None
 
 
 def test_split_kind():
