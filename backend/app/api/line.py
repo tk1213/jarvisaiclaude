@@ -401,8 +401,9 @@ def handle_group_event(event: dict) -> None:
         _send_quietly(client, reply_token, group_id, text)
 
 
-def _read_slip_picture(client: LineClient, message: dict) -> tuple[dict, bytes] | str:
-    """A LINE picture read as a slip: (what Claude read, the JPEG), or the reply saying what went wrong."""
+def _read_slip_picture(client: LineClient, message: dict, check=None) -> tuple[dict, bytes] | str:
+    """A LINE picture read as a slip: (what Claude read, the JPEG), or the reply saying what went wrong. `check` says
+    what's wrong with a read for this book (read_slip then has it read again by the stronger model)."""
     try:
         jpeg = image_utils.to_jpeg(client.get_content(message.get("id", "")), image_utils.SLIP_MAX_SIDE)
     except image_utils.ImageError:
@@ -411,7 +412,7 @@ def _read_slip_picture(client: LineClient, message: dict) -> tuple[dict, bytes] 
         log.warning("could not download a slip from LINE: %s", e)
         return "โหลดรูปจาก LINE ไม่ได้ค่ะ ลองส่งใหม่อีกครั้งนะคะ"
     try:
-        slip = read_slip(jpeg)
+        slip = read_slip(jpeg, check)
     except CoreNotConfigured:
         return "จาร์วิสยังไม่ได้ตั้งค่า ANTHROPIC_API_KEY ค่ะ"
     except (anthropic.APIError, SlipReadError) as e:
@@ -421,11 +422,11 @@ def _read_slip_picture(client: LineClient, message: dict) -> tuple[dict, bytes] 
 
 
 def _record_slip(client: LineClient, group_id: str, kind: str, message: dict, sent_by: str = "") -> str:
-    read = _read_slip_picture(client, message)
-    if isinstance(read, str):
-        return read
     message_id = str(message.get("id") or "")
     with _book(kind)[1]() as db:
+        read = _read_slip_picture(client, message, lambda slip: personal.account_doubt(db, kind, slip))
+        if isinstance(read, str):
+            return read
         if kind == "both":
             return personal.record_chat_slip(db, group_id, *read, sent_by=sent_by, message_id=message_id)
         return personal.record_slip(db, group_id, kind, *read, sent_by=sent_by, message_id=message_id)

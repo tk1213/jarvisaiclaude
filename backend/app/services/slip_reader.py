@@ -4,10 +4,14 @@ and the reference number. One request with a JSON schema; services.personal deci
 
 import json
 import logging
+from collections.abc import Callable
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from app.config import get_settings
 from app.core import images
 from app.core.orchestrator import fallback_options, get_orchestrator
+from app.services.personal import SLIP_DAYS_BACK
 
 log = logging.getLogger(__name__)
 
@@ -51,6 +55,8 @@ PROMPT = """รูปนี้คือหลักฐานการโอน�
 - amount: จำนวนเงินที่โอนเป็นบาท (ตัวเลข ไม่มีจุลภาค) ถ้ามีหลายช่องให้ใช้ยอดสุทธิที่จ่ายจริง เช่น "จำนวนเงินรวมทั้งสิ้น / Grand Total Amount"
   หรือ "Net Amount" ไม่ใช่ค่าธรรมเนียมหรือภาษี
 - date: วันที่ทำรายการ รูปแบบ YYYY-MM-DD เป็น ค.ศ. (ถ้าสลิปเป็น พ.ศ. ให้ลบ 543 เช่น 5 ต.ค. 69 = 2026-10-05)
+  เดือนไทย: ม.ค.=01 ก.พ.=02 มี.ค.=03 เม.ย.=04 พ.ค.=05 มิ.ย.=06 ก.ค.=07 ส.ค.=08 ก.ย.=09 ต.ค.=10 พ.ย.=11 ธ.ค.=12
+  (เช่น 6 พ.ย. 69 09:24 น. = 2026-11-06) อ่านเดือนจากชื่อเดือนเท่านั้น ห้ามเอาตัวเลขของเวลามาเป็นวันหรือเดือน
 - time: เวลา HH:MM
 - sender_* และ receiver_*: ชื่อ ธนาคาร (เช่น กสิกรไทย ไทยพาณิชย์ หรือ พร้อมเพย์/ร้านค้า ถ้าไม่ใช่ธนาคาร) และเลขบัญชีตามที่พิมพ์ รวม x ที่ปิดไว้ เช่น xxx-x-x1234-x
 - reference: เลขที่รายการ/เลขอ้างอิงของสลิป (ในใบแจ้งการชำระเงินคือ เลขที่อ้างอิงธนาคาร / Bank Reference หรือ Transaction Reference)
@@ -62,19 +68,56 @@ class SlipReadError(RuntimeError):
     pass
 
 
-def read_slip(jpeg_b64: str) -> dict:
-    """What a slip picture says; {"is_slip": False, ...} when it isn't one. Raises SlipReadError. When the slip model
-    can't read it (not a slip, or no amount), the retry model reads it again, so only hard pictures cost more."""
+def date_doubt(slip: dict, today: date | None = None) -> str | None:
+    """Why the date read off a slip looks wrong (missing, in the future, or more than SLIP_DAYS_BACK days old); None
+    when it looks right."""
+    today = today or datetime.now(ZoneInfo(get_settings().timezone)).date()
+    try:
+        when = date.fromisoformat(slip.get("date") or "")
+    except ValueError:
+        return "no date"
+    if when > today + timedelta(days=1):
+        return f"date {when} is in the future"
+    if when < today - timedelta(days=SLIP_DAYS_BACK):
+        return f"date {when} is over {SLIP_DAYS_BACK} days old"
+    return None
+
+
+def _doubt(slip: dict, check: Callable[[dict], str | None] | None) -> str | None:
+    if not slip.get("is_slip") or not slip.get("amount"):
+        return "not a slip, or no amount"
+    return date_doubt(slip) or (check(slip) if check else None)
+
+
+def _log_read(model: str, slip: dict) -> None:
+    log.info(
+        "slip read by %s: amount=%s date=%s time=%s sender=%s %s receiver=%s %s ref=%s",
+        model,
+        *(slip.get(k) for k in ("amount", "date", "time", "sender_bank", "sender_account", "receiver_bank", "receiver_account", "reference")),
+    )
+
+
+def read_slip(jpeg_b64: str, check: Callable[[dict], str | None] | None = None) -> dict:
+    """What a slip picture says; {"is_slip": False, ...} when it isn't one. Raises SlipReadError. When the slip model's
+    read looks wrong (not a slip, no amount, an unlikely date, or whatever `check` objects to, e.g. no account of
+    this book fits), the retry model reads it again, so only hard pictures cost more. Its read is kept when it has
+    fewer doubts."""
     s = get_settings()
     client = get_orchestrator().client
     slip = read_slip_with(client, s.claude_slip_model, jpeg_b64)
+    _log_read(s.claude_slip_model, slip)
+    doubt = _doubt(slip, check)
     retry = s.claude_slip_retry_model
-    if (not slip.get("is_slip") or not slip.get("amount")) and retry and retry != s.claude_slip_model:
-        log.info("slip model %s could not read the picture; trying %s", s.claude_slip_model, retry)
+    if doubt and retry and retry != s.claude_slip_model:
+        log.info("slip model %s: %s; reading again with %s", s.claude_slip_model, doubt, retry)
         try:
-            return read_slip_with(client, retry, jpeg_b64)
+            again = read_slip_with(client, retry, jpeg_b64)
         except SlipReadError as e:
             log.warning("retry model could not read the slip either: %s", e)
+            return slip
+        _log_read(retry, again)
+        if again.get("is_slip") and again.get("amount"):
+            return again
     return slip
 
 
