@@ -59,6 +59,8 @@ _DATE_TIME = re.compile(
 DELETE_WORDS = {"ลบล่าสุด", "ลบรายการล่าสุด", "ยกเลิกล่าสุด"}
 BALANCE_WORDS = {"ยอด", "ยอดคงเหลือ", "ยอดเงิน", "เหลือเท่าไหร่", "คงเหลือ"}
 PENDING_SECONDS = 600
+# A slip sent to LINE is nearly always from the last few days; a date further back (or ahead) is more likely misread.
+SLIP_DAYS_BACK = 7
 
 
 class PersonalError(ValueError):
@@ -483,6 +485,36 @@ def guess_kind(accs: list[BankAccount], slip: dict) -> str | None:
     return None
 
 
+def account_doubt(db: Session, kind: str, slip: dict) -> str | None:
+    """Why no account of this book surely fits a slip's own side ("income": the receiver, "expense": the sender,
+    "both": either), so the stronger model should read it again before JARVIS asks; None when one does, or when the
+    book has no account with a number to check against."""
+    accs = [a for a in accounts(db) if _digits(a.account_no) or is_fund(a.bank)]
+    if not accs:
+        return None
+    sides = {"income": ("receiver",), "expense": ("sender",)}.get(kind, ("sender", "receiver"))
+    for side in sides:
+        if verified_matches(accs, slip.get(f"{side}_bank"), slip.get(f"{side}_account")):
+            return None
+        if fund_matches(accs, slip.get(f"{side}_name"), slip.get(f"{side}_bank"), slip.get(f"{side}_account")):
+            return None
+    return "no account fits " + " / ".join(f"{s} {slip.get(f'{s}_bank')} {slip.get(f'{s}_account')}" for s in sides)
+
+
+def _date_notes(p: "Pending", *accs: BankAccount) -> str:
+    """Warnings to add under a reply: a slip date far from today (maybe misread), or an entry dated before an
+    account's opening date (recorded, but not counted in its balance)."""
+    notes = []
+    if p.source == "slip" and abs((today() - p.entry_date).days) > SLIP_DAYS_BACK:
+        notes.append(f"⚠️ สลิปลงวันที่ {p.entry_date:%d/%m/%Y} ตรวจดูด้วยนะคะ ถ้าผิดแก้ได้ในหน้าเว็บ")
+    for acc in accs:
+        if p.entry_date < acc.opening_date:
+            notes.append(
+                f"⚠️ รายการวันที่ {p.entry_date:%d/%m/%Y} อยู่ก่อนวันยอดยกมาของ {label(acc)} ({acc.opening_date:%d/%m/%Y}) จึงไม่ถูกนับในยอดคงเหลือ"
+            )
+    return "".join(f"\n{n}" for n in notes)
+
+
 # --- LINE: pending questions -------------------------------------------------------------------------------
 
 
@@ -578,16 +610,16 @@ def _record(db: Session, p: Pending, acc: BankAccount, to_acc: BankAccount | Non
         lines = "\n".join(f"- {note} {money(amount)}" for amount, note in p.items)
         return (
             f"บันทึก{word} {len(p.items)} รายการ รวม {money(p.amount)} บาท {way} {label(acc)} แล้วค่ะ TK\n{lines}\n"
-            f"คงเหลือ {money(balance(db, acc))} บาท"
+            f"คงเหลือ {money(balance(db, acc))} บาท" + _date_notes(p, acc)
         )
     db.add(_entry(p, kind, acc, to_acc, p.amount, p.note))
     db.commit()
     if kind == "transfer":
         return (
             f"บันทึกโอนระหว่างบัญชี {money(p.amount)} บาท จาก {label(acc)} ไป {label(to_acc)} แล้วค่ะ TK\n"
-            f"คงเหลือ {label(acc)} {money(balance(db, acc))} บาท / {label(to_acc)} {money(balance(db, to_acc))} บาท"
+            f"คงเหลือ {label(acc)} {money(balance(db, acc))} บาท / {label(to_acc)} {money(balance(db, to_acc))} บาท" + _date_notes(p, acc, to_acc)
         )
-    return f"บันทึก{word} {money(p.amount)} บาท {way} {label(acc)} แล้วค่ะ TK\nคงเหลือ {money(balance(db, acc))} บาท"
+    return f"บันทึก{word} {money(p.amount)} บาท {way} {label(acc)} แล้วค่ะ TK\nคงเหลือ {money(balance(db, acc))} บาท" + _date_notes(p, acc)
 
 
 # --- LINE: slips -------------------------------------------------------------------------------------------
@@ -676,7 +708,9 @@ def _slip_as(
             return _record(db, p, src, dst)
         return _record(db, p, mine[0])
     word = "รายรับ" if kind == "income" else "รายจ่าย"
-    return _ask_which(key, p, mine or accs, f"{word}จากสลิป")
+    shown = " ".join(str(slip.get(f"{mine_side}_{k}") or "").strip() for k in ("bank", "account")).strip() or "อ่านไม่ออก"
+    who = "ผู้รับ" if kind == "income" else "ผู้โอน"
+    return _ask_which(key, p, mine or accs, f"{word}จากสลิป (บัญชี{who}บนสลิป: {shown})")
 
 
 # --- LINE: typed lines -------------------------------------------------------------------------------------

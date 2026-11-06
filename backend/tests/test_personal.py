@@ -29,7 +29,7 @@ def slip(**kw) -> dict:
     base = {
         "is_slip": True,
         "amount": 500,
-        "date": "2026-10-05",
+        "date": personal.today().isoformat(),  # a slip from today (an old date is doubted)
         "time": "09:15",
         "sender_name": "นาย ก",
         "sender_bank": "ธ.ไทยพาณิชย์",
@@ -140,11 +140,34 @@ def test_unclear_slip_asks_which_account():
         b = add(db, no="2222278902", nickname="เก็บ")
         reply = personal.record_slip(db, "G1", "income", slip(), JPEG)
         assert "1) ใช้จ่าย (…8901)" in reply and "2) เก็บ (…8902)" in reply
+        assert "(บัญชีผู้รับบนสลิป: กสิกรไทย xxx-x-x7890-x)" in reply  # what was read, so a misread shows
         assert db.query(PersonalEntry).count() == 0
         assert personal.handle_text(db, "G1", "income", "2").startswith("บันทึกรายรับ 500.00 บาท เข้า เก็บ")
         assert db.query(PersonalEntry).one().account_id == b.id
         assert personal.handle_text(db, "G1", "income", "2") is None  # nothing is waiting: a bare number isn't an entry, stay quiet
         assert db.query(PersonalEntry).count() == 1
+
+
+
+def test_account_doubt():
+    with PersonalSession() as db:
+        assert personal.account_doubt(db, "income", slip()) is None  # no account to check against
+        add(db, bank="SCB", no="6661")  # only the last 4 digits saved
+        assert personal.account_doubt(db, "income", slip(receiver_bank="Siam Commercial Bank", receiver_account="xxx-x-x4666-x")) is None
+        assert personal.account_doubt(db, "income", slip(receiver_bank="ไทยพาณิชย์", receiver_account=None)) is not None
+        assert personal.account_doubt(db, "both", slip(sender_bank="ไทยพาณิชย์", sender_account="xxx-x-x4666-x")) is None
+
+
+def test_old_slip_and_entries_before_the_opening_date_are_flagged():
+    """A slip read as 6 September (it said 6 พ.ย.) is recorded but flagged, and so is any entry dated before the
+    account's opening date, which the balance leaves out."""
+    with PersonalSession() as db:
+        add(db, default=True)  # opening date 2026-01-01
+        reply = personal.record_slip(db, "G1", "income", slip(date="2025-09-06"), JPEG)
+        assert "⚠️ สลิปลงวันที่ 06/09/2025 ตรวจดูด้วยนะคะ" in reply
+        assert "⚠️ รายการวันที่ 06/09/2025 อยู่ก่อนวันยอดยกมาของ กสิกรไทย (…8905) (01/01/2026) จึงไม่ถูกนับในยอดคงเหลือ" in reply
+        assert "⚠️" not in personal.record_slip(db, "G1", "income", slip(reference="REF002"), JPEG)
+        assert "⚠️" not in personal.handle_text(db, "G1", "expense", "ค่าข้าว 120")
 
 
 def test_not_a_slip():
@@ -197,7 +220,7 @@ def test_line_slip_group(client, owner_headers, groups, monkeypatch):
     link(client, owner_headers, groups)
     with CompanySession() as db:
         add(db)
-    monkeypatch.setattr(line_api, "read_slip", lambda jpeg: slip())
+    monkeypatch.setattr(line_api, "read_slip", lambda jpeg, check=None: slip())
     groups.contents["m1"] = picture()
     post_event(client, group_event({"type": "image", "id": "m1"}))
     assert groups.sent[-1][1] == "Gin"
@@ -533,7 +556,7 @@ def test_rabjai_group(client, owner_headers, groups, monkeypatch):
     assert groups.sent[-1][1] == "Grj"
     assert groups.sent[-1][2][0]["text"].startswith("บันทึกรายจ่าย 120.00 บาท")
     # A slip works out income by itself.
-    monkeypatch.setattr(line_api, "read_slip", lambda jpeg: slip())
+    monkeypatch.setattr(line_api, "read_slip", lambda jpeg, check=None: slip())
     groups.contents["m1"] = picture()
     post_event(client, group_event({"type": "image", "id": "m1"}, group="Grj"))
     assert groups.sent[-1][2][0]["text"].startswith("บันทึกรายรับ 500.00 บาท")
@@ -608,7 +631,7 @@ def test_unsending_in_line_deletes_the_entry(client, owner_headers, groups, monk
         add(db, default=True)
     with PersonalSession() as db:
         add(db, default=True)
-    monkeypatch.setattr(line_api, "read_slip", lambda jpeg: slip())
+    monkeypatch.setattr(line_api, "read_slip", lambda jpeg, check=None: slip())
     groups.contents["m1"] = picture()
     post_event(client, group_event({"type": "image", "id": "m1"}, user="Ustaff"))
     post_event(client, group_event({"type": "text", "id": "m2", "text": "ค่าขนส่ง 120"}, user="Ustaff", group="Gout"))

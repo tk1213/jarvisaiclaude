@@ -380,26 +380,55 @@ def test_model_specific_request_options(home):
 
 
 def test_slip_the_cheap_model_cant_read_is_read_again(monkeypatch):
-    """A picture Haiku can't read (a full-page payment advice) goes to the retry model; an ordinary slip doesn't."""
+    """A picture Haiku can't read (a full-page payment advice), reads with an unlikely date ("6 พ.ย. 69 09:24" read as
+    6 September) or reads with no account of the book fitting goes to the retry model; an ordinary slip doesn't."""
+    from datetime import timedelta
     from types import SimpleNamespace
 
     from app.config import get_settings
     from app.services import slip_reader
+    from app.services.personal import today as personal_today
+
+    today = personal_today()
+
+    def read(amount, when=today, **kw):
+        return json.dumps({"is_slip": True, "amount": amount, "date": when.isoformat(), **kw})
 
     def reader(*replies):
         fake = FakeClaude([message([text(r)], "end_turn") for r in replies])
         monkeypatch.setattr(slip_reader, "get_orchestrator", lambda: SimpleNamespace(client=fake))
         return fake
 
-    fake = reader('{"is_slip": false, "amount": null}', '{"is_slip": true, "amount": 500}')
+    fake = reader('{"is_slip": false, "amount": null}', read(500))
     assert slip_reader.read_slip("AAAA")["amount"] == 500
     assert [r["model"] for r in fake.requests] == ["claude-haiku-5-5", "claude-opus-5-5"]
 
-    fake = reader('{"is_slip": true, "amount": 120}')
+    fake = reader(read(120))
     assert slip_reader.read_slip("AAAA")["amount"] == 120
     assert len(fake.requests) == 1
 
+    fake = reader(read(2831.30, today - timedelta(days=61)), read(2831.30))
+    assert slip_reader.read_slip("AAAA")["date"] == today.isoformat()
+    assert len(fake.requests) == 2
+    assert "ห้ามเอาตัวเลขของเวลามาเป็นวันหรือเดือน" in fake.requests[0]["messages"][0]["content"][1]["text"]
+
+    fake = reader(read(100, receiver_account="xxx-x-x1234-x"), read(100, receiver_account="xxx-x-x4666-x"))
+    got = slip_reader.read_slip("AAAA", lambda slip: None if "4666" in slip["receiver_account"] else "no account fits")
+    assert got["receiver_account"] == "xxx-x-x4666-x"
+
+    # The stronger model's read is kept only when it is a slip at all.
+    fake = reader(read(100, today - timedelta(days=30)), '{"is_slip": false, "amount": null}')
+    assert slip_reader.read_slip("AAAA")["amount"] == 100
+
+    assert slip_reader.date_doubt({"date": None}) == "no date"
+    assert slip_reader.date_doubt({"date": (today + timedelta(days=5)).isoformat()}, today).endswith("in the future")
+    assert slip_reader.date_doubt({"date": (today - timedelta(days=3)).isoformat()}, today) is None
+
     monkeypatch.setenv("CLAUDE_SLIP_RETRY_MODEL", "")
+    get_settings.cache_clear()
+    fake = reader('{"is_slip": false, "amount": null}')
+    assert slip_reader.read_slip("AAAA")["is_slip"] is False
+    assert len(fake.requests) == 1
     get_settings.cache_clear()
     fake = reader('{"is_slip": false, "amount": null}')
     assert slip_reader.read_slip("AAAA")["is_slip"] is False
